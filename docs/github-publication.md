@@ -59,7 +59,7 @@ The demo should show:
 Release title:
 
 ```text
-mcp-broker 0.1.0
+mcp-broker 0.1.1
 ```
 
 Use these first release notes as the starting body:

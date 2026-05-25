@@ -6,7 +6,7 @@ tag, and package upload exist.
 
 ## Python Package
 
-Package metadata is release-aligned at `0.1.0`. The version is sourced from
+Package metadata is release-aligned at `0.1.1`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 

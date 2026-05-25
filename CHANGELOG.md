@@ -2,6 +2,11 @@
 
 All notable public changes will be recorded here.
 
+## 0.1.1 - 2026-05-25
+
+- Correct MCP Registry namespace casing in package README, registry metadata,
+  and server card so GitHub OIDC ownership validation matches PyPI metadata.
+
 ## 0.1.0 - 2026-05-25
 
 - Local MCP broker daemon with a compact MCP facade.

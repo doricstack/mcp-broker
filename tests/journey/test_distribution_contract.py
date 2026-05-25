@@ -62,15 +62,18 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     upstream_http = (ROOT / "src" / "mcp_broker" / "upstream_http.py").read_text(encoding="utf-8")
     server = json.loads((ROOT / "registry" / "server.json").read_text(encoding="utf-8"))
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
     assert package_version_match is not None
     package_version = package_version_match.group(1)
+    latest_changelog_match = re.search(r"^## ([0-9]+\.[0-9]+\.[0-9]+) - ", changelog, re.M)
+    assert latest_changelog_match is not None
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
-    assert package_version == "0.1.0"
+    assert package_version == latest_changelog_match.group(1)
     repository_match = re.fullmatch(
         r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
     )

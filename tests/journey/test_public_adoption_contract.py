@@ -74,6 +74,7 @@ def test_public_metadata_docs_are_ready_for_first_release() -> None:
     roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
     readiness = (ROOT / "docs" / "public-readiness.md").read_text(encoding="utf-8")
 
+    assert "## 0.1.1" in changelog
     assert "## 0.1.0" in changelog
     assert "context-reduction-measurement.md" in changelog
     assert "Private-To-Public Export" in roadmap
