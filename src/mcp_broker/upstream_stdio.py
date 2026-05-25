@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any, BinaryIO, Callable, cast
 
+from mcp_broker import __version__
 from mcp_broker.config import UpstreamConfig
 from mcp_broker.protocol import SUPPORTED_PROTOCOL_VERSIONS
 from mcp_broker.runtime_reaper import RuntimePaths, write_process_metadata
@@ -385,7 +386,7 @@ class StdioUpstreamProcess:
             {
                 "protocolVersion": SUPPORTED_PROTOCOL_VERSIONS[0],
                 "capabilities": {},
-                "clientInfo": {"name": "mcp-broker", "version": "0.0.1"},
+                "clientInfo": {"name": "mcp-broker", "version": __version__},
             },
         )
         response = self._roundtrip(

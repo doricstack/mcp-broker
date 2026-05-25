@@ -27,9 +27,13 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
         "docs/adoption-guide.md",
         "docs/safety.md",
         "docs/distribution.md",
+        "docs/directory-submission-packet.md",
         "docs/github-publication.md",
+        "docs/launch.md",
         "docs/community-launch.md",
         "docs/public-readiness.md",
+        ".well-known/mcp/server-card.json",
+        "registry/server.json",
         "registry/server.template.json",
     ]
     missing = [path for path in required_paths if not (ROOT / path).is_file()]
@@ -201,3 +205,33 @@ def test_registry_template_is_public_safe_and_points_to_pypi_package() -> None:
     assert template["packages"][0]["transport"]["type"] == "stdio"
     assert "/Users/" not in raw
     assert "CloudStorage" not in raw
+
+
+def test_registry_metadata_and_server_card_are_public_ready() -> None:
+    import json
+
+    server = json.loads((ROOT / "registry" / "server.json").read_text(encoding="utf-8"))
+    template = json.loads((ROOT / "registry" / "server.template.json").read_text(encoding="utf-8"))
+    card = json.loads((ROOT / ".well-known" / "mcp" / "server-card.json").read_text(encoding="utf-8"))
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    packet = (ROOT / "docs" / "directory-submission-packet.md").read_text(encoding="utf-8")
+    launch = (ROOT / "docs" / "launch.md").read_text(encoding="utf-8")
+
+    assert server["$schema"] == "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+    assert server["name"].startswith("io.github.")
+    assert server["packages"][0]["registryType"] == "pypi"
+    assert server["packages"][0]["identifier"] == "mcp-broker"
+    assert server["packages"][0]["transport"]["type"] == "stdio"
+    assert template["name"] == "io.github.example/mcp-broker"
+    assert card["name"] == server["name"]
+    assert card["packages"][0]["identifier"] == "mcp-broker"
+    assert "GitHub OIDC" in distribution
+    assert "PyPI package must exist first" in distribution
+    assert "mcpservers.org" in packet
+    assert "mcp.so" in packet
+    assert "MCPCentral" in packet
+    assert "609 to 43" in launch
+    assert "276,989 to 45,281" in launch
+    assert "/Users/" not in json.dumps(server)
+    assert "/Users/" not in json.dumps(card)
+    assert "CloudStorage" not in packet

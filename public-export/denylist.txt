@@ -10,6 +10,7 @@ TODO.md
 
 docs/plans/**
 docs/linkedin-context-management-brief.md
+docs/linkedin-launch-*
 docs/current-mcp-inventory.md
 docs/private-to-public-export.md
 

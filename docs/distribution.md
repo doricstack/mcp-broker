@@ -6,6 +6,10 @@ tag, and package upload exist.
 
 ## Python Package
 
+Package metadata is release-aligned at `0.1.0`. The version is sourced from
+`src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
+Setuptools dynamic metadata.
+
 The package command surface is:
 
 ```bash
@@ -33,6 +37,16 @@ uv tool install mcp-broker
 uvx mcp-broker status
 ```
 
+Repository-owned package checks:
+
+```bash
+make package-check
+```
+
+Publishing is automated by `.github/workflows/publish-pypi.yml`, but the first
+upload still requires a PyPI project or Trusted Publisher setup for the public
+GitHub repository.
+
 ## Homebrew
 
 Homebrew should come after the PyPI package path is validated. The formula or
@@ -47,23 +61,39 @@ $HOME/mcp/mcp-broker/
 
 The official MCP Registry uses `server.json` metadata and `mcp-publisher`.
 The registry is in preview, so validate against the current schema before
-publishing. The current template in this repo is:
+publishing. This repo has two metadata files:
 
 ```text
+registry/server.json
 registry/server.template.json
 ```
 
-Before publishing:
+The official metadata points to the PyPI package path. The template stays
+generic for downstream forks.
 
-- Replace `io.github.example/mcp-broker` with the verified public namespace.
-- Replace the example repository URL with the clean public repo URL.
-- Set the released package version.
-- Validate with `mcp-publisher`.
-- Publish only after the package install path works from a clean machine.
+Before publishing from GitHub Actions:
+
+- Publish the `mcp-broker` package to PyPI.
+- Confirm the PyPI package README contains `mcp-name: io.github.navinagrawal/mcp-broker`.
+- Confirm `registry/server.json` and the PyPI package version match.
+- Confirm the public GitHub repo has OIDC access to the MCP Registry namespace.
+- Run `.github/workflows/publish-mcp-registry.yml`.
+
+GitHub OIDC is the preferred auth path. The workflow runs:
+
+```bash
+mcp-publisher login github-oidc
+mcp-publisher publish --file registry/server.json
+```
+
+PyPI package must exist first. The MCP Registry validates that the public
+package matches the server metadata before accepting the entry.
 
 Reference docs:
 
 - https://modelcontextprotocol.io/registry/about
+- https://modelcontextprotocol.io/registry/authentication
+- https://modelcontextprotocol.io/registry/package-types
 - https://modelcontextprotocol.io/registry/quickstart
 - https://modelcontextprotocol.io/registry/versioning
 
@@ -100,3 +130,15 @@ Smithery has two possible paths:
 Glama and PulseMCP should index the public repo after the first release. Check
 that tool names, schemas, install instructions, safety notes, and score output
 render correctly before adding secondary directories.
+
+Directory copy lives in:
+
+```text
+docs/directory-submission-packet.md
+```
+
+The public launch page lives in:
+
+```text
+docs/launch.md
+```

@@ -1,4 +1,5 @@
 # mcp-broker
+<!-- mcp-name: io.github.navinagrawal/mcp-broker -->
 
 `mcp-broker` is a local Model Context Protocol process broker for AI coding tools.
 

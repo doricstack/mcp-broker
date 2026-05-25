@@ -1,0 +1,22 @@
+{
+  "name": "io.github.navinagrawal/mcp-broker",
+  "title": "mcp-broker",
+  "description": "Local MCP broker that exposes one compact entry for many upstream servers.",
+  "repository": "https://github.com/NavinAgrawal/mcp-broker",
+  "documentation": "https://github.com/NavinAgrawal/mcp-broker#readme",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-broker",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "safety": {
+    "runtimeState": "outside repository",
+    "config": "user-owned YAML",
+    "mutatingTools": "profile allowlist required"
+  }
+}

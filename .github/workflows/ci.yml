@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install project
+        run: make setup RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+
+      - name: Run public precommit gate
+        run: make precommit RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+
+      - name: Run release smoke
+        run: make release-smoke
+
+      - name: Check package artifacts
+        run: make package-check

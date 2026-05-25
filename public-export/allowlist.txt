@@ -17,6 +17,10 @@ requirements.txt
 .github/ISSUE_TEMPLATE/config_help.md
 .github/ISSUE_TEMPLATE/upstream_compatibility.md
 .github/pull_request_template.md
+.github/workflows/ci.yml
+.github/workflows/publish-pypi.yml
+.github/workflows/publish-mcp-registry.yml
+.well-known/mcp/server-card.json
 
 public-export/allowlist.txt
 public-export/denylist.txt
@@ -31,9 +35,11 @@ docs/adoption-guide.md
 docs/comparison.md
 docs/community-launch.md
 docs/context-reduction-measurement.md
+docs/directory-submission-packet.md
 docs/distribution.md
 docs/github-publication.md
 docs/install.md
+docs/launch.md
 docs/migration.md
 docs/protocol.md
 docs/public-readiness.md
@@ -48,6 +54,7 @@ docs/upstream-classification.md
 docs/upstream-compatibility-matrix.md
 
 registry/server.template.json
+registry/server.json
 
 scripts/doctor.sh
 scripts/enforce_grade_quality.py

@@ -2,7 +2,7 @@
 
 All notable public changes will be recorded here.
 
-## 0.1.0 - Planned
+## 0.1.0 - Pending Release
 
 - Local MCP broker daemon with a compact MCP facade.
 - Stdio client shim for Codex and Claude Code.

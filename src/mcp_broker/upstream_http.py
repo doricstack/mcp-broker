@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from mcp_broker import __version__
 from mcp_broker.config import UpstreamConfig
 from mcp_broker.protocol import SUPPORTED_PROTOCOL_VERSIONS
 
@@ -113,7 +114,7 @@ class HttpUpstreamClient:
             {
                 "protocolVersion": SUPPORTED_PROTOCOL_VERSIONS[0],
                 "capabilities": {},
-                "clientInfo": {"name": "mcp-broker", "version": "0.0.1"},
+                "clientInfo": {"name": "mcp-broker", "version": __version__},
             },
         )
         response = self._post_jsonrpc(

@@ -12,6 +12,7 @@ import sys
 import threading
 from typing import Sequence
 
+from mcp_broker import __version__
 from mcp_broker.broker import BrokerCore, BrokerToolError
 from mcp_broker.catalog import BrokerCatalogFacade, profile_allows_upstream
 from mcp_broker.config import BrokerConfig, UpstreamConfig
@@ -63,7 +64,7 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
         self._server: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop_requested = threading.Event()
-        self._protocol = McpProtocolHandler(server_name="mcp-broker", server_version="0.0.1")
+        self._protocol = McpProtocolHandler(server_name="mcp-broker", server_version=__version__)
         self._stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamProcess] = {}
         self._http_upstreams: dict[str, HttpUpstreamClient] = {}
         self._upstream_call_locks: dict[str, threading.Lock] = {}

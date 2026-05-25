@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
+import tomllib
 
 import pytest
 
@@ -50,6 +52,64 @@ def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
     assert forbidden_minor_image not in pyproject
     private_owner = "Navin" + "Agrawal"
     assert private_owner not in pyproject
+
+
+def test_release_version_is_single_sourced_and_public_metadata_matches() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(encoding="utf-8")
+    daemon = (ROOT / "src" / "mcp_broker" / "daemon.py").read_text(encoding="utf-8")
+    upstream_stdio = (ROOT / "src" / "mcp_broker" / "upstream_stdio.py").read_text(encoding="utf-8")
+    upstream_http = (ROOT / "src" / "mcp_broker" / "upstream_http.py").read_text(encoding="utf-8")
+    server = json.loads((ROOT / "registry" / "server.json").read_text(encoding="utf-8"))
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
+    assert package_version_match is not None
+    package_version = package_version_match.group(1)
+
+    assert pyproject["project"]["dynamic"] == ["version"]
+    assert "version" not in pyproject["project"]
+    assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
+    assert package_version == "0.1.0"
+    assert server["version"] == package_version
+    assert server["packages"][0]["version"] == package_version
+    assert server["packages"][0]["identifier"] == pyproject["project"]["name"]
+    assert f"mcp-name: {server['name']}" in readme
+    assert 'server_version="0.0.1"' not in daemon
+    assert '"version": "0.0.1"' not in upstream_stdio
+    assert '"version": "0.0.1"' not in upstream_http
+
+
+def test_public_release_workflows_cover_ci_package_and_registry_publish() -> None:
+    workflows = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    }
+
+    assert set(workflows) >= {
+        "ci.yml",
+        "publish-pypi.yml",
+        "publish-mcp-registry.yml",
+    }
+    assert "make precommit" in workflows["ci.yml"]
+    assert "make release-smoke" in workflows["ci.yml"]
+    assert "pypa/gh-action-pypi-publish" in workflows["publish-pypi.yml"]
+    assert "id-token: write" in workflows["publish-pypi.yml"]
+    assert "mcp-publisher login github-oidc" in workflows["publish-mcp-registry.yml"]
+    assert "mcp-publisher publish --file registry/server.json" in workflows["publish-mcp-registry.yml"]
+    assert "id-token: write" in workflows["publish-mcp-registry.yml"]
+
+
+def test_package_build_targets_are_available_through_make() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    assert "package-build:" in makefile
+    assert "package-check:" in makefile
+    assert "$(PYTHON) -m build" in makefile
+    assert "$(PYTHON) -m twine check" in makefile
+    assert "build==" in requirements
+    assert "twine==" in requirements
 
 
 def test_release_smoke_script_uses_tracked_public_files_only() -> None:

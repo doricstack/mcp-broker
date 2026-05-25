@@ -4,7 +4,7 @@
         test-cov runtime-layout doctor broker-start broker-stop broker-status broker-reap broker-smoke \
         tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance project-mcp-audit project-mcp-migrate secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload config-backup config-render codex-app-policy config-rollback \
         systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke windows-powershell-smoke release-smoke \
-        public-export public-export-check public-release-dry-run require-maintainer-tools violations grade-quality precommit quality-gate maintainer-violations maintainer-grade-quality maintainer-precommit maintainer-quality-gate clean
+        package-build package-check public-export public-export-check public-release-dry-run require-maintainer-tools violations grade-quality precommit quality-gate maintainer-violations maintainer-grade-quality maintainer-precommit maintainer-quality-gate clean
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
@@ -78,6 +78,7 @@ COV_DIR           ?= $(ROOT)/var/coverage
 COV_FILE          ?= $(COV_DIR)/.coverage
 TEST_LOG_DIR      ?= $(ROOT)/var/test-logs
 QUALITY_DIR       ?= $(ROOT)/var/quality
+PACKAGE_DIST_DIR  ?= $(ROOT)/dist
 VIOLATIONS_JSON   ?= $(QUALITY_DIR)/violations.json
 VIOLATIONS_LOG    ?= $(QUALITY_DIR)/violations.log
 GRADE_REPORT_JSON ?= $(QUALITY_DIR)/grade_quality_report.json
@@ -138,12 +139,11 @@ $(VENV_DIR)/bin/python:
 	@$(PYTHON_BIN) -m venv $(VENV_DIR)
 	$(call log_success,"Venv ready")
 
-deps: $(VENV_DIR)/.deps.stamp ## Install Python dependencies
-
-$(VENV_DIR)/.deps.stamp: $(REQUIREMENTS) pyproject.toml | $(VENV_DIR)/bin/python
+deps: $(VENV_DIR)/bin/python ## Install Python dependencies
 	$(call log_step,"Installing dependencies")
 	@if [[ "$(PIP_UPGRADE)" == "1" ]]; then $(PIP) install --upgrade pip; fi
 	@$(PIP) install -r $(REQUIREMENTS)
+	@find "$(VENV_DIR)"/lib/python*/site-packages -maxdepth 1 \( -name "mcp_broker-*.dist-info" -o -name "__editable__.mcp_broker-*.pth" \) -exec rm -rf {} +
 	@$(PIP) install -e .
 	@touch $(VENV_DIR)/.deps.stamp
 	$(call log_success,"Dependencies ready")
@@ -459,6 +459,15 @@ config-rollback: runtime-layout ## Restore latest backup for one client config
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
 
+package-build: deps ## Build wheel and source distribution into dist/
+	@rm -rf "$(PACKAGE_DIST_DIR)"
+	@$(PYTHON) -m build --outdir "$(PACKAGE_DIST_DIR)" "$(ROOT)"
+	$(call log_success,"Package artifacts built in $(PACKAGE_DIST_DIR)")
+
+package-check: package-build ## Validate built package metadata
+	@$(PYTHON) -m twine check "$(PACKAGE_DIST_DIR)"/*
+	$(call log_success,"Package artifacts passed twine check")
+
 public-export: ## Copy public-safe files to PUBLIC_REPO after allowlist, denylist, marker, and secret scans
 	@test -n "$(PUBLIC_REPO)" || { $(call log_error,"Set PUBLIC_REPO"); exit 1; }
 	@if [[ "$(PUBLIC_EXPORT_DELETE_STALE)" == "1" ]]; then \
@@ -537,6 +546,6 @@ maintainer-quality-gate: test-cov maintainer-violations maintainer-grade-quality
 	$(call log_success,"Maintainer quality gate passed")
 
 clean: ## Remove generated artifacts
-	@rm -rf "$(ROOT)/var/coverage" "$(ROOT)/var/test-logs" "$(ROOT)/var/quality" "$(ROOT)/.pytest_cache" "$(ROOT)/htmlcov"
+	@rm -rf "$(ROOT)/var/coverage" "$(ROOT)/var/test-logs" "$(ROOT)/var/quality" "$(ROOT)/.pytest_cache" "$(ROOT)/htmlcov" "$(ROOT)/dist" "$(ROOT)/build"
 	@rm -f "$(ROOT)/violations.json" "$(ROOT)/violations.log" "$(ROOT)/grade_quality_report.json"
 	$(call log_success,"Clean complete")
