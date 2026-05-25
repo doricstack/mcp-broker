@@ -29,7 +29,7 @@ jobs:
 
       - name: Validate registry metadata
         run: |
-          python - <<'PY'
+          ./venv-mcp-broker/bin/python - <<'PY'
           import json
           import urllib.request
           from pathlib import Path
