@@ -69,6 +69,33 @@ def test_http_upstream_calls_tool_with_json_response() -> None:
     }
 
 
+def test_http_upstream_reuses_existing_initialization_for_later_calls() -> None:
+    from mcp_broker.config import UpstreamConfig
+    from mcp_broker.upstream_http import HttpUpstreamClient
+
+    with FakeMcpHttpServer() as server:
+        upstream = UpstreamConfig(name="remote-repo", command=server.url, transport="http")
+        client = HttpUpstreamClient(upstream, environ={})
+
+        tools = client.list_tools(timeout_seconds=2)
+        response = client.call_tool(
+            "search_repositories",
+            {"query": "mcp-broker"},
+            timeout_seconds=2,
+        )
+
+    assert tools == [{"name": "search_repositories", "description": "Search repositories"}]
+    assert response == {"content": [{"type": "text", "text": "repo result"}]}
+    assert [record["method"] for record in server.records] == [
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
+        "tools/call",
+    ]
+    assert _header(server.records[2]["headers"], "Mcp-Session-Id") == "session-1"
+    assert _header(server.records[3]["headers"], "Mcp-Session-Id") == "session-1"
+
+
 def test_http_upstream_errors_do_not_include_token_values() -> None:
     from mcp_broker.config import UpstreamConfig
     from mcp_broker.upstream_http import HttpUpstreamClient, HttpUpstreamError

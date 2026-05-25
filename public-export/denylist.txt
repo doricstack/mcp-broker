@@ -13,6 +13,7 @@ docs/linkedin-context-management-brief.md
 docs/linkedin-launch-*
 docs/current-mcp-inventory.md
 docs/private-to-public-export.md
+docs/p16-maintainer-inputs.md
 
 tests/journey/test_project_scaffold_contract.py
 tests/journey/test_public_export_contract.py
