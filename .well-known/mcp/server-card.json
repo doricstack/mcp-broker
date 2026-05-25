@@ -1,5 +1,5 @@
 {
-  "name": "io.github.navinagrawal/mcp-broker",
+  "name": "io.github.NavinAgrawal/mcp-broker",
   "title": "mcp-broker",
   "description": "Local MCP broker that exposes one compact entry for many upstream servers.",
   "repository": "https://github.com/NavinAgrawal/mcp-broker",

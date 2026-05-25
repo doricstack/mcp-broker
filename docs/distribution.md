@@ -74,7 +74,7 @@ generic for downstream forks.
 Before publishing from GitHub Actions:
 
 - Publish the `mcp-broker` package to PyPI.
-- Confirm the PyPI package README contains `mcp-name: io.github.navinagrawal/mcp-broker`.
+- Confirm the PyPI package README contains `mcp-name: io.github.NavinAgrawal/mcp-broker`.
 - Confirm `registry/server.json` and the PyPI package version match.
 - Confirm the public GitHub repo has OIDC access to the MCP Registry namespace.
 - Run `.github/workflows/publish-mcp-registry.yml`.
@@ -83,7 +83,8 @@ GitHub OIDC is the preferred auth path. The workflow runs:
 
 ```bash
 mcp-publisher login github-oidc
-mcp-publisher publish --file registry/server.json
+cp registry/server.json server.json
+mcp-publisher publish
 ```
 
 PyPI package must exist first. The MCP Registry validates that the public

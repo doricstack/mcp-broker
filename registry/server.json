@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.navinagrawal/mcp-broker",
+  "name": "io.github.NavinAgrawal/mcp-broker",
   "title": "mcp-broker",
   "description": "Local MCP broker that exposes one compact entry for many upstream servers.",
   "repository": {

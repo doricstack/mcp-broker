@@ -71,6 +71,11 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
     assert package_version == "0.1.0"
+    repository_match = re.fullmatch(
+        r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
+    )
+    assert repository_match is not None
+    assert server["name"] == f"io.github.{repository_match.group(1)}/{repository_match.group(2)}"
     assert server["version"] == package_version
     assert server["packages"][0]["version"] == package_version
     assert server["packages"][0]["identifier"] == pyproject["project"]["name"]
