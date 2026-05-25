@@ -1,0 +1,111 @@
+# Adoption Guide
+
+Use this guide if you use Codex, Claude, Cursor, or another MCP client and have too many MCP tools loaded in every session.
+
+## Target State
+
+Each client gets one local MCP entry:
+
+```text
+mcp-broker
+```
+
+The broker exposes the compact broker facade:
+
+```text
+broker.search_tools
+broker.describe_tool
+broker.call_tool
+broker.status
+```
+
+Raw upstream tools stay behind the broker until a task needs them.
+
+## Migration Path
+
+1. Run setup.
+
+```bash
+make setup
+```
+
+2. Create the private config.
+
+```bash
+make config-init
+```
+
+3. Add upstream MCPs to `config/broker.private.yaml`.
+
+Use `config/broker.example.yaml` as the contract. Keep local paths, account names, token values, and OAuth state out of git.
+
+4. Validate the config.
+
+```bash
+make config-validate
+```
+
+5. Run broker smoke.
+
+```bash
+make broker-smoke
+```
+
+6. Validate one profile.
+
+```bash
+make profile-validation PROFILE=codex
+```
+
+7. Dry-run client config rendering.
+
+```bash
+make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
+```
+
+8. Apply after review.
+
+```bash
+make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
+```
+
+Use the same flow for `CLIENT=claude` after the Claude profile passes validation.
+
+## Profile Shape
+
+Start with compact mode:
+
+```yaml
+profiles:
+  codex:
+    compact_tools_enabled: true
+    max_tools: 8
+    expose_upstreams:
+      - example-store
+```
+
+Expose only the upstreams that the profile should use. Do not make every upstream visible to every client by default.
+
+## Shared Versus Per-Session
+
+Use `shared` for read-only upstreams or shared-account tools that can tolerate one process.
+
+Use `shared` plus `serialize_calls: true` for shared SaaS, notes, or write-capable tools where concurrent calls can collide.
+
+Use `per_session` for browser automation, filesystem roots, databases, cloud deploy tools, and project-specific state.
+
+## Validate From The Client
+
+Codex and Claude `/mcp` views show the broker entry, not every hidden upstream. That is expected.
+
+Use `broker.status` for upstream state and auth visibility. Use `broker.search_tools` to confirm discovery, then `broker.describe_tool` and a configured safe `broker.call_tool` smoke probe before trusting an upstream in normal work.
+
+## Rollback
+
+Every apply path writes a broker-owned backup before changing a client config.
+
+```bash
+make config-rollback CLIENT=codex
+```
+
+Run rollback before editing client config by hand. That keeps the broker's backup chain usable.

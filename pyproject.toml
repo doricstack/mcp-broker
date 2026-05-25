@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-broker"
+version = "0.0.1"
+description = "Local MCP broker for sharing upstream MCP servers across Codex and Claude sessions"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "jsonschema>=4.25.1",
+    "PyYAML>=6.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/mcp-broker/mcp-broker"
+Documentation = "https://github.com/mcp-broker/mcp-broker#readme"
+Issues = "https://github.com/mcp-broker/mcp-broker/issues"
+
+[project.scripts]
+mcp-broker = "mcp_broker.cli:main"
+mcp-broker-client = "mcp_broker.client:main"
+mcp-broker-daemon = "mcp_broker.daemon:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"share/mcp-broker/config" = ["config/broker.example.yaml"]

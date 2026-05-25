@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcp-broker.local/schema/broker.schema.json",
+  "title": "mcp-broker config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runtime", "upstreams"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "broker": {
+      "$ref": "#/$defs/broker"
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/profile"
+      }
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/client"
+      }
+    },
+    "upstreams": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/upstream"
+      }
+    }
+  },
+  "$defs": {
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/pathString"
+        },
+        "socket_path": {
+          "$ref": "#/$defs/pathString"
+        },
+        "log_dir": {
+          "$ref": "#/$defs/pathString"
+        },
+        "state_dir": {
+          "$ref": "#/$defs/pathString"
+        },
+        "secrets_dir": {
+          "$ref": "#/$defs/pathString"
+        }
+      }
+    },
+    "broker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool_namespace_separator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idle_timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "cpu_watchdog_percent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cpu_watchdog_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "remote_auth": {
+          "$ref": "#/$defs/remoteAuth"
+        }
+      }
+    },
+    "remoteAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "required": {
+          "const": true
+        },
+        "token_env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "token_file": {
+          "$ref": "#/$defs/pathString"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tools": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "compact_tools_enabled": {
+          "type": "boolean"
+        },
+        "allow_mutating_upstreams": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "config_path"],
+      "properties": {
+        "format": {
+          "enum": ["codex-toml", "claude-json"]
+        },
+        "config_path": {
+          "$ref": "#/$defs/pathString"
+        },
+        "entry_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/stringList"
+        },
+        "backup_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "codex_apps_policy": {
+          "$ref": "#/$defs/codexAppsPolicy"
+        }
+      }
+    },
+    "codexAppsPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "app_directory_globs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "tools_cache_globs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "disable_connectors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/connectorSelector"
+          }
+        }
+      }
+    },
+    "connectorSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["id"]
+        },
+        {
+          "required": ["name"]
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "allOf": [
+        {
+          "if": {
+            "required": ["session_env"]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "per_session"
+              }
+            },
+            "required": ["mode"]
+          }
+        }
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": ["shared", "per_session", "disabled"]
+        },
+        "transport": {
+          "enum": ["stdio", "http", "sse"]
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringList"
+        },
+        "tool_prefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/stringList"
+        },
+        "working_dir": {
+          "$ref": "#/$defs/pathString"
+        },
+        "state_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profiles": {
+          "$ref": "#/$defs/stringList"
+        },
+        "env": {
+          "$ref": "#/$defs/envMap"
+        },
+        "env_files": {
+          "$ref": "#/$defs/envMap"
+        },
+        "session_env": {
+          "$ref": "#/$defs/sessionEnvMap"
+        },
+        "request_meta": {
+          "$ref": "#/$defs/envMap"
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "serialize_calls": {
+          "type": "boolean"
+        },
+        "startup_timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "restart": {
+          "$ref": "#/$defs/restart"
+        },
+        "health": {
+          "$ref": "#/$defs/health"
+        },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
+        "auth_repair": {
+          "$ref": "#/$defs/authRepair"
+        },
+        "smoke": {
+          "$ref": "#/$defs/smoke"
+        }
+      }
+    },
+    "restart": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backoff_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ready_timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "call_timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "http_retry_attempts": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "http_retry_backoff_seconds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idle_timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "cpu_watchdog_percent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cpu_watchdog_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "memory_ceiling_mb": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "authRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "trigger_errors"],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "trigger_errors": {
+          "$ref": "#/$defs/stringList"
+        },
+        "retry_original": {
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "smoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "tool"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "call": {
+          "type": "boolean"
+        }
+      }
+    },
+    "envMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "sessionEnvMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "enum": ["client_cwd"]
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pathString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

@@ -1,0 +1,322 @@
+# Contract version for this YAML shape.
+# CHANGE: keep this at 1 unless this repo documents a new schema.
+# Version 1 is the current public config contract. Keep this file as the
+# commented reference template and copy it with `make config-init`.
+schema_version: 1
+
+# Runtime state belongs outside the repo.
+# CHANGE: set root if you want runtime state somewhere else.
+# Child paths are derived from runtime.root unless a private config overrides
+# them. Public configs should avoid hardcoded machine-specific paths.
+runtime:
+  root: $HOME/mcp/mcp-broker
+  socket_path: $HOME/mcp/mcp-broker/sockets/broker.sock
+  log_dir: $HOME/mcp/mcp-broker/logs
+  state_dir: $HOME/mcp/mcp-broker/state
+  secrets_dir: $HOME/mcp/mcp-broker/secrets
+
+# Broker-wide defaults.
+# DEFAULT: these values can usually stay as-is.
+# tool_namespace_separator controls names such as `example-store.search`.
+# Timeout and watchdog values apply where an upstream does not override them.
+broker:
+  tool_namespace_separator: "."
+  idle_timeout_seconds: 900
+  cpu_watchdog_percent: 80
+  cpu_watchdog_seconds: 10
+  # Remote broker access is not exposed by the local daemon today. Keep this
+  # disabled unless a future remote listener uses this auth policy.
+  # DEFAULT: required stays true. Configure exactly one token source before any
+  # remote listener is enabled.
+  remote_auth:
+    enabled: false
+    required: true
+    token_file: "{runtime.secrets_dir}/broker-remote-token"
+    # Alternative to token_file:
+    # token_env: MCP_BROKER_REMOTE_TOKEN
+
+# Client-facing exposure profiles.
+# CHANGE: add a profile when a new MCP client should see a different tool set.
+# DEFAULT: compact_tools_enabled should usually stay true for chat clients.
+# max_tools protects clients from loading every upstream at once.
+# compact_tools_enabled exposes the broker facade instead of raw upstream tools.
+# allow_mutating_upstreams is required before a mutating upstream can be exposed.
+profiles:
+  codex:
+    max_tools: 80
+    compact_tools_enabled: true
+  claude:
+    max_tools: 80
+    compact_tools_enabled: true
+  gemini:
+    max_tools: 80
+    compact_tools_enabled: true
+  manual-test:
+    max_tools: 200
+    compact_tools_enabled: false
+  maintenance:
+    max_tools: 500
+    compact_tools_enabled: false
+  protected:
+    max_tools: 50
+    compact_tools_enabled: false
+    allow_mutating_upstreams:
+      - example-mutating
+  compatibility:
+    max_tools: 50
+    compact_tools_enabled: true
+
+# Client config render targets.
+# CHANGE: edit or add clients only when the repo supports that client's file format.
+# DEFAULT: Gemini is a profile only here because no Gemini config renderer exists yet.
+# The broker writes dry-run renders under runtime state first. Set
+# CONFIG_RENDER_APPLY=1 only after reviewing the render.
+clients:
+  codex:
+    format: codex-toml
+    config_path: $HOME/.codex/config.toml
+    entry_name: mcp-broker
+    command: mcp-broker-client
+    args:
+      - --socket-path
+      - "{runtime.socket_path}"
+      - --profile
+      - codex
+    # Optional Codex app connector policy.
+    # CHANGE: turn this on when a hosted `codex_apps` connector duplicates an
+    # upstream owned by the broker. The policy is applied by
+    # `make codex-app-policy CODEX_APP_POLICY_APPLY=1` and also after
+    # `make config-render CLIENT=codex CONFIG_RENDER_APPLY=1`.
+    # DEFAULT: leave disabled unless you know which Codex app connectors should
+    # be hidden from `codex_apps`.
+    codex_apps_policy:
+      enabled: false
+      app_directory_globs:
+        - $HOME/.codex/cache/codex_app_directory/*.json
+      tools_cache_globs:
+        - $HOME/.codex/cache/codex_apps_tools/*.json
+      disable_connectors:
+        # Name matching works across cache refreshes when connector IDs are not
+        # known. Add `id` too when Codex exposes a stable connector ID.
+        - name: GitHub
+          reason: Broker owns GitHub for cross-client parity.
+        - name: Figma
+          reason: Broker owns Figma for cross-client parity.
+        - name: Google Drive
+          reason: Broker owns Google Workspace for cross-client parity.
+        - name: Google Calendar
+          reason: Broker owns Google Workspace for cross-client parity.
+
+  claude:
+    format: claude-json
+    config_path: $HOME/.claude.json
+    backup_paths:
+      - $HOME/.claude/settings.json
+    entry_name: mcp-broker
+    command: mcp-broker-client
+    args:
+      - --socket-path
+      - "{runtime.socket_path}"
+      - --profile
+      - claude
+
+# Add upstream MCP servers under this mapping.
+# CHANGE: copy one of these patterns and edit name, command, args, and profiles.
+# DEFAULT: keep examples disabled until they are copied into private config.
+# Each upstream name is the stable broker identity. tool_prefix controls the
+# public tool namespace. Keep examples disabled until copied into private config.
+# smoke is the validation contract for enabled upstreams. It must name a safe,
+# read-only tool after broker namespacing. `make profile-validation PROFILE=...`
+# fails when an enabled profile-visible upstream has no smoke probe. Set
+# `call: false` only for tools that are safe to discover and describe but would
+# open a UI, write external state, or require user input if called.
+upstreams:
+  # Pattern: stdio MCP installed from npm.
+  example-store:
+    enabled: false
+    mode: disabled
+    transport: stdio
+    purpose: Example npm stdio MCP server.
+    tags:
+      - example
+      - npm
+      - local-state
+    tool_prefix: example-store
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-memory"
+    state_dir: upstreams/example-store
+    profiles:
+      - manual-test
+    startup_timeout_seconds: 60
+    restart:
+      max_attempts: 3
+      backoff_seconds: 2
+    health:
+      ready_timeout_seconds: 10
+      call_timeout_seconds: 60
+    resources:
+      idle_timeout_seconds: 900
+      cpu_watchdog_percent: 80
+      cpu_watchdog_seconds: 10
+      memory_ceiling_mb: 512
+    smoke:
+      query: read example graph
+      tool: example-store.read_graph
+      arguments: {}
+      call: true
+
+  # Pattern: local Python MCP checked out elsewhere.
+  example-python:
+    enabled: false
+    # CHANGE: use per_session when the upstream picks project state from cwd.
+    mode: per_session
+    transport: stdio
+    purpose: Example local Python MCP server.
+    tags:
+      - example
+      - python
+      - local
+    tool_prefix: example-python
+    command: $HOME/mcp/vendor/example-python-mcp/.venv/bin/python
+    args:
+      - -m
+      - example_python_mcp
+    working_dir: $HOME/mcp/vendor/example-python-mcp
+    state_dir: upstreams/example-python
+    profiles:
+      - manual-test
+    # session_env maps broker session context into upstream environment.
+    # Supported source: client_cwd, the directory where the LLM client runs.
+    session_env:
+      PROJECT_DIR: client_cwd
+
+  # Pattern: auth from host environment variable.
+  example-env-auth:
+    enabled: false
+    mode: disabled
+    transport: stdio
+    purpose: Example upstream reading a host environment secret.
+    tags:
+      - example
+      - auth
+      - env
+    tool_prefix: example-env
+    command: npx
+    args:
+      - -y
+      - example-env-auth-mcp
+    state_dir: upstreams/example-env-auth
+    profiles:
+      - manual-test
+    env:
+      EXAMPLE_API_TOKEN: EXAMPLE_API_TOKEN
+
+  # Pattern: auth from broker-owned secret file.
+  example-file-auth:
+    enabled: false
+    mode: disabled
+    transport: stdio
+    purpose: Example upstream reading a runtime secret file.
+    tags:
+      - example
+      - auth
+      - secret-file
+    tool_prefix: example-file
+    command: npx
+    args:
+      - -y
+      - example-file-auth-mcp
+    state_dir: upstreams/example-file-auth
+    profiles:
+      - manual-test
+    env_files:
+      EXAMPLE_API_TOKEN: "{runtime.secrets_dir}/EXAMPLE_API_TOKEN"
+
+  # Pattern: upstream also expects a per-request MCP metadata token.
+  # request_meta maps MCP `params._meta` names to env or env_files targets.
+  # Use this when an upstream consumes a startup env var and later expects the
+  # same value inside each tool call, such as `_meta.authToken`.
+  # auth_repair runs a configured upstream auth tool after matching auth errors.
+  # Use this when an upstream can open a browser and persist auth into its own
+  # broker-owned state or secret path before retrying the original call.
+  example-request-meta-auth:
+    enabled: false
+    mode: disabled
+    transport: stdio
+    purpose: Example upstream requiring both environment and request metadata auth.
+    tags:
+      - example
+      - auth
+      - request-meta
+    tool_prefix: example-request-meta
+    command: npx
+    args:
+      - -y
+      - example-request-meta-auth-mcp
+    state_dir: upstreams/example-request-meta-auth
+    profiles:
+      - manual-test
+    env_files:
+      EXAMPLE_AUTH_TOKEN: "{runtime.secrets_dir}/EXAMPLE_AUTH_TOKEN"
+    request_meta:
+      authToken: EXAMPLE_AUTH_TOKEN
+    auth_repair:
+      tool: setup_auth
+      arguments:
+        show_browser: true
+        headless: false
+      trigger_errors:
+        - "Not authenticated"
+        - "setup_auth"
+      retry_original: true
+      timeout_seconds: 300
+
+  # Pattern: HTTP or SSE MCP endpoint.
+  example-http:
+    enabled: false
+    mode: disabled
+    transport: http
+    purpose: Example remote MCP endpoint using streamable HTTP.
+    tags:
+      - example
+      - remote
+      - http
+    tool_prefix: example-http
+    command: https://example.invalid/mcp
+    state_dir: upstreams/example-http
+    profiles:
+      - manual-test
+    health:
+      ready_timeout_seconds: 10
+      call_timeout_seconds: 20
+      # DEFAULT: 0. Set to 1-2 for transient 429/5xx remote HTTP failures.
+      http_retry_attempts: 0
+      # DEFAULT: 0. Whole seconds to wait between HTTP retries.
+      http_retry_backoff_seconds: 0
+    env:
+      AUTHORIZATION: EXAMPLE_HTTP_AUTHORIZATION
+
+  # Pattern: mutating upstream gated by profile allowlist.
+  example-mutating:
+    enabled: false
+    mode: disabled
+    transport: stdio
+    purpose: Example upstream that can change external state.
+    tags:
+      - example
+      - mutating
+    tool_prefix: example-mutating
+    command: npx
+    args:
+      - -y
+      - example-mutating-mcp
+    state_dir: upstreams/example-mutating
+    profiles:
+      - protected
+    mutating: true
+    serialize_calls: true
+    health:
+      ready_timeout_seconds: 10
+      call_timeout_seconds: 30

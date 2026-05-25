@@ -1,0 +1,30 @@
+# Private files and folders that must never be exported.
+# Lines are exact repo-relative paths or fnmatch globs.
+
+AGENTS.md
+CLAUDE.md
+HANDOFF.md
+PROJECT_CONTEXT.md
+SESSION_HISTORY*.md
+TODO.md
+
+docs/plans/**
+docs/linkedin-context-management-brief.md
+docs/current-mcp-inventory.md
+docs/private-to-public-export.md
+
+tests/journey/test_project_scaffold_contract.py
+tests/journey/test_public_export_contract.py
+tests/journey/test_inventory_docs_contract.py
+
+config/broker.private.yaml
+
+venv-mcp-broker/**
+runtime/**
+state/**
+secrets/**
+sockets/**
+logs/**
+var/coverage/*
+var/quality/*
+var/test-logs/*

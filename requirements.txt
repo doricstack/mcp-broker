@@ -1,0 +1,6 @@
+jsonschema==4.25.1
+pytest==9.0.2
+pytest-cov==7.0.0
+pytest-sugar==1.1.1
+pytest-timeout==2.4.0
+PyYAML==6.0.3
