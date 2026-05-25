@@ -96,8 +96,10 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "pypa/gh-action-pypi-publish" in workflows["publish-pypi.yml"]
     assert "id-token: write" in workflows["publish-pypi.yml"]
     assert "./venv-mcp-broker/bin/python - <<'PY'" in workflows["publish-mcp-registry.yml"]
+    assert "cp registry/server.json server.json" in workflows["publish-mcp-registry.yml"]
     assert "mcp-publisher login github-oidc" in workflows["publish-mcp-registry.yml"]
-    assert "mcp-publisher publish --file=registry/server.json" in workflows["publish-mcp-registry.yml"]
+    assert "mcp-publisher publish\n" in workflows["publish-mcp-registry.yml"]
+    assert "mcp-publisher publish --file" not in workflows["publish-mcp-registry.yml"]
     assert "id-token: write" in workflows["publish-mcp-registry.yml"]
 
 
