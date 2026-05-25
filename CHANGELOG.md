@@ -2,7 +2,7 @@
 
 All notable public changes will be recorded here.
 
-## 0.1.0 - Pending Release
+## 0.1.0 - 2026-05-25
 
 - Local MCP broker daemon with a compact MCP facade.
 - Stdio client shim for Codex and Claude Code.
@@ -14,6 +14,3 @@ All notable public changes will be recorded here.
   install flows with dry-run defaults.
 - Public smoke, quality, release, and export gates.
 - Context reduction evidence in `docs/context-reduction-measurement.md`.
-
-Release artifacts, signed tags, package registry entries, and public directory
-submissions are still pending a clean public export checkout.
