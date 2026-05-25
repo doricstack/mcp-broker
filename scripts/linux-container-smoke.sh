@@ -46,10 +46,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
+tar_option_supported() {
+  local option="$1"
+  local probe_dir
+  probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/mcp-broker-tar-probe.XXXXXX")"
+  if tar "$option" -cf /dev/null -C "$probe_dir" . >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return 0
+  fi
+  rm -rf "$probe_dir"
+  return 1
+}
+
 ARCHIVE_PATH="$WORK_DIR/source.tar"
+TAR_CREATE_OPTIONS=()
+if tar_option_supported "--no-xattrs"; then
+  TAR_CREATE_OPTIONS+=(--no-xattrs)
+fi
+if tar_option_supported "--no-mac-metadata"; then
+  TAR_CREATE_OPTIONS+=(--no-mac-metadata)
+fi
 COPYFILE_DISABLE=1 tar \
-  --no-xattrs \
-  --no-mac-metadata \
+  "${TAR_CREATE_OPTIONS[@]}" \
   --exclude=".git" \
   --exclude="venv-mcp-broker" \
   --exclude="config/broker.private.yaml" \

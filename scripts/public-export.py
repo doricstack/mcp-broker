@@ -18,7 +18,7 @@ from typing import Sequence
 PRIVATE_MARKERS = [
     re.compile(pattern)
     for pattern in [
-        r"/Users/[A-Za-z0-9._-]+/",
+        "/" + r"Users/[A-Za-z0-9._-]+/",
         r"\$HOME/Projects/",
         r"CloudStorage/",
         r"SESSION_HISTORY_ARCHIVE",

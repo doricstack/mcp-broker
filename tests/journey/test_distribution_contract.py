@@ -114,18 +114,24 @@ def test_package_build_targets_are_available_through_make() -> None:
 
 def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     script = ROOT / "scripts" / "release-smoke.sh"
+    linux_script = ROOT / "scripts" / "linux-container-smoke.sh"
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     text = script.read_text(encoding="utf-8")
+    linux_text = linux_script.read_text(encoding="utf-8")
 
     assert script.is_file()
     assert "tar" in text
+    assert "tar_option_supported" in text
     assert 'exclude=".git"' in text
     assert "make config-init" in text
     assert "make config-validate" in text
     assert "make broker-smoke" in text
     assert "/Users/" not in text
+    assert "/Users/" not in (ROOT / "scripts" / "public-export.py").read_text(encoding="utf-8")
     assert '--exclude="config/broker.private.yaml"' in text
     assert "PIP_UPGRADE       ?= 0" in makefile
+    assert "tar_option_supported" in linux_text
+    assert "TAR_CREATE_OPTIONS" in linux_text
 
 
 def test_systemd_service_contract_uses_runtime_root_and_config_path() -> None:
