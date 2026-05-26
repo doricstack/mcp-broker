@@ -1,9 +1,9 @@
 # mcp-broker
 <!-- mcp-name: io.github.NavinAgrawal/mcp-broker -->
 
-`mcp-broker` is a local Model Context Protocol process broker for AI coding tools.
+`mcp-broker` is a local Model Context Protocol process broker for MCP clients.
 
-It lets MCP clients connect to one local broker entry. The broker owns upstream MCP server startup, reuse, cleanup, profile exposure, status, and safe tool routing.
+Think PgBouncer for MCP: one stable local endpoint in front of many upstream MCP servers. The broker owns upstream startup, reuse, cleanup, profile exposure, status, and safe tool routing.
 
 The core idea is simple: do not make every agent session load every upstream tool definition before the user asks a task.
 
@@ -18,7 +18,7 @@ AI coding sessions with many MCP servers tend to accumulate the same problems:
 - hosted connector caches can duplicate local MCP tools
 - orphaned MCP processes survive after client sessions exit
 
-`mcp-broker` puts a small broker facade in front of those upstreams:
+`mcp-broker` puts a small broker facade in front of those upstreams. It is not a hosted workflow builder; it is local infrastructure for keeping MCP clients small, predictable, and under one config contract.
 
 ```text
 Client profile
@@ -82,6 +82,13 @@ See [docs/context-reduction-measurement.md](docs/context-reduction-measurement.m
 - Provides Windows PowerShell Scheduled Task render, install, and removal flows.
 - Includes unit, journey, live, and e2e tests through Makefile targets.
 
+Core differentiators:
+
+- Profile-scoped exposure: each MCP client gets a configured view of upstreams instead of every tool by default.
+- Mutating-tool gates: mutating upstreams stay hidden until a profile allowlist grants access.
+- Lifecycle ownership: shared and per-session upstreams are started, watched, stopped, and reaped by the broker.
+- Client parity checks: rendered profiles can be validated through the same compact broker facade before config is applied.
+
 ## Who this is for
 
 Use `mcp-broker` if you:
@@ -106,7 +113,7 @@ Implemented:
 - Tool namespace mapping from configured upstream prefixes.
 - Local upstream subprocess lifecycle management and process-group cleanup.
 - Broker daemon over Unix socket.
-- MCP client shim for Codex, Claude, and Gemini config entries.
+- MCP client shim and renderers for configured MCP client profiles, including Codex, Claude, and Gemini.
 - Gemini profile rendering to `.gemini/settings.json`, including its MCP
   allowed-server policy.
 - Dry-run client config rendering, apply-time backups, and rollback.
@@ -152,7 +159,7 @@ The config file is the contract. Profiles decide exposure, upstreams define tran
 | Raw MCP client config | Small setups with a few tools. | Every session loads the full tool list and each client repeats config. |
 | Simple MCP proxy | Forwarding one server to one client. | Does not own upstream lifecycle, profile budgets, or cross-client cleanup. |
 | Hosted app connectors | SaaS tools managed by the client provider. | Local MCP state and cross-client parity remain outside user control. |
-| `mcp-broker` | Local developers with many upstream MCPs across Codex, Claude, and other clients. | Adds a local daemon and config contract that must be installed and monitored. |
+| `mcp-broker` | Local developers with many upstream MCPs across MCP clients. | Adds a local daemon and config contract that must be installed and monitored. |
 
 ## Screenshots Or GIF
 

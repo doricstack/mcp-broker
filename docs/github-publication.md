@@ -11,7 +11,7 @@ problem and target clients.
 repository description:
 
 ```text
-Local MCP broker that exposes one compact MCP entry for Codex, Claude, and other clients while routing to many configured upstream servers.
+Local MCP broker that exposes one compact MCP entry for MCP clients while routing to many configured upstream servers.
 ```
 
 Topics:
@@ -19,8 +19,10 @@ Topics:
 ```text
 mcp
 model-context-protocol
+mcp-client
 codex
 claude
+gemini-cli
 mcp-server
 mcp-gateway
 developer-tools
@@ -71,7 +73,7 @@ Initial public release of mcp-broker.
 
 Highlights:
 - one compact MCP facade for many upstream MCP servers
-- profile gates for Codex, Claude, Gemini, and manual test flows
+- profile gates for MCP client profiles, including Codex, Claude, Gemini, and manual test flows
 - YAML config with JSON Schema validation
 - shared and per-session upstream process modes
 - macOS LaunchAgent, Linux systemd user service, and Windows Scheduled Task install flows

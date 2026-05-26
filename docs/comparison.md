@@ -2,7 +2,7 @@
 
 Last checked: 2026-05-25.
 
-`mcp-broker` is a local desktop broker for developers who run many MCP servers across Codex, Claude, Cursor, and similar clients. It is not trying to be a hosted gateway, registry, container runtime, or enterprise policy plane.
+`mcp-broker` is a local desktop broker for developers who run many MCP servers across MCP clients such as Codex, Claude, Gemini, Cursor, and similar tools. It is not trying to be a hosted gateway, registry, container runtime, or enterprise policy plane.
 
 ## Quick Matrix
 
@@ -20,7 +20,7 @@ Last checked: 2026-05-25.
 
 Use it when the pain is local session overhead, and simple MCP proxies do not cover the process and profile controls you need:
 
-- Codex, Claude, Cursor, or another client loads too many MCP tools at startup.
+- Codex, Claude, Gemini, Cursor, or another MCP client loads too many tools at startup.
 - The same upstream MCP inventory is copied across multiple client config files.
 - Local upstream processes remain after sessions end.
 - You need one place for runtime state, secrets, logs, sockets, and rendered config backups.

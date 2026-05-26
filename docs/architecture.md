@@ -7,7 +7,7 @@
 Clients connect to one local broker. The broker owns upstream MCP servers.
 
 ```text
-Codex / Claude
+MCP client
   -> mcp-broker-client
     -> Unix socket
       -> mcp-broker
@@ -30,7 +30,7 @@ Responsibilities:
 ### Client Shim
 
 Responsibilities:
-- Speak stdio MCP to Codex or Claude.
+- Speak stdio MCP to a rendered MCP client profile.
 - Forward JSON-RPC messages to the broker.
 - Keep no upstream state.
 
