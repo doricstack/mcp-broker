@@ -8,11 +8,11 @@ Package metadata is release-aligned for `1.0.0`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
-Current public package status before publication proof is recorded:
+Current public package status:
 
-- PyPI: `mcp-broker 1.0.0` metadata is prepared.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.0.0` metadata is prepared.
-- Homebrew: the public tap must be refreshed to `1.0.0` after PyPI publishes.
+- PyPI: `mcp-broker 1.0.0` is published.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.0.0` is published and marked latest.
+- Homebrew: `mcp-broker 1.0.0` is published through the public tap.
 
 The package command surface is:
 
@@ -50,11 +50,10 @@ make package-check
 
 Publishing is automated by `.github/workflows/publish-pypi.yml`. The workflow
 runs `make release-gate` before the PyPI publish step. It runs for published
-GitHub releases, `v*` tag pushes, and the `publish-pypi` repository-dispatch
-event, so maintainers have a fallback if GitHub does not emit a release or tag
-workflow run for an existing version. The publish step uses `skip-existing: true`
-so a duplicate event for the same package files exits without uploading
-duplicate files after the release gate has already passed.
+GitHub releases, manual dispatches, and the `publish-pypi` repository-dispatch
+event. Tag pushes do not publish to PyPI; the GitHub Release publication is the
+single normal release event. The publish step uses `skip-existing: true` as a
+secondary guard against manual reruns for the same package files.
 
 `.github/workflows/publish-python.yml` is a workflow-ID recovery fallback for
 cases where GitHub Actions stops dispatching the primary workflow record. PyPI
@@ -97,9 +96,8 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-Refresh the public tap to `1.0.0` after PyPI publishes. Retest the formula
-against the PyPI source artifact before marking Homebrew current for this
-release.
+The public tap points to the PyPI `1.0.0` source artifact. Retest the formula
+against the PyPI source artifact before changing the Homebrew release status.
 
 ## MCP Registry
 
@@ -134,8 +132,8 @@ mcp-publisher publish
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
-Publish `1.0.0` after PyPI publication and verify the registry marks `1.0.0`
-as the latest entry.
+`1.0.0` is published after PyPI publication and the registry marks `1.0.0` as
+the latest entry.
 
 Reference docs:
 

@@ -107,14 +107,14 @@ def test_stable_release_public_status_is_aligned_to_1_0_0() -> None:
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
     normalized_distribution = " ".join(distribution.split())
 
-    assert f"Stable release metadata is prepared for `{STABLE_RELEASE_VERSION}`" in readme
+    assert f"Stable release `{STABLE_RELEASE_VERSION}` is published" in readme
     assert f"Package metadata is release-aligned for `{STABLE_RELEASE_VERSION}`." in distribution
-    assert f"PyPI: `mcp-broker {STABLE_RELEASE_VERSION}` metadata is prepared." in distribution
+    assert f"PyPI: `mcp-broker {STABLE_RELEASE_VERSION}` is published." in distribution
     assert (
         f"MCP Registry: `io.github.NavinAgrawal/mcp-broker {STABLE_RELEASE_VERSION}` "
-        "metadata is prepared."
+        "is published and marked latest."
     ) in normalized_distribution
-    assert f"Homebrew: the public tap must be refreshed to `{STABLE_RELEASE_VERSION}`" in distribution
+    assert f"Homebrew: `mcp-broker {STABLE_RELEASE_VERSION}` is published through the public tap." in distribution
     assert f"mcp-broker {STABLE_RELEASE_VERSION}" in github_publication
 
 
@@ -137,8 +137,11 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "pypa/gh-action-pypi-publish" in workflows["publish-pypi.yml"]
     assert "skip-existing: true" in workflows["publish-pypi.yml"]
     assert "id-token: write" in workflows["publish-pypi.yml"]
-    assert "tags:" in workflows["publish-pypi.yml"]
-    assert '"v*"' in workflows["publish-pypi.yml"]
+    assert "release:" in workflows["publish-pypi.yml"]
+    assert "published" in workflows["publish-pypi.yml"]
+    assert "push:" not in workflows["publish-pypi.yml"]
+    assert "tags:" not in workflows["publish-pypi.yml"]
+    assert '"v*"' not in workflows["publish-pypi.yml"]
     assert "repository_dispatch:" in workflows["publish-pypi.yml"]
     assert "publish-pypi" in workflows["publish-pypi.yml"]
     assert "make release-gate" in workflows["publish-python.yml"]
