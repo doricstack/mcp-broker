@@ -36,6 +36,26 @@ def test_daemon_jsonrpc_reports_invalid_request_and_notifications(tmp_path: Path
     assert initialized is None
 
 
+def test_daemon_control_stop_takes_precedence_over_jsonrpc_envelope(tmp_path: Path) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+
+    daemon = BrokerDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
+
+    response = daemon._handle_request(
+        {"jsonrpc": "2.0", "id": "stop", "method": "broker/stop"}
+    )
+
+    assert response == {
+        "id": "stop",
+        "result": {
+            "remaining_broker_processes": [],
+            "stopped_upstreams": [],
+            "stopping": True,
+        },
+    }
+    assert daemon._stop_requested.is_set()
+
+
 def test_daemon_connection_does_not_respond_to_jsonrpc_notifications(tmp_path: Path) -> None:
     from mcp_broker.daemon import BrokerDaemon
 

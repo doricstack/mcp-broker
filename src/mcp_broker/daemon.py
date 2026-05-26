@@ -199,8 +199,6 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
     def _handle_request(self, request: dict[str, object]) -> dict[str, object] | None:
         request_id = request.get("id")
         method = request.get("method")
-        if request.get("jsonrpc") == "2.0":
-            return self._handle_jsonrpc_request(request)
         if method == "broker/health":
             return {
                 "id": request_id,
@@ -230,6 +228,8 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
                 "id": request_id,
                 "result": self._shutdown_session_upstreams(session_id),
             }
+        if request.get("jsonrpc") == "2.0":
+            return self._handle_jsonrpc_request(request)
         return {"id": request_id, "error": {"code": "unknown_method"}}
 
     def _handle_jsonrpc_request(self, request: dict[str, object]) -> dict[str, object] | None:
