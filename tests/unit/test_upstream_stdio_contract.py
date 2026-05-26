@@ -273,6 +273,10 @@ def test_stdio_stderr_chunk_reader_returns_empty_for_closed_stream() -> None:
     assert _read_stderr_chunk(stream) == b""
 
 
+def test_stdio_stderr_chunk_reader_returns_empty_for_missing_stream() -> None:
+    assert _read_stderr_chunk(None) == b""
+
+
 def test_close_process_pipes_closes_stderr_by_default() -> None:
     process = cast(
         subprocess.Popen[bytes],

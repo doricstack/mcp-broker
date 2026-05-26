@@ -11,6 +11,7 @@ import pytest
 pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
+STABLE_RELEASE_VERSION = "1.0.0"
 
 
 def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
@@ -78,6 +79,7 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert pyproject["project"]["dynamic"] == ["version"]
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
+    assert package_version == STABLE_RELEASE_VERSION
     assert package_version == latest_changelog_match.group(1)
     repository_match = re.fullmatch(
         r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
@@ -97,6 +99,23 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert 'server_version="0.0.1"' not in daemon
     assert '"version": "0.0.1"' not in upstream_stdio
     assert '"version": "0.0.1"' not in upstream_http
+
+
+def test_stable_release_public_status_is_aligned_to_1_0_0() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
+    normalized_distribution = " ".join(distribution.split())
+
+    assert f"Stable release metadata is prepared for `{STABLE_RELEASE_VERSION}`" in readme
+    assert f"Package metadata is release-aligned for `{STABLE_RELEASE_VERSION}`." in distribution
+    assert f"PyPI: `mcp-broker {STABLE_RELEASE_VERSION}` metadata is prepared." in distribution
+    assert (
+        f"MCP Registry: `io.github.NavinAgrawal/mcp-broker {STABLE_RELEASE_VERSION}` "
+        "metadata is prepared."
+    ) in normalized_distribution
+    assert f"Homebrew: the public tap must be refreshed to `{STABLE_RELEASE_VERSION}`" in distribution
+    assert f"mcp-broker {STABLE_RELEASE_VERSION}" in github_publication
 
 
 def test_public_release_workflows_cover_ci_package_and_registry_publish() -> None:

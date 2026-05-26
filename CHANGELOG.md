@@ -2,6 +2,15 @@
 
 All notable public changes will be recorded here.
 
+## 1.0.0 - 2026-05-26
+
+- Promote the public release line from pre-1.0 packages to the first stable
+  release.
+- Align package, registry, MCPB, server-card, Homebrew, and public release
+  documentation on `1.0.0`.
+- Keep `0.1.x` entries as pre-1.0 public history instead of deleting published
+  artifacts.
+
 ## 0.1.2 - 2026-05-26
 
 - Harden mutation-gate coverage for configuration, profile validation, project

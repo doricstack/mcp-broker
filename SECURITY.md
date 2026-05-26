@@ -5,8 +5,8 @@ code you are choosing to run on your machine or call with your credentials.
 
 ## Supported Versions
 
-Security fixes target the current `main` branch until the first public release.
-After tagged releases begin, this file will list supported release lines.
+Security fixes target the current `main` branch and the current `1.x` stable
+release line.
 
 ## Reporting A Vulnerability
 

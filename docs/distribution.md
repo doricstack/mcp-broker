@@ -4,17 +4,15 @@ This page tracks public distribution paths for `mcp-broker`.
 
 ## Python Package
 
-Package metadata is release-aligned at `0.1.2`. The version is sourced from
+Package metadata is release-aligned for `1.0.0`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
-Current public package status:
+Current public package status before publication proof is recorded:
 
-- PyPI: `mcp-broker 0.1.2` is published.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker 0.1.2` is published and
-  marked latest.
-- Homebrew: the public tap still points at `0.1.1`; refresh the tap formula
-  before calling Homebrew current for `0.1.2`.
+- PyPI: `mcp-broker 1.0.0` metadata is prepared.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.0.0` metadata is prepared.
+- Homebrew: the public tap must be refreshed to `1.0.0` after PyPI publishes.
 
 The package command surface is:
 
@@ -99,9 +97,9 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-The public tap currently installs `0.1.1`. It must be updated and retested
-against the `0.1.2` PyPI source artifact before the Homebrew row is current for
-this release.
+Refresh the public tap to `1.0.0` after PyPI publishes. Retest the formula
+against the PyPI source artifact before marking Homebrew current for this
+release.
 
 ## MCP Registry
 
@@ -136,8 +134,8 @@ mcp-publisher publish
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
-The `0.1.2` registry workflow succeeded after PyPI publication and the registry
-marks `0.1.2` as the latest entry.
+Publish `1.0.0` after PyPI publication and verify the registry marks `1.0.0`
+as the latest entry.
 
 Reference docs:
 
@@ -163,7 +161,7 @@ Build a release image with OCI labels, SBOM, and provenance:
 
 ```bash
 make docker-buildx \
-  DOCKER_IMAGE=ghcr.io/<owner>/mcp-broker:0.1.2 \
+  DOCKER_IMAGE=ghcr.io/<owner>/mcp-broker:1.0.0 \
   DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
   DOCKER_PUSH=1
 ```

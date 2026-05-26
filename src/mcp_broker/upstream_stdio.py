@@ -494,7 +494,9 @@ def _start_stderr_drainer(stream: BinaryIO, path: Path) -> threading.Thread:
     return thread
 
 
-def _read_stderr_chunk(stream: BinaryIO) -> bytes:
+def _read_stderr_chunk(stream: BinaryIO | None) -> bytes:
+    if stream is None:
+        return b""
     try:
         return stream.read(4096)
     except ValueError:
