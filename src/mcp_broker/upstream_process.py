@@ -453,6 +453,8 @@ def _start_drainer(
 def _drain_pipe(pipe: BinaryIO, log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with pipe, log_path.open("ab") as log_file:
-        for chunk in iter(pipe.readline, b""):
+        chunk = pipe.readline()
+        while chunk != b"":
             log_file.write(chunk)
             log_file.flush()
+            chunk = pipe.readline()

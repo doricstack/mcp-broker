@@ -127,7 +127,7 @@ def _missing_glob_warnings(label: str, patterns: tuple[str, ...]) -> tuple[str, 
 
 
 def _read_json_mapping(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_bytes())
     if not isinstance(payload, dict):
         raise ValueError(f"Codex app cache must be a JSON object: {path}")
     return payload
@@ -180,7 +180,9 @@ def _matches_connector(connector: dict[str, Any], selectors: tuple[ConnectorSele
 
 
 def _matches_tool(tool: dict[str, Any], selectors: tuple[ConnectorSelector, ...]) -> bool:
-    meta = tool.get("tool", {}).get("_meta", {}) if isinstance(tool.get("tool"), dict) else {}
+    tool_payload = tool.get("tool")
+    meta_payload = tool_payload.get("_meta") if isinstance(tool_payload, dict) else {}
+    meta = meta_payload if isinstance(meta_payload, dict) else {}
     connector_id = _string_or_none(tool.get("connector_id")) or _string_or_none(
         meta.get("connector_id")
     )
@@ -215,4 +217,4 @@ def _backup(path: Path, *, backup_dir: Path, backup_label: str) -> Path:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_bytes((json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())

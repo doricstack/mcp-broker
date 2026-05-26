@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520" role="img" aria-labelledby="title desc">
+  <title id="title">mcp-broker quickstart terminal</title>
+  <desc id="desc">Terminal walkthrough showing config validation, broker status, facade smoke, and one broker MCP entry.</desc>
+  <rect width="920" height="520" rx="16" fill="#111827"/>
+  <rect x="0" y="0" width="920" height="48" rx="16" fill="#1f2937"/>
+  <circle cx="28" cy="24" r="7" fill="#ef4444"/>
+  <circle cx="52" cy="24" r="7" fill="#f59e0b"/>
+  <circle cx="76" cy="24" r="7" fill="#22c55e"/>
+  <text x="112" y="30" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#d1d5db">mcp-broker quickstart</text>
+  <text x="32" y="86" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make config-init</text>
+  <text x="32" y="118" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">[OK] Private config ready</text>
+  <text x="32" y="158" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make config-validate</text>
+  <text x="32" y="190" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">[OK] Config validation passed</text>
+  <text x="32" y="230" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make broker-status</text>
+  <text x="32" y="262" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#d1d5db">{"status":"ok","socket":"~/mcp/mcp-broker/sockets/broker.sock"}</text>
+  <text x="32" y="302" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make codex-facade-smoke</text>
+  <text x="32" y="334" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">[OK] broker.search_tools, broker.describe_tool, broker.call_tool, broker.status</text>
+  <rect x="32" y="370" width="856" height="106" rx="10" fill="#0f172a" stroke="#334155"/>
+  <text x="56" y="406" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="17" fill="#e5e7eb">/mcp</text>
+  <text x="56" y="438" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">mcp-broker - connected - 4 tools</text>
+  <text x="56" y="464" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#9ca3af">Upstreams stay behind broker.status instead of loading hundreds of tools.</text>
+</svg>

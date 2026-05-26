@@ -77,6 +77,17 @@ make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
 make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
 ```
 
+Use `CLIENT=claude` or `CLIENT=gemini` for those clients after the matching
+profile validation passes. For another JSON settings client that stores MCP
+servers under top-level `mcpServers`, start with:
+
+```bash
+make profile-snippet NEW_PROFILE=local-client NEW_CLIENT_FORMAT=mcp-settings-json
+```
+
+Keep `mcp_allowed_servers` in that generated block unless the target client
+documents that all configured MCP servers are exposed without an allowlist.
+
 Rollback uses the latest broker backup:
 
 ```bash

@@ -47,6 +47,100 @@ def test_daemon_connection_does_not_respond_to_jsonrpc_notifications(tmp_path: P
     assert connection.sent == b""
 
 
+def test_daemon_serve_loop_does_not_let_one_connection_block_next_request(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    fast_handled = threading.Event()
+    accepted = [_ContextConnection("slow"), _ContextConnection("fast")]
+
+    class FakeServer:
+        def accept(self) -> tuple["_ContextConnection", object]:
+            if accepted:
+                return accepted.pop(0), None
+            raise OSError("closed")
+
+        def close(self) -> None:
+            return None
+
+    class TestDaemon(BrokerDaemon):
+        def _handle_connection(self, connection: "_ContextConnection") -> None:  # type: ignore[override]
+            if connection.name == "slow":
+                first_started.set()
+                release_first.wait(timeout=2)
+                return
+            fast_handled.set()
+            self._stop_requested.set()
+            release_first.set()
+
+    daemon = TestDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
+    daemon._server = FakeServer()  # type: ignore[assignment]
+    thread = threading.Thread(target=daemon._serve_loop)
+    thread.start()
+    try:
+        assert first_started.wait(timeout=1)
+        assert fast_handled.wait(timeout=1)
+    finally:
+        release_first.set()
+        thread.join(timeout=1)
+
+
+def test_daemon_join_waits_for_connection_threads_before_cleanup(tmp_path: Path) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    cleanup_started = threading.Event()
+
+    class TestDaemon(BrokerDaemon):
+        def _handle_connection(self, _connection: "_ContextConnection") -> None:  # type: ignore[override]
+            started.set()
+            release.wait(timeout=1)
+            finished.set()
+
+        def _cleanup(self) -> None:  # type: ignore[override]
+            cleanup_started.set()
+
+    daemon = TestDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
+    daemon._start_connection_thread(_ContextConnection("slow"))
+    assert started.wait(timeout=1)
+
+    join_thread = threading.Thread(target=lambda: daemon.join(timeout=1))
+    join_thread.start()
+    try:
+        assert not cleanup_started.wait(timeout=0.05)
+        release.set()
+        join_thread.join(timeout=1)
+    finally:
+        release.set()
+        join_thread.join(timeout=1)
+
+    assert finished.is_set()
+    assert cleanup_started.is_set()
+
+
+def test_daemon_connection_thread_join_respects_timeout(tmp_path: Path) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+
+    class AlwaysAliveThread:
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            raise AssertionError(f"join should not run after timeout: {timeout}")
+
+    daemon = BrokerDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
+    daemon._connection_threads = [AlwaysAliveThread()]  # type: ignore[list-item]
+
+    daemon._join_connection_threads(timeout=0)
+
+    assert len(daemon._connection_threads) == 1
+
+
 def test_daemon_client_request_reads_chunked_socket_response(tmp_path: Path) -> None:
     from mcp_broker.daemon import _client_request
 
@@ -54,6 +148,7 @@ def test_daemon_client_request_reads_chunked_socket_response(tmp_path: Path) -> 
     temp_dir = tempfile.TemporaryDirectory(prefix="mb-", dir="/tmp")
     socket_path = Path(temp_dir.name) / "broker.sock"
     payload = json.dumps({"id": "broker/health", "result": {"status": "ok", "items": list(range(4000))}})
+    received: list[bytes] = []
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(socket_path))
     server.listen(1)
@@ -62,7 +157,7 @@ def test_daemon_client_request_reads_chunked_socket_response(tmp_path: Path) -> 
         try:
             connection, _ = server.accept()
             with connection:
-                connection.recv(65536)
+                received.append(connection.recv(65536))
                 midpoint = len(payload) // 2
                 connection.sendall(payload[:midpoint].encode("utf-8"))
                 connection.sendall(payload[midpoint:].encode("utf-8"))
@@ -80,6 +175,7 @@ def test_daemon_client_request_reads_chunked_socket_response(tmp_path: Path) -> 
         temp_dir.cleanup()
 
     assert response["result"]["status"] == "ok"
+    assert received == [b'{"id": "broker/health", "method": "broker/health"}\n']
 
 
 def test_daemon_connection_sends_response_before_request_log_snapshot(
@@ -332,15 +428,19 @@ def test_daemon_cleanup_is_idempotent(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_daemon_cli_status_uses_health_method() -> None:
     from mcp_broker.daemon import _broker_method_for_command
+    from mcp_broker.daemon_cli import _broker_method_for_command as cli_method_for_command
 
     assert _broker_method_for_command("status") == "broker/health"
     assert _broker_method_for_command("stop") == "broker/stop"
+    assert cli_method_for_command("status") == "broker/health"
+    assert cli_method_for_command("stop") == "broker/stop"
 
 
 def test_daemon_cli_loads_config_for_serve(tmp_path: Path) -> None:
     import yaml
 
     from mcp_broker.daemon import _broker_config_for_serve
+    from mcp_broker.daemon_cli import _broker_config_for_serve as cli_broker_config_for_serve
 
     config_path = tmp_path / "broker.yaml"
     config_path.write_text(
@@ -355,16 +455,179 @@ def test_daemon_cli_loads_config_for_serve(tmp_path: Path) -> None:
     )
 
     config = _broker_config_for_serve(config_path)
+    cli_config = cli_broker_config_for_serve(config_path)
 
     assert config is not None
+    assert cli_config is not None
     assert config.runtime.root == tmp_path / "runtime"
+    assert cli_config.runtime.root == tmp_path / "runtime"
     assert sorted(config.upstreams) == ["read-store"]
+    assert sorted(cli_config.upstreams) == ["read-store"]
 
 
 def test_daemon_cli_keeps_legacy_serve_without_config() -> None:
     from mcp_broker.daemon import _broker_config_for_serve
+    from mcp_broker.daemon_cli import _broker_config_for_serve as cli_broker_config_for_serve
 
     assert _broker_config_for_serve(None) is None
+    assert cli_broker_config_for_serve(None) is None
+
+
+def test_daemon_cli_rejects_unknown_command_and_missing_required_paths(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker.daemon_cli import main
+
+    with pytest.raises(SystemExit) as unknown:
+        main(["restart", "--runtime-root", "/tmp/runtime", "--socket-path", "/tmp/broker.sock"])
+    with pytest.raises(SystemExit) as missing_runtime:
+        main(["status", "--socket-path", "/tmp/broker.sock"])
+    with pytest.raises(SystemExit) as missing_socket:
+        main(["status", "--runtime-root", "/tmp/runtime"])
+
+    assert unknown.value.code == 2
+    assert missing_runtime.value.code == 2
+    assert missing_socket.value.code == 2
+    error_text = capsys.readouterr().err
+    assert "invalid choice: 'restart'" in error_text
+    assert "--runtime-root" in error_text
+    assert "--socket-path" in error_text
+
+
+def test_daemon_cli_help_includes_description(capsys: pytest.CaptureFixture[str]) -> None:
+    from mcp_broker.daemon_cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--help"])
+
+    assert exc.value.code == 0
+    output = capsys.readouterr().out
+    assert "\nRun and inspect mcp-broker daemon\n" in output
+    assert "XXRun" not in output
+    assert "serve" in output
+    assert "status" in output
+    assert "stop" in output
+
+
+def test_daemon_cli_status_and_stop_do_not_enter_serve_branch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker.daemon_cli import main
+
+    class ExplodingDaemon:
+        def __init__(self, **_kwargs: object) -> None:
+            raise AssertionError("status and stop must not construct daemon")
+
+    requests: list[tuple[Path, str]] = []
+
+    def request_fn(socket_path: Path, method: str) -> dict[str, object]:
+        requests.append((socket_path, method))
+        return {"id": method, "result": {"ok": True}}
+
+    runtime_root = tmp_path / "runtime"
+    socket_path = tmp_path / "broker.sock"
+
+    assert (
+        main(
+            ["status", "--runtime-root", str(runtime_root), "--socket-path", str(socket_path)],
+            daemon_cls=ExplodingDaemon,  # type: ignore[arg-type]
+            request_fn=request_fn,
+        )
+        == 0
+    )
+    assert (
+        main(
+            ["stop", "--runtime-root", str(runtime_root), "--socket-path", str(socket_path)],
+            daemon_cls=ExplodingDaemon,  # type: ignore[arg-type]
+            request_fn=request_fn,
+        )
+        == 0
+    )
+
+    assert requests == [(socket_path, "broker/health"), (socket_path, "broker/stop")]
+    assert [json.loads(line)["result"] for line in capsys.readouterr().out.splitlines()] == [
+        {"ok": True},
+        {"ok": True},
+    ]
+
+
+def test_daemon_cli_writes_sorted_json_response(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker.daemon_cli import main
+
+    class ExplodingDaemon:
+        def __init__(self, **_kwargs: object) -> None:
+            raise AssertionError("status must not construct daemon")
+
+    def request_fn(_socket_path: Path, method: str) -> dict[str, object]:
+        return {"z": 1, "id": method, "a": 2}
+
+    assert (
+        main(
+            [
+                "status",
+                "--runtime-root",
+                str(tmp_path / "runtime"),
+                "--socket-path",
+                str(tmp_path / "broker.sock"),
+            ],
+            daemon_cls=ExplodingDaemon,  # type: ignore[arg-type]
+            request_fn=request_fn,
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out == '{"a": 2, "id": "broker/health", "z": 1}\n'
+
+
+def test_daemon_cli_client_request_uses_unix_stream_socket_and_exact_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mcp_broker.daemon_cli as daemon_cli
+
+    events: list[tuple[str, object]] = []
+
+    class FakeSocket:
+        def __init__(self, family: object, kind: object) -> None:
+            events.append(("init", (family, kind)))
+            self._chunks = [b'{"result": ', b'{"ok": true}}', b""]
+
+        def __enter__(self) -> "FakeSocket":
+            events.append(("enter", None))
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            events.append(("exit", None))
+
+        def connect(self, address: str) -> None:
+            events.append(("connect", address))
+
+        def sendall(self, payload: bytes) -> None:
+            events.append(("sendall", payload))
+
+        def recv(self, size: int) -> bytes:
+            events.append(("recv", size))
+            return self._chunks.pop(0)
+
+    monkeypatch.setattr(daemon_cli.socket, "socket", FakeSocket)
+
+    response = daemon_cli._client_request(tmp_path / "broker.sock", "broker/health")
+
+    assert response == {"result": {"ok": True}}
+    assert events == [
+        ("init", (daemon_cli.socket.AF_UNIX, daemon_cli.socket.SOCK_STREAM)),
+        ("enter", None),
+        ("connect", str(tmp_path / "broker.sock")),
+        ("sendall", b'{"id": "broker/health", "method": "broker/health"}\n'),
+        ("recv", 65536),
+        ("recv", 65536),
+        ("recv", 65536),
+        ("exit", None),
+    ]
 
 
 def test_daemon_serve_forever_starts_waits_and_joins(
@@ -489,6 +752,43 @@ def test_daemon_main_serve_uses_loaded_config(
     assert seen["socket_path"] == tmp_path / "broker.sock"
     assert isinstance(seen["broker_config"], BrokerConfig)
     assert seen["served"] is True
+
+
+def test_daemon_main_passes_daemon_dependencies_to_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mcp_broker.daemon as daemon_module
+    import mcp_broker.daemon_cli as daemon_cli
+
+    seen: dict[str, object] = {}
+
+    def fake_cli_main(argv: object, **kwargs: object) -> int:
+        seen["argv"] = argv
+        seen.update(kwargs)
+        return 17
+
+    monkeypatch.setattr(daemon_cli, "main", fake_cli_main)
+
+    result = daemon_module.main(
+        [
+            "status",
+            "--runtime-root",
+            "/tmp/runtime",
+            "--socket-path",
+            "/tmp/broker.sock",
+        ]
+    )
+
+    assert result == 17
+    assert seen["argv"] == [
+        "status",
+        "--runtime-root",
+        "/tmp/runtime",
+        "--socket-path",
+        "/tmp/broker.sock",
+    ]
+    assert seen["daemon_cls"] is daemon_module.BrokerDaemon
+    assert seen["request_fn"] is daemon_module._client_request
 
 
 @pytest.mark.parametrize(
@@ -637,8 +937,8 @@ def test_daemon_broker_search_tools_searches_allowed_catalog(tmp_path: Path) -> 
 
 
 def test_daemon_broker_describe_tool_returns_schema(tmp_path: Path) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
     from mcp_broker.profiles import ToolExposureProfile
 
     config = BrokerConfig(
@@ -662,7 +962,7 @@ def test_daemon_broker_describe_tool_returns_schema(tmp_path: Path) -> None:
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -1130,8 +1430,8 @@ def test_daemon_routes_per_session_stdio_clients_by_broker_session_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
 
     created: list[CreatedClient] = []
 
@@ -1140,7 +1440,7 @@ def test_daemon_routes_per_session_stdio_clients_by_broker_session_id(
         created.append(client)
         return client
 
-    monkeypatch.setattr("mcp_broker.daemon.StdioUpstreamProcess", create_client)
+    monkeypatch.setattr(daemon_module, "StdioUpstreamProcess", create_client)
     config = BrokerConfig(
         runtime=RuntimeConfig(
             root=tmp_path / "runtime",
@@ -1159,7 +1459,7 @@ def test_daemon_routes_per_session_stdio_clients_by_broker_session_id(
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -1216,8 +1516,8 @@ def test_daemon_passes_client_cwd_to_per_session_stdio_upstream(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
 
     created_kwargs: list[dict[str, object]] = []
 
@@ -1225,7 +1525,7 @@ def test_daemon_passes_client_cwd_to_per_session_stdio_upstream(
         created_kwargs.append(kwargs)
         return CreatedClient(len(created_kwargs))
 
-    monkeypatch.setattr("mcp_broker.daemon.StdioUpstreamProcess", create_client)
+    monkeypatch.setattr(daemon_module, "StdioUpstreamProcess", create_client)
     config = BrokerConfig(
         runtime=RuntimeConfig(
             root=tmp_path / "runtime",
@@ -1245,7 +1545,7 @@ def test_daemon_passes_client_cwd_to_per_session_stdio_upstream(
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -1275,8 +1575,8 @@ def test_daemon_rejects_missing_session_context_before_caching_stdio_client(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
 
     created: list[object] = []
 
@@ -1284,7 +1584,7 @@ def test_daemon_rejects_missing_session_context_before_caching_stdio_client(
         created.append(object())
         return CreatedClient(len(created))
 
-    monkeypatch.setattr("mcp_broker.daemon.StdioUpstreamProcess", create_client)
+    monkeypatch.setattr(daemon_module, "StdioUpstreamProcess", create_client)
     config = BrokerConfig(
         runtime=RuntimeConfig(
             root=tmp_path / "runtime",
@@ -1304,7 +1604,7 @@ def test_daemon_rejects_missing_session_context_before_caching_stdio_client(
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -1333,8 +1633,8 @@ def test_daemon_rejects_missing_session_context_before_caching_stdio_client(
 def test_daemon_rejects_per_session_stdio_without_broker_session_id(
     tmp_path: Path,
 ) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
 
     config = BrokerConfig(
         runtime=RuntimeConfig(
@@ -1354,7 +1654,7 @@ def test_daemon_rejects_per_session_stdio_without_broker_session_id(
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -2221,6 +2521,108 @@ def test_daemon_tools_list_returns_compact_profile_without_starting_upstreams(
     }
 
 
+def test_daemon_tools_list_returns_profile_safe_compact_names(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig
+    from mcp_broker.daemon import BrokerDaemon
+    from mcp_broker.profiles import ToolExposureProfile
+
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path / "runtime",
+            socket_path=tmp_path / "broker.sock",
+            log_dir=tmp_path / "runtime" / "logs",
+            state_dir=tmp_path / "runtime" / "state",
+            secrets_dir=tmp_path / "runtime" / "secrets",
+        ),
+        broker=BrokerSettings(),
+        profiles={
+            "safe-client": ToolExposureProfile(
+                name="safe-client",
+                max_tools=80,
+                compact_tools_enabled=True,
+                broker_tool_name_style="snake",
+            )
+        },
+        upstreams={},
+    )
+    daemon = BrokerDaemon(
+        runtime_root=config.runtime.root,
+        socket_path=config.runtime.socket_path,
+        broker_config=config,
+    )
+    daemon._handle_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": "init",
+            "method": "initialize",
+            "params": {"protocolVersion": "2025-11-25"},
+        }
+    )
+
+    response = daemon._handle_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": "compact",
+            "method": "tools/list",
+            "params": {"profile": "safe-client"},
+        }
+    )
+
+    assert [tool["name"] for tool in response["result"]["tools"]] == [
+        "broker_search_tools",
+        "broker_describe_tool",
+        "broker_call_tool",
+        "broker_status",
+    ]
+
+
+def test_daemon_accepts_profile_safe_broker_tool_aliases(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig
+    from mcp_broker.daemon import BrokerDaemon
+    from mcp_broker.profiles import ToolExposureProfile
+
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path / "runtime",
+            socket_path=tmp_path / "broker.sock",
+            log_dir=tmp_path / "runtime" / "logs",
+            state_dir=tmp_path / "runtime" / "state",
+            secrets_dir=tmp_path / "runtime" / "secrets",
+        ),
+        broker=BrokerSettings(),
+        profiles={
+            "safe-client": ToolExposureProfile(
+                name="safe-client",
+                max_tools=80,
+                compact_tools_enabled=True,
+                broker_tool_name_style="snake",
+            )
+        },
+        upstreams={},
+    )
+    daemon = BrokerDaemon(
+        runtime_root=config.runtime.root,
+        socket_path=config.runtime.socket_path,
+        broker_config=config,
+    )
+
+    response = daemon._handle_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": "status",
+            "method": "tools/call",
+            "params": {
+                "profile": "safe-client",
+                "name": "broker_status",
+                "arguments": {},
+            },
+        }
+    )
+
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["profile"] == "safe-client"
+
+
 def test_daemon_tools_list_maps_upstream_list_errors(tmp_path: Path) -> None:
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
     from mcp_broker.daemon import BrokerDaemon
@@ -2264,8 +2666,8 @@ def test_daemon_tools_list_and_call_route_http_upstreams(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import mcp_broker.daemon as daemon_module
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
-    from mcp_broker.daemon import BrokerDaemon
 
     class FakeHttpUpstream:
         def __init__(self, upstream, *, environ=None):
@@ -2291,7 +2693,7 @@ def test_daemon_tools_list_and_call_route_http_upstreams(
                 "last_error": None,
             }
 
-    monkeypatch.setattr("mcp_broker.daemon.HttpUpstreamClient", FakeHttpUpstream)
+    monkeypatch.setattr(daemon_module, "HttpUpstreamClient", FakeHttpUpstream)
     config = BrokerConfig(
         runtime=RuntimeConfig(
             root=tmp_path / "runtime",
@@ -2312,7 +2714,7 @@ def test_daemon_tools_list_and_call_route_http_upstreams(
             )
         },
     )
-    daemon = BrokerDaemon(
+    daemon = daemon_module.BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
@@ -2718,6 +3120,17 @@ class BufferConnection:
 
     def sendall(self, data: bytes) -> None:
         self.sent += data
+
+
+class _ContextConnection:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __enter__(self) -> "_ContextConnection":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
 
 
 def _empty_config(tmp_path: Path) -> BrokerConfig:

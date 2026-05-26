@@ -59,12 +59,17 @@ def run_profile_discovery(
     search_payload = _tool_payload(responses["search"])
     describe_payload = _tool_payload(responses["describe"])
     call_result = responses["call"]["result"]
-    call_content = call_result.get("content", [])
-    call_text = call_content[0]["text"] if call_content else ""
+    call_content = call_result.get("content")
+    if not isinstance(call_content, list) or not call_content:
+        raise DiscoveryParityError(f"{profile} safe call returned no text content")
+    first_call_content = call_content[0]
+    if not isinstance(first_call_content, dict) or not isinstance(first_call_content.get("text"), str):
+        raise DiscoveryParityError(f"{profile} safe call returned no text content")
+    call_text = first_call_content["text"]
     if call_result.get("isError") is True or call_text.startswith("Error:"):
         raise DiscoveryParityError(f"{profile} safe call returned upstream error: {call_text}")
 
-    upstreams = status_payload.get("upstreams", {})
+    upstreams = status_payload.get("upstreams")
     if not isinstance(upstreams, dict):
         raise DiscoveryParityError(f"{profile} broker.status returned invalid upstream map")
 
@@ -271,7 +276,10 @@ def _tool_payload(response: dict[str, Any]) -> dict[str, Any]:
     structured_content = result.get("structuredContent")
     if isinstance(structured_content, dict):
         return structured_content
-    return json.loads(result["content"][0]["text"])
+    payload = json.loads(result["content"][0]["text"])
+    if not isinstance(payload, dict):
+        raise DiscoveryParityError("tool response payload must be object")
+    return payload
 
 
 def _normalized_value(value: Any) -> Any:

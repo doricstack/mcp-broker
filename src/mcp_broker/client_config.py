@@ -19,6 +19,7 @@ CLIENT_KEYS = frozenset(
         "args",
         "backup_paths",
         "codex_apps_policy",
+        "mcp_allowed_servers",
     }
 )
 CODEX_APPS_POLICY_KEYS = frozenset(
@@ -30,6 +31,7 @@ CODEX_APPS_POLICY_KEYS = frozenset(
     }
 )
 CONNECTOR_SELECTOR_KEYS = frozenset({"id", "name", "reason"})
+SUPPORTED_CLIENT_FORMATS = frozenset({"codex-toml", "claude-json", "mcp-settings-json"})
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,7 @@ class ClientRenderConfig:
     command: str = "mcp-broker-client"
     args: tuple[str, ...] = ()
     backup_paths: tuple[Path, ...] = ()
+    mcp_allowed_servers: tuple[str, ...] = ()
     codex_apps_policy: CodexAppConnectorPolicy | None = None
 
     @classmethod
@@ -67,6 +70,12 @@ class ClientRenderConfig:
             command=expand_config_text(str(data.get("command", "mcp-broker-client")), runtime),
             args=tuple(expand_config_text(str(arg), runtime) for arg in args),
             backup_paths=tuple(parse_path(f"clients.{name}.backup_paths", path) for path in backup_paths),
+            mcp_allowed_servers=_parse_config_strings(
+                f"clients.{name}.mcp_allowed_servers",
+                data.get("mcp_allowed_servers", []),
+                runtime=runtime,
+                expand_config_text=expand_config_text,
+            ),
             codex_apps_policy=_parse_codex_apps_policy(
                 f"clients.{name}.codex_apps_policy",
                 data.get("codex_apps_policy"),
@@ -86,8 +95,9 @@ def _require_client_keys(name: str, data: dict[str, Any]) -> None:
 
 def _parse_client_format(name: str, value: Any) -> str:
     config_format = str(value)
-    if config_format not in {"codex-toml", "claude-json"}:
-        raise ValueError(f"clients.{name}.format must be codex-toml or claude-json")
+    if config_format not in SUPPORTED_CLIENT_FORMATS:
+        supported = ", ".join(sorted(SUPPORTED_CLIENT_FORMATS))
+        raise ValueError(f"clients.{name}.format must be one of: {supported}")
     return config_format
 
 
@@ -115,10 +125,11 @@ def _parse_codex_apps_policy(
         _parse_connector_selector(f"{path}.disable_connectors[{index}]", selector, validate_keys)
         for index, selector in enumerate(disable_connectors)
     )
-    if bool(value.get("enabled", False)) and not selectors:
+    enabled = _parse_bool(f"{path}.enabled", value.get("enabled", False))
+    if enabled and not selectors:
         raise ValueError(f"{path}.disable_connectors must contain at least one connector")
     return CodexAppConnectorPolicy(
-        enabled=_parse_bool(f"{path}.enabled", value.get("enabled", False)),
+        enabled=enabled,
         app_directory_globs=_parse_config_strings(
             f"{path}.app_directory_globs",
             value.get("app_directory_globs", []),

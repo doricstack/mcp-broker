@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import subprocess
@@ -16,6 +17,16 @@ from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError
 
 class FacadeSmokeError(RuntimeError):
     """Raised when the facade smoke cannot prove the compact path."""
+
+
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 70
+
+
+@dataclass(frozen=True)
+class _ConfiguredFacadeProbe:
+    query: str
+    call_tool: str
+    call_args: dict[str, Any]
 
 
 def parse_call_args(raw: str) -> dict[str, Any]:
@@ -65,6 +76,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _run_smoke(args: argparse.Namespace) -> dict[str, Any]:
     config = BrokerConfig.from_file(Path(args.config))
+    probe = _resolve_facade_probe(
+        config=config,
+        profile=args.profile,
+        query=args.query,
+        call_tool=args.call_tool,
+        call_args=args.call_args,
+    )
     started_daemon = False
     daemon = BrokerDaemon(
         runtime_root=config.runtime.root,
@@ -77,33 +95,51 @@ def _run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         responses = _exercise_client_shim(
             socket_path=config.runtime.socket_path,
             profile=args.profile,
-            query=args.query,
-            call_tool=args.call_tool,
-            call_args=parse_call_args(args.call_args),
+            query=probe.query,
+            call_tool=probe.call_tool,
+            call_args=probe.call_args,
             session_id=session_id,
+            timeout_seconds=args.request_timeout_seconds,
         )
         return build_facade_smoke_report(
             profile=args.profile,
             list_response=responses["tools/list"],
             search_response=responses["broker.search_tools"],
             describe_response=responses["broker.describe_tool"],
-            call_response=responses[args.call_tool],
+            call_response=responses[probe.call_tool],
             started_daemon=started_daemon,
         )
     finally:
-        if not started_daemon:
-            _stop_smoke_session(config.runtime.socket_path, args.profile, session_id)
-        if started_daemon:
-            try:
-                _request_through_client(
-                    socket_path=config.runtime.socket_path,
-                    profile=args.profile,
-                    session_id="facade-smoke-stop",
-                    payload={"jsonrpc": "2.0", "id": "stop", "method": "broker/stop"},
-                )
-                daemon.join(timeout=5)
-            finally:
-                daemon.stop()
+        _cleanup_smoke_daemon(
+            config.runtime.socket_path,
+            args.profile,
+            session_id,
+            daemon,
+            started_daemon=started_daemon,
+        )
+
+
+def _cleanup_smoke_daemon(
+    socket_path: Path,
+    profile: str,
+    session_id: str,
+    daemon: BrokerDaemon,
+    *,
+    started_daemon: bool,
+) -> None:
+    if not started_daemon:
+        _stop_smoke_session(socket_path, profile, session_id)
+        return
+    try:
+        _request_through_client(
+            socket_path=socket_path,
+            profile=profile,
+            session_id="facade-smoke-stop",
+            payload={"jsonrpc": "2.0", "id": "stop", "method": "broker/stop"},
+        )
+        daemon.join(timeout=5)
+    finally:
+        daemon.stop()
 
 
 def _start_daemon_if_needed(daemon: BrokerDaemon) -> bool:
@@ -120,10 +156,60 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Exercise compact Codex broker facade")
     parser.add_argument("--config", required=True)
     parser.add_argument("--profile", default="codex")
-    parser.add_argument("--query", required=True)
-    parser.add_argument("--call-tool", required=True)
-    parser.add_argument("--call-args", required=True)
+    parser.add_argument("--query")
+    parser.add_argument("--call-tool")
+    parser.add_argument("--call-args")
+    parser.add_argument(
+        "--request-timeout-seconds",
+        type=int,
+        default=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    )
     return parser.parse_args(argv)
+
+
+def _resolve_facade_probe(
+    *,
+    config: BrokerConfig,
+    profile: str,
+    query: str | None,
+    call_tool: str | None,
+    call_args: str | None,
+) -> _ConfiguredFacadeProbe:
+    explicit_values = [_empty_to_none(query), _empty_to_none(call_tool), _empty_to_none(call_args)]
+    if any(value is not None for value in explicit_values):
+        if any(value is None for value in explicit_values):
+            raise FacadeSmokeError(
+                "provide query, call-tool, and call-args together or omit all to use YAML smoke"
+            )
+        explicit_query, explicit_call_tool, explicit_call_args = explicit_values
+        return _ConfiguredFacadeProbe(
+            query=explicit_query,
+            call_tool=explicit_call_tool,
+            call_args=parse_call_args(explicit_call_args),
+        )
+
+    for upstream_name in sorted(config.upstreams):
+        upstream = config.upstreams[upstream_name]
+        if (
+            not upstream.enabled
+            or upstream.mode == "disabled"
+            or profile not in upstream.profiles
+            or upstream.smoke is None
+            or not upstream.smoke.call
+        ):
+            continue
+        return _ConfiguredFacadeProbe(
+            query=upstream.smoke.query,
+            call_tool=upstream.smoke.tool,
+            call_args=upstream.smoke.arguments,
+        )
+    raise FacadeSmokeError(f"{profile} has no callable smoke probe")
+
+
+def _empty_to_none(value: str | None) -> str | None:
+    if value is None or value == "":
+        return None
+    return value
 
 
 def _exercise_client_shim(
@@ -134,20 +220,46 @@ def _exercise_client_shim(
     call_tool: str,
     call_args: dict[str, Any],
     session_id: str,
+    timeout_seconds: int = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[str, dict[str, Any]]:
-    initialize_response = _smoke_request(socket_path, profile, session_id, _initialize_payload())
+    initialize_response = _smoke_request(
+        socket_path,
+        profile,
+        session_id,
+        _initialize_payload(),
+        timeout_seconds=timeout_seconds,
+    )
     _raise_on_error(initialize_response)
-    list_response = _smoke_request(socket_path, profile, session_id, _tools_list_payload())
+    list_response = _smoke_request(
+        socket_path,
+        profile,
+        session_id,
+        _tools_list_payload(),
+        timeout_seconds=timeout_seconds,
+    )
     _raise_on_error(list_response)
-    search_response = _smoke_request(socket_path, profile, session_id, _search_payload(query))
+    search_response = _smoke_request(
+        socket_path,
+        profile,
+        session_id,
+        _search_payload(query),
+        timeout_seconds=timeout_seconds,
+    )
     _raise_on_error(search_response)
-    describe_response = _smoke_request(socket_path, profile, session_id, _describe_payload(call_tool))
+    describe_response = _smoke_request(
+        socket_path,
+        profile,
+        session_id,
+        _describe_payload(call_tool),
+        timeout_seconds=timeout_seconds,
+    )
     _raise_on_error(describe_response)
     call_response = _smoke_request(
         socket_path,
         profile,
         session_id,
         _call_payload(call_tool, call_args),
+        timeout_seconds=timeout_seconds,
     )
     _raise_on_error(call_response)
     return {
@@ -163,12 +275,14 @@ def _smoke_request(
     profile: str,
     session_id: str,
     payload: dict[str, Any],
+    timeout_seconds: int = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     return _request_through_client(
         socket_path=socket_path,
         profile=profile,
         session_id=session_id,
         payload=payload,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -227,25 +341,32 @@ def _request_through_client(
     profile: str,
     session_id: str,
     payload: dict[str, Any],
+    timeout_seconds: int = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    process = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "mcp_broker.client",
-            "--socket-path",
-            str(socket_path),
-            "--profile",
-            profile,
-            "--session-id",
-            session_id,
-        ],
-        input=json.dumps(payload) + "\n",
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "mcp_broker.client",
+                "--socket-path",
+                str(socket_path),
+                "--profile",
+                profile,
+                "--session-id",
+                session_id,
+            ],
+            input=json.dumps(payload) + "\n",
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise FacadeSmokeError(
+            f"client shim timed out after {timeout_seconds}s for {payload.get('id', 'request')}"
+        ) from exc
     if process.returncode != 0:
         raise FacadeSmokeError(process.stderr.strip() or "client shim failed")
     try:

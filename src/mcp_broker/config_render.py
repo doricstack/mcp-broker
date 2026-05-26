@@ -20,6 +20,9 @@ _LEGACY_CODEX_MCP_COMMENT_MARKERS = (
     "# === MCP servers (synced from ~/mcp/servers.json + project .mcp.json files) ===",
     "#   GLOBAL SERVERS (all projects)",
 )
+CONFIG_RENDER_DESCRIPTION = "Render or roll back MCP client configs"
+TEXT_ENCODING = "utf-8"
+TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 
 
 @dataclass(frozen=True)
@@ -64,12 +67,12 @@ def render_client_config(
     rendered_path.parent.mkdir(parents=True, exist_ok=True)
     write_path = target_path or client.config_path
     rendered_text = _render_text(config, client, target_path=write_path)
-    rendered_path.write_text(rendered_text, encoding="utf-8")
+    rendered_path.write_text(rendered_text, encoding=TEXT_ENCODING)
     backup_path = None
     if not dry_run:
         backup_path = _backup_target(config, client, backup_label=backup_label, target_path=write_path)
         write_path.parent.mkdir(parents=True, exist_ok=True)
-        write_path.write_text(rendered_text, encoding="utf-8")
+        write_path.write_text(rendered_text, encoding=TEXT_ENCODING)
     policy_result = _apply_codex_apps_policy(
         config,
         client,
@@ -139,7 +142,7 @@ def apply_client_app_policy(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Render or roll back MCP client configs")
+    parser = argparse.ArgumentParser(description=CONFIG_RENDER_DESCRIPTION)
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_subcommands(subparsers)
     args = parser.parse_args(argv)
@@ -209,11 +212,13 @@ def _render_text(config: BrokerConfig, client: ClientRenderConfig, *, target_pat
     args = list(client.args) or ["--socket-path", str(config.runtime.socket_path)]
     args = [_portable_client_arg(arg) for arg in args]
     source_path = target_path or client.config_path
-    existing_text = source_path.read_text(encoding="utf-8") if source_path.exists() else ""
+    existing_text = source_path.read_text(encoding=TEXT_ENCODING) if source_path.exists() else ""
     if client.format == "codex-toml":
         return _render_codex_toml(client.entry_name, client.command, args, existing_text)
     if client.format == "claude-json":
         return _render_claude_json(client.entry_name, client.command, args, existing_text)
+    if client.format == "mcp-settings-json":
+        return _render_mcp_settings_json(client.entry_name, client.command, args, existing_text, client)
     raise ValueError(f"unsupported client config format: {client.format}")
 
 
@@ -245,14 +250,14 @@ def _render_codex_toml(entry_name: str, command: str, args: list[str], existing_
 
 def _strip_codex_mcp_tables(existing_text: str) -> str:
     kept_lines: list[str] = []
-    skip_table = False
-    skip_legacy_comment_block = False
+    skipped_table_header: str | None = None
+    legacy_comment_marker: str | None = None
     pending_separator_lines: list[str] = []
     for line in existing_text.splitlines():
         stripped = line.strip()
-        if skip_legacy_comment_block:
-            if stripped.startswith("[") and stripped.endswith("]"):
-                skip_legacy_comment_block = False
+        if legacy_comment_marker is not None:
+            if _is_table_header(stripped):
+                legacy_comment_marker = None
             else:
                 continue
         if stripped == "# -----------------------------------------------------------------------------":
@@ -263,26 +268,32 @@ def _strip_codex_mcp_tables(existing_text: str) -> str:
             continue
         if stripped in _LEGACY_CODEX_MCP_COMMENT_MARKERS:
             pending_separator_lines = []
-            skip_legacy_comment_block = True
+            legacy_comment_marker = stripped
             continue
         elif pending_separator_lines:
             kept_lines.extend(pending_separator_lines)
             pending_separator_lines = []
-        if stripped.startswith("[") and stripped.endswith("]"):
-            skip_table = _is_codex_mcp_table(stripped)
-        if not skip_table and not skip_legacy_comment_block:
+        if _is_table_header(stripped):
+            skipped_table_header = stripped if _is_codex_mcp_table(stripped) else None
+        if skipped_table_header is None and legacy_comment_marker is None:
             kept_lines.append(line)
     kept_lines.extend(pending_separator_lines)
     return "\n".join(kept_lines).rstrip() + "\n" if kept_lines else ""
 
 
+def _is_table_header(line: str) -> bool:
+    return line.startswith("[") and line.endswith("]")
+
+
 def _is_codex_mcp_table(table_header: str) -> bool:
-    table_name = table_header.strip("[]").strip()
+    table_name = table_header.removeprefix("[").removesuffix("]").strip()
     return table_name == "mcp_servers" or table_name.startswith("mcp_servers.")
 
 
 def _strip_trailing_separator_comments(text: str) -> str:
     lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
     while lines and lines[-1].strip() == "# -----------------------------------------------------------------------------":
         lines.pop()
         while lines and not lines[-1].strip():
@@ -294,6 +305,37 @@ def _render_claude_json(entry_name: str, command: str, args: list[str], existing
     preserved = json.loads(existing_text) if existing_text.strip() else {}
     if not isinstance(preserved, dict):
         preserved = {}
+    preserved["mcpServers"] = {
+        entry_name: {
+            "command": command,
+            "args": args,
+        }
+    }
+    return (
+        json.dumps(
+            preserved,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _render_mcp_settings_json(
+    entry_name: str,
+    command: str,
+    args: list[str],
+    existing_text: str,
+    client: ClientRenderConfig,
+) -> str:
+    preserved = json.loads(existing_text) if existing_text.strip() else {}
+    if not isinstance(preserved, dict):
+        preserved = {}
+    if client.mcp_allowed_servers:
+        mcp_settings = preserved.get("mcp")
+        if not isinstance(mcp_settings, dict):
+            mcp_settings = {}
+        preserved["mcp"] = mcp_settings | {"allowed": list(client.mcp_allowed_servers)}
     preserved["mcpServers"] = {
         entry_name: {
             "command": command,
@@ -332,7 +374,7 @@ def _apply_codex_apps_policy(
     return apply_codex_app_policy(
         client.codex_apps_policy,
         backup_dir=config.runtime.root / "backups" / client.name / "codex-apps",
-        backup_label=backup_label or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        backup_label=backup_label or _timestamp_label(),
         dry_run=dry_run,
     )
 
@@ -344,14 +386,14 @@ def _backup_path(
     *,
     backup_label: str | None,
 ) -> Path:
-    label = backup_label or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    label = backup_label or _timestamp_label()
     backup_dir = config.runtime.root / "backups" / client_name
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_path = backup_dir / f"{label}.{source_path.name}"
     if source_path.exists():
         shutil.copyfile(source_path, backup_path)
     else:
-        backup_path.write_text("", encoding="utf-8")
+        backup_path.write_text("", encoding=TEXT_ENCODING)
     return backup_path
 
 
@@ -380,6 +422,10 @@ def _json_line(value: object) -> str:
         raise TypeError(f"cannot encode {type(obj).__name__}")
 
     return json.dumps(value, default=default, sort_keys=True) + "\n"
+
+
+def _timestamp_label() -> str:
+    return datetime.now(timezone.utc).strftime(TIMESTAMP_FORMAT)
 
 
 if __name__ == "__main__":

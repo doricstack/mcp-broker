@@ -4,10 +4,12 @@ import json
 
 import pytest
 
+from tests.support.repo_paths import repo_root
+
 
 pytestmark = pytest.mark.unit
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = repo_root()
 SCHEMA_FILE = ROOT / "config" / "broker.schema.json"
 
 
@@ -80,6 +82,7 @@ profiles:
   codex:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
     allow_mutating_upstreams:
       - writer
 clients:
@@ -91,6 +94,8 @@ clients:
     args:
       - --socket-path
       - "{runtime.socket_path}"
+    mcp_allowed_servers:
+      - mcp-broker
     backup_paths:
       - /tmp/mcp-broker-test/codex.backup.toml
     codex_apps_policy:
@@ -152,6 +157,13 @@ upstreams:
         - "Not authenticated"
       retry_original: true
       timeout_seconds: 300
+    auth_probe:
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/oauth.json"
+      required_fields:
+        - access_token
+        - refresh_token
+      refresh_token_expiry_field: refresh_token_expires_at
     smoke:
       query: writer status
       tool: writer.status
@@ -165,14 +177,17 @@ upstreams:
 
     assert config.runtime.secrets_dir == Path("/tmp/mcp-broker-test/secrets")
     assert config.profiles["codex"].allows_mutating_upstream("writer")
+    assert config.profiles["codex"].broker_tool_name_style == "snake"
     assert config.broker.remote_auth.enabled is True
     assert config.broker.remote_auth.token_file == Path(
         "/tmp/mcp-broker-test/secrets/broker-remote-token"
     )
     assert config.clients["codex"].codex_apps_policy is not None
     assert config.clients["codex"].codex_apps_policy.enabled is True
+    assert config.clients["codex"].mcp_allowed_servers == ("mcp-broker",)
     assert config.upstreams["writer"].mutating is True
     assert config.upstreams["writer"].auth_repair is not None
+    assert config.upstreams["writer"].auth_probe is not None
     assert config.upstreams["writer"].health.http_retry_attempts == 2
     assert config.upstreams["writer"].health.http_retry_backoff_seconds == 0
     assert config.upstreams["writer"].smoke is not None
@@ -209,7 +224,9 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "clients.*.config_path",
         "clients.*.entry_name",
         "clients.*.format",
+        "clients.*.mcp_allowed_servers",
         "profiles.*.allow_mutating_upstreams",
+        "profiles.*.broker_tool_name_style",
         "profiles.*.compact_tools_enabled",
         "profiles.*.max_tools",
         "profiles",
@@ -228,6 +245,11 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "upstreams.*.auth_repair.timeout_seconds",
         "upstreams.*.auth_repair.tool",
         "upstreams.*.auth_repair.trigger_errors",
+        "upstreams.*.auth_probe",
+        "upstreams.*.auth_probe.refresh_token_expiry_field",
+        "upstreams.*.auth_probe.required_fields",
+        "upstreams.*.auth_probe.token_file",
+        "upstreams.*.auth_probe.type",
         "upstreams.*.command",
         "upstreams.*.enabled",
         "upstreams.*.env",

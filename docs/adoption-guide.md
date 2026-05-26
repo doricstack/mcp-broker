@@ -69,7 +69,15 @@ make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
 make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
 ```
 
-Use the same flow for `CLIENT=claude` after the Claude profile passes validation.
+Use the same flow for `CLIENT=claude` or `CLIENT=gemini` after that profile
+passes validation. For another JSON settings client, generate a starter block:
+
+```bash
+make profile-snippet NEW_PROFILE=local-client NEW_CLIENT_FORMAT=mcp-settings-json
+```
+
+Keep the generated `mcp_allowed_servers` setting for clients that require an
+explicit MCP server allowlist before tools appear in model sessions.
 
 ## Profile Shape
 

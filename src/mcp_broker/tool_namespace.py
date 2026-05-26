@@ -75,7 +75,7 @@ class ToolNamespaceRouter:
         for upstream_name, tools in upstream_tools.items():
             if self._upstream_allowed(upstream_name):
                 for tool in self.advertise_tools(upstream_name, tools):
-                    tool_name = str(tool.get("name", ""))
+                    tool_name = str(tool["name"])
                     if tool_name in names:
                         raise ValueError(f"duplicate advertised tool: {tool_name}")
                     names.add(tool_name)
@@ -84,11 +84,12 @@ class ToolNamespaceRouter:
         return advertised
 
     def compact_broker_tools(self) -> list[dict[str, Any]]:
-        if self._profile is None or not self._profile.compact_tools_enabled:
+        profile = self._profile
+        if profile is None or not profile.compact_tools_enabled:
             return []
         return [
             _broker_tool(
-                "broker.search_tools",
+                self._compact_broker_tool_name(profile, "broker.search_tools"),
                 "Search broker-managed upstream tools",
                 {
                     "type": "object",
@@ -100,7 +101,7 @@ class ToolNamespaceRouter:
                 },
             ),
             _broker_tool(
-                "broker.describe_tool",
+                self._compact_broker_tool_name(profile, "broker.describe_tool"),
                 "Describe one broker-managed upstream tool",
                 {
                     "type": "object",
@@ -109,7 +110,7 @@ class ToolNamespaceRouter:
                 },
             ),
             _broker_tool(
-                "broker.call_tool",
+                self._compact_broker_tool_name(profile, "broker.call_tool"),
                 "Call one broker-managed upstream tool",
                 {
                     "type": "object",
@@ -121,7 +122,7 @@ class ToolNamespaceRouter:
                 },
             ),
             _broker_tool(
-                "broker.status",
+                self._compact_broker_tool_name(profile, "broker.status"),
                 "Report broker-managed upstream status for this profile",
                 {
                     "type": "object",
@@ -129,6 +130,9 @@ class ToolNamespaceRouter:
                 },
             ),
         ]
+
+    def _compact_broker_tool_name(self, profile: ToolExposureProfile, canonical_name: str) -> str:
+        return profile.exposed_broker_tool_name(canonical_name)
 
     def resolve_tool_name(self, advertised_name: str) -> ToolRoute:
         if self._separator not in advertised_name:

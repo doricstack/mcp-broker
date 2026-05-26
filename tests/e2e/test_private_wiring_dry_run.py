@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.repo_paths import make_command
 
 pytestmark = pytest.mark.e2e
 
@@ -38,13 +39,12 @@ def test_make_config_render_dry_run_does_not_write_user_config(tmp_path: Path) -
     )
 
     result = subprocess.run(
-        [
-            "make",
+        make_command(
             "config-render",
             "CLIENT=codex",
             f"CONFIG_PATH={config_path}",
             f"RUNTIME_ROOT={runtime_root}",
-        ],
+        ),
         cwd=ROOT,
         check=True,
         text=True,

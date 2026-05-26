@@ -1,12 +1,10 @@
 # Distribution
 
-This page tracks public distribution paths for `mcp-broker`. The source
-checkout flow remains the reference path until the clean public repo, release
-tag, and package upload exist.
+This page tracks public distribution paths for `mcp-broker`.
 
 ## Python Package
 
-Package metadata is release-aligned at `0.1.1`. The version is sourced from
+Package metadata is release-aligned at `0.1.2`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
@@ -14,12 +12,13 @@ The package command surface is:
 
 ```bash
 mcp-broker init
+mcp-broker stdio
 mcp-broker start
 mcp-broker status
 mcp-broker render codex --dry-run
 ```
 
-The planned install command is:
+The install command is:
 
 ```bash
 pipx install mcp-broker
@@ -30,7 +29,7 @@ pipx install mcp-broker
 package data so `mcp-broker init` can create a private config outside a source
 checkout.
 
-`uv` should use the same package once the PyPI release exists:
+`uv` uses the same package:
 
 ```bash
 uv tool install mcp-broker
@@ -43,15 +42,29 @@ Repository-owned package checks:
 make package-check
 ```
 
-Publishing is automated by `.github/workflows/publish-pypi.yml`, but the first
-upload still requires a PyPI project or Trusted Publisher setup for the public
-GitHub repository.
+Publishing is automated by `.github/workflows/publish-pypi.yml`. The workflow
+runs `make release-gate` before the PyPI publish step.
+
+Before tagging a release, run:
+
+```bash
+make release-gate
+```
+
+That target keeps mutation last and writes mutation evidence under
+`var/quality/mutation_stats.json`.
 
 ## Homebrew
 
-Homebrew should come after the PyPI package path is validated. The formula or
-tap must install the same console scripts, leave user client configs untouched
-during install, and preserve the runtime root contract:
+Homebrew is published through:
+
+```bash
+brew tap NavinAgrawal/tap
+brew install mcp-broker
+```
+
+The formula installs the same console scripts, leaves user client configs
+untouched during install, and preserves the runtime root contract:
 
 ```text
 $HOME/mcp/mcp-broker/
@@ -100,33 +113,80 @@ Reference docs:
 
 ## Docker And OCI
 
-Docker mode is not the default local experience. It is useful only for
-container-friendly upstreams and remote transports. A Docker image must not
+Docker mode is not the default local desktop experience. It is useful for
+container-friendly upstreams and remote transports. The Docker image does not
 edit host client files by default.
 
-Docker support needs an explicit boundary:
+Build and smoke locally:
+
+```bash
+make docker-smoke
+```
+
+Build a release image with OCI labels, SBOM, and provenance:
+
+```bash
+make docker-buildx \
+  DOCKER_IMAGE=ghcr.io/<owner>/mcp-broker:0.1.2 \
+  DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
+  DOCKER_PUSH=1
+```
+
+For a local one-platform buildx check without pushing:
+
+```bash
+make docker-buildx DOCKER_PLATFORMS=linux/arm64
+```
+
+Run manually:
+
+```bash
+docker build -t mcp-broker:local .
+docker run --rm -i mcp-broker:local
+```
+
+The image entrypoint calls the package-owned stdio lifecycle:
+
+```bash
+mcp-broker stdio --init-if-missing
+```
+
+Boundary:
 
 - Supported: HTTP, streamable HTTP, SSE, and stdio upstreams that run inside
   the container.
 - Supported: explicit mounts for runtime state, config, logs, and secrets.
 - Unsupported by default: hidden edits to host `~/.codex`, `~/.claude.json`, or
   browser profiles.
-- Required before publication: Docker MCP Toolkit custom catalog smoke, image
-  labels, SBOM/provenance path, and a Docker-specific security review.
+- Required before Docker MCP Catalog PR approval: Docker MCP Toolkit custom
+  catalog smoke, public image publication, and a Docker-specific security
+  review.
 
-Docker MCP Toolkit migration guidance belongs here after that boundary is
-implemented.
+Docker MCP Catalog submission uses the Docker registry PR flow after the
+public repo contains the Dockerfile.
 
-## Smithery, Glama, PulseMCP, And Directories
+## MCPB, Smithery, Glama, PulseMCP, And Directories
 
 Use the clean public GitHub repo as the source for indexers. Submit after the
 README, safety docs, package install path, and registry metadata are stable.
 
+MCPB metadata lives in:
+
+```text
+mcpb/manifest.json
+```
+
+Validate it with:
+
+```bash
+make mcpb-validate
+```
+
 Smithery has two possible paths:
 
 - Hosted or remote mode: publish a streamable HTTP URL.
-- Local mode: publish an MCPB bundle only if install, config, upgrade, and
-  uninstall behavior are visible to the user.
+- Local mode: publish an MCPB bundle from `mcpb/manifest.json` only if install,
+  config, upgrade, and uninstall behavior are visible to the user.
 
 Glama and PulseMCP should index the public repo after the first release. Check
 that tool names, schemas, install instructions, safety notes, and score output

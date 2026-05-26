@@ -55,6 +55,7 @@ def test_client_shim_calls_stdio_upstream_through_broker_socket(tmp_path: Path) 
         )
     finally:
         daemon.stop()
+        daemon.join(timeout=5)
 
     assert result.stderr == b""
     assert json.loads(result.stdout.decode("utf-8")) == {

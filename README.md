@@ -106,8 +106,9 @@ Implemented:
 - Tool namespace mapping from configured upstream prefixes.
 - Local upstream subprocess lifecycle management and process-group cleanup.
 - Broker daemon over Unix socket.
-- MCP client shim for Codex and Claude config entries.
-- Gemini exposure profile for broker facade testing.
+- MCP client shim for Codex, Claude, and Gemini config entries.
+- Gemini profile rendering to `.gemini/settings.json`, including its MCP
+  allowed-server policy.
 - Dry-run client config rendering, apply-time backups, and rollback.
 - LaunchAgent render and install scripts with dry-run defaults.
 - Compact broker facade for search, describe, call, and status.
@@ -119,13 +120,16 @@ Wiring status:
 
 - Codex is wired through the broker.
 - Claude is wired through the broker after profile validation and manual `/mcp` acceptance.
-- Gemini is a profile, not a rendered client config.
+- Gemini is wired through the broker by rendering `.gemini/settings.json`.
 
 Public release status:
 
 - The repo is designed to stay public-safe.
 - Private upstream inventory, account paths, OAuth state, secrets, sockets, logs, and generated client configs stay outside git.
-- PyPI, Homebrew, Docker, and registry publication are planned work. The repo now documents the intended `pipx` and Homebrew install paths, but publication is still pending.
+- Current source release target is `0.1.2`; PyPI, MCP Registry, and Homebrew
+  publication remain at `0.1.1` until the release workflow completes.
+- Docker image support is available for container-friendly configs. Docker MCP Catalog submission still requires Docker review.
+- MCPB metadata is present at `mcpb/manifest.json` for local directory review.
 
 See [ROADMAP.md](ROADMAP.md) for public-facing release work.
 
@@ -152,7 +156,9 @@ The config file is the contract. Profiles decide exposure, upstreams define tran
 
 ## Screenshots Or GIF
 
-The public release should include a short terminal GIF showing:
+The quickstart flow should look like this:
+
+![mcp-broker quickstart terminal](docs/assets/quickstart-terminal.svg)
 
 ```text
 make config-init
@@ -161,7 +167,8 @@ make broker-status
 make codex-facade-smoke
 ```
 
-It should also show the MCP client `/mcp` view with one `mcp-broker` entry and the broker `status` tool listing profile-visible upstream state.
+In an MCP client, `/mcp` should show one `mcp-broker` entry. Use `broker.status`
+to inspect profile-visible upstream state.
 
 ## Quickstart
 
@@ -173,16 +180,31 @@ Prerequisites:
 - Node.js and `npx` for npm-based upstream MCP servers.
 - A clone of this repo.
 
-Intended package installs after publication:
+Package installs:
 
 ```bash
 pipx install mcp-broker
+uv tool install mcp-broker
+brew tap NavinAgrawal/tap
 brew install mcp-broker
 ```
 
-Homebrew should install the same console scripts as the Python package. Package
-install must not write MCP client config; client wiring stays an explicit
+Homebrew installs the same console scripts as the Python package. Package
+installs do not write MCP client config; client wiring stays an explicit
 Makefile action.
+
+Docker is for container-friendly configs:
+
+```bash
+docker build -t mcp-broker:local .
+docker run --rm -i mcp-broker:local
+```
+
+Local stdio clients and MCPB-style installs use the package-owned lifecycle:
+
+```bash
+mcp-broker stdio --init-if-missing
+```
 
 Create the local venv, install dependencies, and verify runtime layout:
 
@@ -278,7 +300,15 @@ Rollback:
 make config-rollback CLIENT=codex
 ```
 
-Use `CLIENT=claude` after the Claude profile smoke passes and Claude wiring is intended.
+Use `CLIENT=claude` or `CLIENT=gemini` after that profile smoke passes and that
+client is intended to use the broker. For new JSON-based MCP clients, generate a
+starter block:
+
+```bash
+make profile-snippet NEW_PROFILE=local-client NEW_CLIENT_FORMAT=mcp-settings-json
+```
+
+See [docs/add-profile.md](docs/add-profile.md) for the full new-profile flow.
 
 ## Compact broker facade
 
@@ -301,6 +331,8 @@ Supported concepts:
 
 - `max_tools` protects clients from huge tool lists.
 - `compact_tools_enabled` exposes broker facade tools instead of raw upstream tools.
+- `broker_tool_name_style` adapts broker facade names for clients that cannot surface dotted tool names.
+- `mcp_allowed_servers` renders client settings for MCP clients that require an explicit server allowlist.
 - `allow_mutating_upstreams` is required before a mutating upstream can be exposed.
 - `shared` mode reuses one upstream process where shared account state is acceptable.
 - `per_session` mode isolates upstream state per client session.
@@ -432,6 +464,19 @@ make quality-gate
 
 The coverage gate uses line and branch coverage for Python source.
 
+Run the release gate when preparing a tag:
+
+```bash
+make release-gate
+```
+
+`release-gate` runs package, smoke, and mutation checks. Mutation
+runs public unit and journey tests last and writes
+`var/quality/mutation_stats.json` with total counts, score, and ranked
+`blocked_by_file` entries. On macOS, the release gate runs mutation inside a
+Linux container to avoid local mutmut fork failures. E2E tests remain in `make
+quality-gate`.
+
 Run smoke and runtime cleanup checks:
 
 ```bash
@@ -451,6 +496,7 @@ Release or client config apply should wait for:
 - dry-run config render for each intended client
 - rollback test
 - `make release-smoke`
+- `make release-gate` before tagging
 - `make doctor` with no stale broker-owned resources
 
 See [docs/release-checklist.md](docs/release-checklist.md).
@@ -470,6 +516,7 @@ make test-e2e
 make test-cov
 make precommit
 make quality-gate
+make release-gate
 make config-validate
 make broker-smoke
 make broker-start
@@ -508,7 +555,8 @@ make windows-uninstall
 make linux-container-smoke
 make windows-powershell-smoke
 make release-smoke
-make public-release-dry-run
+make mutation
+make mutation-linux
 ```
 
 `make quality-gate` is repo-local. It does not call personal scripts outside this repo.
@@ -518,23 +566,23 @@ or an external LLM session. It reads the same YAML `smoke` probes and prints the
 exact `mcp__mcp_broker__` deferred wrapper calls to run inside an active Codex
 session. See [docs/codex-deferred-tool-acceptance.md](docs/codex-deferred-tool-acceptance.md).
 
-Maintainer-only aliases may exist for this machine's private quality system. They are guarded by checks for `~/.llm-shared/scripts` and are not part of the public setup path.
-
 ## Project tree
 
 ```text
 mcp-broker/
+|- .gitignore
 |- Makefile
 |- README.md
 |- pyproject.toml
 |- requirements.txt
 |- config/
 |  |- broker.example.yaml
+|  |- broker.private.yaml        # local, ignored by git
 |  `- broker.schema.json
-|  `- broker.private.yaml        # local, ignored by git
 |- docs/
 |- registry/
 |- scripts/
+|  `- check_mutation_stats.py
 |- src/
 |  `- mcp_broker/
 |- tests/
@@ -554,6 +602,7 @@ Generated reports stay under `var/`, especially `var/coverage/`, `var/test-logs/
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [ROADMAP.md](ROADMAP.md)
 - [docs/install.md](docs/install.md)
+- [docs/add-profile.md](docs/add-profile.md)
 - [docs/migration.md](docs/migration.md)
 - [docs/adoption-guide.md](docs/adoption-guide.md)
 - [docs/comparison.md](docs/comparison.md)
@@ -569,6 +618,7 @@ Generated reports stay under `var/`, especially `var/coverage/`, `var/test-logs/
 - [docs/upstream-compatibility-matrix.md](docs/upstream-compatibility-matrix.md)
 - [docs/codex-deferred-tool-acceptance.md](docs/codex-deferred-tool-acceptance.md)
 - [docs/context-reduction-measurement.md](docs/context-reduction-measurement.md)
+- [docs/mutation-testing.md](docs/mutation-testing.md)
 - [docs/release-checklist.md](docs/release-checklist.md)
 - [docs/troubleshooting.md](docs/troubleshooting.md)
 

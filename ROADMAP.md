@@ -17,15 +17,14 @@ This roadmap is product-facing. Private agent task history and local upstream in
 
 ## Next
 
-- PyPI package for `pipx install mcp-broker`.
-- `uv tool install` documentation after package validation.
-- Homebrew formula after the Python package path is stable.
-- Official MCP Registry metadata and release automation.
-- Docker or OCI mode only after host-bound state, mounts, and support boundaries are documented.
-- Public comparison guide against MCP gateways, registries, and simple proxies.
-- Adoption guide for users who run Codex, Claude, Cursor, or other MCP clients with too many always-loaded tools.
-- Public safety docs for mutating tools, OAuth state, browser state, filesystem roots, database URLs, and profile allowlists.
-- Transport policy docs for stdio, HTTP, streamable HTTP, SSE, and WebSocket compatibility boundaries.
+- Keep package, Homebrew, MCP Registry, Docker, and MCPB metadata aligned for each release.
+- Publish Docker images after namespace, tag, SBOM, provenance, and catalog-review choices are confirmed.
+- Complete directory listings after account-level review: Docker MCP Catalog, Smithery, Glama, PulseMCP, and secondary MCP indexes.
+- Expand provider-specific passive auth probes where upstream token formats are stable and public.
+- Add more migration helpers for users importing existing MCP configs from other clients.
+- Track WebSocket only as a future custom transport extension, opened when a
+  real MCP compatibility fixture and framing contract exist.
+- Keep context-reduction measurements current as clients add or change connector surfaces.
 
 ## Public Export
 
@@ -33,7 +32,7 @@ The first public repo must come from the export pipeline, not by changing visibi
 
 Before first public push:
 
-- Run `make public-export-check PUBLIC_REPO=<clean-public-checkout>`.
-- Review root docs, issue templates, screenshots or GIF, and release notes.
+- Run `make release-gate` from a clean checkout before publishing a release.
+- Review root docs, issue templates, visual assets, and release notes.
 - Confirm no private docs, private inventory, runtime state, generated reports, or private git history are present.
 - Run the public test gate from the exported checkout.

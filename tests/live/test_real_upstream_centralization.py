@@ -89,10 +89,10 @@ def test_broker_compacts_yaml_configured_profiles(tmp_path: Path) -> None:
             )
             tool_names = [tool["name"] for tool in response["result"]["tools"]]
             assert tool_names == [
-                "broker.search_tools",
-                "broker.describe_tool",
-                "broker.call_tool",
-                "broker.status",
+                profile.exposed_broker_tool_name("broker.search_tools"),
+                profile.exposed_broker_tool_name("broker.describe_tool"),
+                profile.exposed_broker_tool_name("broker.call_tool"),
+                profile.exposed_broker_tool_name("broker.status"),
             ], profile.name
         _request(socket_path, {"method": "broker/stop", "id": "stop-compact"})
         daemon.join(timeout=2)

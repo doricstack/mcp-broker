@@ -110,6 +110,9 @@
         "compact_tools_enabled": {
           "type": "boolean"
         },
+        "broker_tool_name_style": {
+          "enum": ["dotted", "snake"]
+        },
         "allow_mutating_upstreams": {
           "$ref": "#/$defs/stringList"
         }
@@ -121,7 +124,7 @@
       "required": ["format", "config_path"],
       "properties": {
         "format": {
-          "enum": ["codex-toml", "claude-json"]
+          "enum": ["codex-toml", "claude-json", "mcp-settings-json"]
         },
         "config_path": {
           "$ref": "#/$defs/pathString"
@@ -138,6 +141,9 @@
           "$ref": "#/$defs/stringList"
         },
         "backup_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "mcp_allowed_servers": {
           "$ref": "#/$defs/stringList"
         },
         "codex_apps_policy": {
@@ -280,6 +286,9 @@
         "auth_repair": {
           "$ref": "#/$defs/authRepair"
         },
+        "auth_probe": {
+          "$ref": "#/$defs/authProbe"
+        },
         "smoke": {
           "$ref": "#/$defs/smoke"
         }
@@ -356,6 +365,29 @@
         },
         "timeout_seconds": {
           "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "authProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "token_file"
+      ],
+      "properties": {
+        "type": {
+          "const": "oauth_token_file"
+        },
+        "token_file": {
+          "$ref": "#/$defs/pathString"
+        },
+        "required_fields": {
+          "$ref": "#/$defs/stringList"
+        },
+        "refresh_token_expiry_field": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

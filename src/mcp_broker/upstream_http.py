@@ -17,6 +17,7 @@ from mcp_broker.protocol import SUPPORTED_PROTOCOL_VERSIONS
 
 MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version"
 MCP_SESSION_ID_HEADER = "Mcp-Session-Id"
+CONTENT_TYPE_HEADER = "Content-Type"
 RETRYABLE_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
@@ -147,7 +148,7 @@ class HttpUpstreamClient:
 
     def _post_notification(self, payload: dict[str, Any], *, timeout_seconds: int) -> None:
         response = self._http_post(payload, timeout_seconds=timeout_seconds)
-        if response.status == 202 or not response.body:
+        if not response.body:
             return
         parsed = _parse_http_response_body(response, self.upstream.name)
         error = parsed.get("error")
@@ -193,7 +194,7 @@ class HttpUpstreamClient:
         timeout_seconds: int,
     ) -> "_HttpResponse":
         headers = self._headers()
-        body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        body = json.dumps(payload, sort_keys=True).encode()
         request = urllib.request.Request(
             self.upstream.command,
             data=body,
@@ -208,7 +209,7 @@ class HttpUpstreamClient:
                     self._session_id = session_id
                 return _HttpResponse(
                     status=response.status,
-                    content_type=response.headers.get("Content-Type", ""),
+                    content_type=response.headers.get(CONTENT_TYPE_HEADER, ""),
                     body=response_body,
                 )
         except urllib.error.HTTPError as exc:
@@ -229,7 +230,7 @@ class HttpUpstreamClient:
     def _headers(self) -> dict[str, str]:
         headers = {
             "Accept": "application/json, text/event-stream",
-            "Content-Type": "application/json",
+            CONTENT_TYPE_HEADER: "application/json",
             MCP_PROTOCOL_VERSION_HEADER: SUPPORTED_PROTOCOL_VERSIONS[0],
         }
         token = self._bearer_token()
@@ -246,7 +247,7 @@ class HttpUpstreamClient:
         token_values = [
             value
             for target_name, value in resolved.items()
-            if target_name.endswith("_TOKEN") or target_name.endswith("_ACCESS_TOKEN")
+            if target_name.endswith("_TOKEN")
         ]
         if not token_values:
             return None
@@ -285,13 +286,13 @@ class _HttpResponse:
 
 
 def _parse_http_response_body(response: _HttpResponse, upstream_name: str) -> dict[str, Any]:
-    if response.status == 202:
+    if response.status == 202 and not response.body:
         raise HttpUpstreamError(f"upstream response missing result: {upstream_name}")
     if not response.body:
         raise HttpUpstreamError(f"upstream response missing body: {upstream_name}")
     if response.content_type.lower().startswith("text/event-stream"):
         return _parse_sse_response(response.body, upstream_name)
-    loaded = json.loads(response.body.decode("utf-8"))
+    loaded = json.loads(response.body.decode())
     if not isinstance(loaded, dict):
         raise HttpUpstreamError(f"upstream response must be an object: {upstream_name}")
     return loaded
@@ -299,7 +300,7 @@ def _parse_http_response_body(response: _HttpResponse, upstream_name: str) -> di
 
 def _parse_sse_response(body: bytes, upstream_name: str) -> dict[str, Any]:
     data_lines: list[str] = []
-    for line in body.decode("utf-8").splitlines():
+    for line in body.decode().splitlines():
         if line.startswith("data:"):
             data_lines.append(line.removeprefix("data:").strip())
         if not line and data_lines:

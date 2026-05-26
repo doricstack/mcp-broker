@@ -18,6 +18,7 @@ profiles:
   codex:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
   maintenance:
     max_tools: 200
     allow_mutating_upstreams:
@@ -47,8 +48,10 @@ upstreams:
     assert sorted(config.profiles) == ["codex", "maintenance"]
     assert config.profiles["codex"].max_tools == 80
     assert config.profiles["codex"].compact_tools_enabled is True
+    assert config.profiles["codex"].broker_tool_name_style == "snake"
     assert config.profiles["maintenance"].max_tools == 200
     assert config.profiles["maintenance"].compact_tools_enabled is False
+    assert config.profiles["maintenance"].broker_tool_name_style == "dotted"
     assert config.profiles["maintenance"].allow_mutating_upstreams == ("notes-writer",)
     assert config.upstreams["notes-writer"].mutating is True
 
@@ -567,6 +570,28 @@ profiles:
     max_tools: 0
 """.strip(),
             "profile max_tools must be greater than 0",
+        ),
+        (
+            """
+runtime:
+  root: /tmp/x
+profiles:
+  codex:
+    max_tools: 10
+    broker_tool_name_style: camel
+""".strip(),
+            "profile broker_tool_name_style must be one of: dotted, snake",
+        ),
+        (
+            """
+runtime:
+  root: /tmp/x
+profiles:
+  codex:
+    max_tools: 10
+    broker_tool_name_style: []
+""".strip(),
+            "profile broker_tool_name_style must be a string",
         ),
         (
             """

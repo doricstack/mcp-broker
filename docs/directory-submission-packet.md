@@ -47,9 +47,11 @@ Runtime state stays outside the repository. Local upstreams are configured in us
 Submit in this order after the package works from a clean machine:
 
 - Official MCP Registry: use `registry/server.json` and `mcp-publisher`.
-- Smithery: use the local stdio/MCPB path only after a package install and uninstall smoke passes.
 - Glama: submit the public GitHub repository and verify rendered tool schemas.
 - PulseMCP: submit the public GitHub repository or rely on official registry ingestion when available.
+- Smithery: use the local stdio/MCPB path only after package install, config,
+  upgrade, and uninstall smoke passes.
+- Docker MCP Catalog: submit after Dockerfile and custom catalog smoke pass.
 
 ## Secondary Directories
 

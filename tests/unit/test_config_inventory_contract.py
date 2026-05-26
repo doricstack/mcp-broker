@@ -3,10 +3,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.repo_paths import repo_root
+
 
 pytestmark = pytest.mark.unit
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = repo_root()
 PUBLIC_CONFIG_FILE = ROOT / "config" / "broker.example.yaml"
 
 PRIVATE_CONFIG_FILE = ROOT / "config" / "broker.private.yaml"
@@ -75,7 +77,7 @@ def test_public_example_client_commands_are_portable_and_runtime_derived() -> No
     clients = loaded.get("clients")
     assert isinstance(clients, dict)
 
-    for client_name in ["codex", "claude"]:
+    for client_name in ["codex", "claude", "gemini"]:
         client = clients.get(client_name)
         assert isinstance(client, dict), client_name
         assert client["command"] == "mcp-broker-client"
@@ -181,6 +183,7 @@ def test_public_example_config_is_comment_rich_and_teaches_common_mcp_patterns()
         "# Pattern: auth from broker-owned secret file.",
         "# Pattern: upstream also expects a per-request MCP metadata token.",
         "# auth_repair runs a configured upstream auth tool after matching auth errors.",
+        "# auth_probe can inspect broker-owned OAuth token JSON passively.",
         "# Pattern: HTTP or SSE MCP endpoint.",
         "# Pattern: mutating upstream gated by profile allowlist.",
     ]
@@ -198,6 +201,7 @@ def test_public_example_config_is_comment_rich_and_teaches_common_mcp_patterns()
         "env_files:",
         "session_env:",
         "request_meta:",
+        "auth_probe:",
         "auth_repair:",
         "mutating:",
         "serialize_calls:",
@@ -208,7 +212,7 @@ def test_public_example_config_is_comment_rich_and_teaches_common_mcp_patterns()
     assert [field for field in required_contract_fields if field not in public_text] == []
 
 
-def test_public_example_defines_gemini_as_profile_not_renderer() -> None:
+def test_public_example_defines_gemini_profile_and_renderer() -> None:
     loaded = yaml.safe_load(PUBLIC_CONFIG_FILE.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     profiles = loaded.get("profiles")
@@ -219,8 +223,11 @@ def test_public_example_defines_gemini_as_profile_not_renderer() -> None:
     assert profiles["gemini"] == {
         "max_tools": 80,
         "compact_tools_enabled": True,
+        "broker_tool_name_style": "snake",
     }
-    assert "gemini" not in clients
+    assert clients["gemini"]["format"] == "mcp-settings-json"
+    assert clients["gemini"]["config_path"] == "$HOME/.gemini/settings.json"
+    assert clients["gemini"]["mcp_allowed_servers"] == ["mcp-broker"]
 
 
 def test_private_config_preserves_public_contract_comments_and_gemini_profile() -> None:
@@ -249,7 +256,7 @@ def test_private_config_preserves_public_contract_comments_and_gemini_profile() 
 
     assert [comment for comment in required_comments if comment not in private_text] == []
     assert "gemini" in config.profiles
-    assert "gemini" not in config.clients
+    assert "gemini" in config.clients
     missing_gemini = sorted(
         name
         for name, upstream in config.upstreams.items()

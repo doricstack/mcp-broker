@@ -15,21 +15,21 @@ Run every setup, test, runtime, and client-wiring command through the Makefile.
 
 ## Install Options
 
-For a source checkout, use the Makefile flow below. This is the current
-supported install path for local development and validation.
+For a source checkout, use the Makefile flow below. For user installs, use
+PyPI, uv, Homebrew, or Docker.
 
-The package path is intended to be:
+PyPI through `pipx`:
 
 ```bash
 pipx install mcp-broker
 ```
 
-After a PyPI package exists, `pipx` should put `mcp-broker-client` and
-`mcp-broker-daemon` on the user's PATH. It also installs the top-level
-`mcp-broker` command:
+`pipx` puts `mcp-broker-client` and `mcp-broker-daemon` on the user's PATH. It
+also installs the top-level `mcp-broker` command:
 
 ```bash
 mcp-broker init
+mcp-broker stdio
 mcp-broker start
 mcp-broker status
 mcp-broker render codex --dry-run
@@ -38,22 +38,44 @@ mcp-broker render codex --dry-run
 For service managers, set `MCP_BROKER_DAEMON_COMMAND` to the installed daemon
 path when the repo-local venv is not used.
 
-The `uv` path should use the same package after the PyPI release exists:
+The `uv` path uses the same package:
 
 ```bash
 uv tool install mcp-broker
 uvx mcp-broker status
 ```
 
-Homebrew is planned as a formula or tap after the package release:
+Homebrew:
 
 ```bash
+brew tap NavinAgrawal/tap
 brew install mcp-broker
 ```
 
-The Homebrew formula should install the same console scripts and use the same
-runtime root contract. It should not write MCP client config during package
+The Homebrew formula installs the same console scripts and uses the same
+runtime root contract. It does not write MCP client config during package
 install.
+
+Docker:
+
+```bash
+docker build -t mcp-broker:local .
+docker run --rm -i mcp-broker:local
+```
+
+The Docker image starts a broker daemon inside the container and exposes the
+broker client shim over stdio. Mount `MCP_BROKER_CONFIG`,
+`MCP_BROKER_RUNTIME_ROOT`, and secrets explicitly when using real upstreams.
+The image does not edit host MCP client config.
+
+For direct stdio clients or MCPB-style local installs, use:
+
+```bash
+mcp-broker stdio --init-if-missing
+```
+
+That command starts the broker daemon and stdio facade in one process, using
+the configured runtime root, socket path, config path, and profile.
 
 Windows uses a PowerShell Scheduled Task. It follows the same runtime-root and
 config contract as macOS and Linux.
@@ -214,8 +236,17 @@ make codex-app-policy CLIENT=codex CODEX_APP_POLICY_APPLY=1
 `make config-render CLIENT=codex CONFIG_RENDER_APPLY=1` also applies that
 policy after writing the Codex config.
 
-Use the same targets with `CLIENT=claude` only after the Claude profile smoke
-passes and you intend to wire Claude.
+Use the same targets with `CLIENT=claude` or `CLIENT=gemini` after that profile
+smoke passes and you intend to wire that client.
+
+For a new client profile, print a starter YAML block:
+
+```bash
+make profile-snippet NEW_PROFILE=local-client NEW_CLIENT_FORMAT=mcp-settings-json
+```
+
+The generated `mcp-settings-json` block includes `mcp_allowed_servers` so
+clients that require an MCP allowlist expose the broker tools to model sessions.
 
 ## Rollback
 
@@ -225,6 +256,7 @@ make doctor
 ```
 
 Use `CLIENT=claude` to restore the latest Claude backup.
+Use `CLIENT=gemini` to restore the latest Gemini backup.
 
 ## Smoke Checks
 
@@ -233,7 +265,9 @@ make config-validate
 make tools-count PROFILE=codex
 make codex-facade-smoke
 make claude-facade-smoke
+make gemini-facade-smoke
 make codex-profile-validation
+make gemini-profile-validation
 make codex-claude-discovery-parity
 make codex-deferred-acceptance
 make broker-smoke
@@ -245,6 +279,10 @@ make doctor
 
 `make claude-facade-smoke` does not write Claude config. It only verifies the
 Claude profile through the broker shim.
+
+For Gemini, `gemini mcp list` can show configured servers as disabled when the
+current folder is not trusted by Gemini CLI. Trust the workspace in Gemini first,
+then restart Gemini and rerun the list command.
 
 `make codex-claude-discovery-parity` compares Codex and Claude compact profile
 discovery through the client shim without writing Claude config. It checks
@@ -264,10 +302,10 @@ Do not put `codex exec` in `make quality-gate`; it invokes an external LLM
 session and can change with account, network, model, or hosted connector state.
 Use the broker-owned Make targets for deterministic validation.
 
-`make release-smoke` creates a clean tree from tracked files, copies the public
-example through `make config-init`, validates it, and runs `make broker-smoke`
-with a temporary runtime root. It is the public install-path proof that the repo
-does not need private paths.
+`make release-smoke` creates a clean tree from the public export allowlist,
+copies the public example through `make config-init`, validates it, and runs
+`make broker-smoke` with a temporary runtime root. It is the public install-path
+proof that the repo does not need private paths.
 
 `make linux-container-smoke` downloads the configured Linux Python image when
 missing, then runs the public setup path and systemd dry-run inside that

@@ -1,8 +1,9 @@
 from pathlib import Path
 from io import BytesIO
 import json
-import os
+import shutil
 import sys
+import tempfile
 
 import pytest
 
@@ -274,6 +275,105 @@ def test_client_shim_treats_invalid_notification_payload_as_request() -> None:
     assert _is_jsonrpc_notification(b"\xff") is False
 
 
+def test_client_shim_notification_detection_decodes_utf8() -> None:
+    from mcp_broker.client import _is_jsonrpc_notification
+
+    class TrackingBytes(bytes):
+        def __new__(cls) -> "TrackingBytes":
+            return super().__new__(cls, b'{"jsonrpc":"2.0","method":"notifications/initialized"}')
+
+        def __init__(self) -> None:
+            self.decode_calls: list[str] = []
+
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            self.decode_calls.append(encoding)
+            return super().decode(encoding, errors)
+
+    payload = TrackingBytes()
+
+    assert _is_jsonrpc_notification(payload) is True
+    assert payload.decode_calls == ["utf-8"]
+
+
+def test_client_shim_read_response_uses_fixed_chunks_and_raw_join() -> None:
+    from mcp_broker.client import _read_response
+
+    class ChunkedSocket:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+            self.chunks = [b'{"a":', b"1}\n", b"ignored"]
+
+        def recv(self, size: int) -> bytes:
+            self.calls.append(size)
+            return self.chunks.pop(0)
+
+    client = ChunkedSocket()
+
+    assert _read_response(client) == b'{"a":1}\n'  # type: ignore[arg-type]
+    assert client.calls == [65536, 65536]
+
+
+def test_client_shim_metadata_output_is_compact_utf8_json() -> None:
+    from mcp_broker.client import _inject_broker_metadata
+
+    class TrackingBytes(bytes):
+        def __new__(cls) -> "TrackingBytes":
+            return super().__new__(cls, b'{"jsonrpc":"2.0","id":"x","method":"tools/list"}')
+
+        def __init__(self) -> None:
+            self.decode_calls: list[str] = []
+
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            self.decode_calls.append(encoding)
+            return super().decode(encoding, errors)
+
+    payload = TrackingBytes()
+
+    outbound = _inject_broker_metadata(payload, "codex", "session-1")
+
+    assert payload.decode_calls == ["utf-8"]
+    assert b" " not in outbound
+    assert outbound.endswith(b"\n")
+    assert json.loads(outbound.decode("utf-8"))["params"] == {
+        "profile": "codex",
+        "broker_session_id": "session-1",
+        "broker_client_cwd": str(Path.cwd()),
+    }
+
+
+def test_client_shim_metadata_encoder_uses_canonical_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mcp_broker import client
+
+    class EncodedJson(str):
+        def __new__(cls) -> "EncodedJson":
+            return super().__new__(cls, "{}")
+
+        def __init__(self) -> None:
+            self.encode_calls: list[str] = []
+
+        def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+            self.encode_calls.append(encoding)
+            return super().encode(encoding, errors)
+
+    encoded_json = EncodedJson()
+
+    def fake_dumps(*args: object, **kwargs: object) -> EncodedJson:
+        assert kwargs == {"separators": (",", ":")}
+        return encoded_json
+
+    monkeypatch.setattr(client.json, "dumps", fake_dumps)
+
+    assert (
+        client._inject_broker_metadata(
+            b'{"jsonrpc":"2.0","id":"x","method":"tools/list"}',
+            "codex",
+            "session-1",
+        )
+        == b"{}\n"
+    )
+    assert encoded_json.encode_calls == ["utf-8"]
+
+
 def test_client_main_returns_success_for_stdio_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -291,6 +391,59 @@ def test_client_main_returns_success_for_stdio_round_trip(
 
     assert result == 0
     assert stdout.buffer.getvalue() == b'{"jsonrpc":"2.0","id":"cli","result":{}}\n'
+
+
+def test_client_main_help_and_required_args(capsys: pytest.CaptureFixture[str]) -> None:
+    from mcp_broker.client import main
+
+    with pytest.raises(SystemExit) as help_exit:
+        main(["--help"])
+
+    assert help_exit.value.code == 0
+    captured = capsys.readouterr()
+    assert "Run the mcp-broker stdio client shim" in captured.out.splitlines()
+    assert "--socket-path" in captured.out
+    assert "--profile" in captured.out
+    assert "--session-id" in captured.out
+
+    with pytest.raises(SystemExit) as missing_socket_path:
+        main([])
+
+    assert missing_socket_path.value.code == 2
+
+
+def test_client_main_preserves_profile_and_session_id_in_tool_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker.client import main
+
+    socket_path = _socket_path(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        BinaryWrapper(b'{"jsonrpc":"2.0","id":"list","method":"tools/list"}\n'),
+    )
+    monkeypatch.setattr(sys, "stdout", BinaryWrapper())
+
+    with FakeBrokerSocket(socket_path, b'{"jsonrpc":"2.0","id":"list","result":{"tools":[]}}\n') as broker:
+        result = main(
+            [
+                "--socket-path",
+                str(socket_path),
+                "--profile",
+                "codex",
+                "--session-id",
+                "session-from-cli",
+            ]
+        )
+
+    assert result == 0
+    assert json.loads(broker.received.decode("utf-8"))["params"] == {
+        "profile": "codex",
+        "broker_session_id": "session-from-cli",
+        "broker_client_cwd": str(Path.cwd()),
+    }
 
 
 def test_client_main_reports_missing_socket(
@@ -311,20 +464,22 @@ def test_client_main_reports_missing_socket(
 
 
 def test_client_main_expands_environment_in_socket_path(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from mcp_broker.client import main
 
-    home = Path("/tmp") / f"mcp-broker-client-home-{os.getpid()}"
+    home = Path(tempfile.mkdtemp(prefix="mbc-home-", dir="/tmp"))
     socket_path = home / "mcp" / "mcp-broker" / "sockets" / "broker.sock"
     socket_path.parent.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(sys, "stdin", BinaryWrapper(b'{"jsonrpc":"2.0","id":"cli"}\n'))
     monkeypatch.setattr(sys, "stdout", BinaryWrapper())
 
-    with FakeBrokerSocket(socket_path, b'{"jsonrpc":"2.0","id":"cli","result":{"ok":true}}\n'):
-        result = main(["--socket-path", "$HOME/mcp/mcp-broker/sockets/broker.sock"])
+    try:
+        with FakeBrokerSocket(socket_path, b'{"jsonrpc":"2.0","id":"cli","result":{"ok":true}}\n'):
+            result = main(["--socket-path", "$HOME/mcp/mcp-broker/sockets/broker.sock"])
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
 
     assert result == 0
 

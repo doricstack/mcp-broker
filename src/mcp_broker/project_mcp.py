@@ -20,6 +20,7 @@ ENV_REFERENCE_PATTERN = re.compile(
     r"^(?:[A-Za-z0-9_ -]+)?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$"
 )
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+TEXT_ENCODING = "utf-8"
 
 
 @dataclass(frozen=True)
@@ -162,7 +163,6 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         action="append",
-        default=[],
         help="Broker profile for imported upstreams; repeat for multiple profiles",
     )
     parser.add_argument("--import-missing", action="store_true", help="Append missing entries to broker config")
@@ -189,7 +189,7 @@ def _find_project_mcp_files(roots: Sequence[Path], backup_root: Path) -> list[Pa
         expanded_root = root.expanduser()
         if not expanded_root.exists():
             continue
-        for path in expanded_root.rglob(".mcp.json"):
+        for path in sorted(expanded_root.rglob(".mcp.json")):
             resolved_path = path.resolve()
             if _is_under(resolved_path, resolved_backup):
                 continue
@@ -208,7 +208,7 @@ def _is_under(path: Path, parent: Path) -> bool:
 
 
 def _load_mcp_file(path: Path) -> _ProjectMcpFile:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
+    loaded = json.loads(path.read_text(encoding=TEXT_ENCODING))
     if not isinstance(loaded, dict):
         raise ValueError(f"{path} must contain a JSON object")
     servers = loaded.get("mcpServers", {})
@@ -226,7 +226,7 @@ def _load_claude_project_entries(
     expanded_path = claude_config_path.expanduser()
     if not expanded_path.exists():
         return []
-    loaded = json.loads(expanded_path.read_text(encoding="utf-8"))
+    loaded = json.loads(expanded_path.read_text(encoding=TEXT_ENCODING))
     if not isinstance(loaded, dict):
         raise ValueError(f"{expanded_path} must contain a JSON object")
     projects = loaded.get("projects", {})
@@ -273,8 +273,12 @@ def _server_to_upstream(
 
 
 def _is_http_server(server_config: dict[str, Any]) -> bool:
-    server_type = str(server_config.get("type", "")).lower()
-    return server_type in {"http", "sse"} or "url" in server_config
+    server_type_value = server_config.get("type")
+    has_http_type = (
+        server_type_value is not None
+        and str(server_type_value).lower() in {"http", "sse"}
+    )
+    return has_http_type or "url" in server_config
 
 
 def _stdio_server_to_upstream(
@@ -388,14 +392,14 @@ def _append_missing_upstreams(
     config_path: Path,
     missing_imports: dict[str, dict[str, Any]],
 ) -> list[str]:
-    original = config_path.read_text(encoding="utf-8")
+    original = config_path.read_text(encoding=TEXT_ENCODING)
     addition = _yaml_upstream_addition(missing_imports)
     updated = _insert_under_upstreams(original, addition)
-    config_path.write_text(updated, encoding="utf-8")
+    config_path.write_text(updated, encoding=TEXT_ENCODING)
     try:
         BrokerConfig.from_file(config_path)
     except Exception:
-        config_path.write_text(original, encoding="utf-8")
+        config_path.write_text(original, encoding=TEXT_ENCODING)
         raise
     return sorted(missing_imports)
 
@@ -424,7 +428,7 @@ def _insert_under_upstreams(config_text: str, addition: str) -> str:
         if line.strip() and not line.startswith((" ", "#")):
             insert_at = index
             break
-    if insert_at > 0 and not lines[insert_at - 1].endswith("\n"):
+    if not lines[insert_at - 1].endswith("\n"):
         lines[insert_at - 1] = lines[insert_at - 1] + "\n"
     lines.insert(insert_at, addition if addition.endswith("\n") else addition + "\n")
     return "".join(lines)
@@ -435,7 +439,7 @@ def _backup_file(path: Path, backup_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "__", str(path.expanduser()))
     backup_path = backup_root / f"{timestamp}.{safe_name}"
-    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    backup_path.write_text(path.read_text(encoding=TEXT_ENCODING), encoding=TEXT_ENCODING)
     return backup_path
 
 
@@ -447,12 +451,12 @@ def _write_empty_mcp_servers(project_file: _ProjectMcpFile) -> None:
     updated["mcpServers"] = {}
     project_file.path.write_text(
         json.dumps(updated, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+        encoding=TEXT_ENCODING,
     )
 
 
 def _write_empty_claude_project_servers(project_file: _ProjectMcpFile) -> None:
-    loaded = json.loads(project_file.path.read_text(encoding="utf-8"))
+    loaded = json.loads(project_file.path.read_text(encoding=TEXT_ENCODING))
     if not isinstance(loaded, dict):
         raise ValueError(f"{project_file.path} must contain a JSON object")
     projects = loaded.get("projects", {})
@@ -471,7 +475,7 @@ def _write_empty_claude_project_servers(project_file: _ProjectMcpFile) -> None:
     updated["projects"] = updated_projects
     project_file.path.write_text(
         json.dumps(updated, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+        encoding=TEXT_ENCODING,
     )
 
 

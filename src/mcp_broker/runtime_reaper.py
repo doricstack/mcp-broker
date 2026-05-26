@@ -115,18 +115,15 @@ def write_process_metadata(
 ) -> Path:
     paths.ensure()
     metadata_path = paths.upstream_pid_dir / f"{name}.json"
-    metadata_path.write_text(
-        json.dumps(
-            {
-                "broker_pid": broker_pid,
-                "name": name,
-                "owner": OWNER,
-                "pid": pid,
-                "process_group_id": process_group_id,
-            },
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    _write_metadata(
+        metadata_path,
+        {
+            "owner": OWNER,
+            "process_group_id": process_group_id,
+            "pid": pid,
+            "name": name,
+            "broker_pid": broker_pid,
+        },
     )
     return metadata_path
 
@@ -140,17 +137,14 @@ def write_socket_metadata(
 ) -> Path:
     paths.ensure()
     metadata_path = paths.socket_owner_dir / f"{socket_name}.json"
-    metadata_path.write_text(
-        json.dumps(
-            {
-                "broker_pid": broker_pid,
-                "owner": OWNER,
-                "pid": pid,
-                "socket_name": socket_name,
-            },
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    _write_metadata(
+        metadata_path,
+        {
+            "socket_name": socket_name,
+            "pid": pid,
+            "owner": OWNER,
+            "broker_pid": broker_pid,
+        },
     )
     return metadata_path
 
@@ -179,7 +173,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _read_metadata(metadata_path: Path) -> dict[str, object]:
-    return json.loads(metadata_path.read_text(encoding="utf-8"))
+    return json.loads(metadata_path.read_bytes())
+
+
+def _write_metadata(metadata_path: Path, payload: dict[str, object]) -> None:
+    metadata_path.write_bytes(f"{json.dumps(payload, sort_keys=True)}\n".encode())
 
 
 def _process_exists(pid: int) -> bool:

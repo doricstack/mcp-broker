@@ -158,15 +158,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_validation(args: argparse.Namespace) -> dict[str, Any]:
     config = BrokerConfig.from_file(Path(args.config))
     plan = build_profile_validation_plan(config, args.profile)
-    started_daemon = False
     daemon = BrokerDaemon(
         runtime_root=config.runtime.root,
         socket_path=config.runtime.socket_path,
         broker_config=config,
     )
     session_id = f"profile-validation-{args.profile}-{uuid4().hex}"
+    started_daemon = _start_daemon_if_needed(daemon)
     try:
-        started_daemon = _start_daemon_if_needed(daemon)
         report = run_profile_validation(
             socket_path=config.runtime.socket_path,
             profile=args.profile,
@@ -204,6 +203,7 @@ def _run_single_probe(
         profile,
         upstreams,
         probe.upstream_name,
+        context="",
         require_active=False,
     )
     matches, described_tool, input_schema = _search_and_describe_probe(
@@ -243,8 +243,8 @@ def _require_exposed_upstream(
     upstreams: dict[str, Any],
     upstream_name: str,
     *,
-    context: str = "",
-    require_active: bool = True,
+    context: str,
+    require_active: bool,
 ) -> dict[str, Any]:
     upstream_snapshot = upstreams.get(upstream_name)
     if not isinstance(upstream_snapshot, dict) or upstream_snapshot.get("exposed") is not True:
@@ -277,7 +277,9 @@ def _load_upstream_status(
 
 def _upstreams_from_status(profile: str, status_response: dict[str, Any]) -> dict[str, Any]:
     status_payload = _tool_payload(status_response)
-    upstreams = status_payload.get("upstreams", {})
+    upstreams = status_payload.get("upstreams")
+    if upstreams is None:
+        return {}
     if not isinstance(upstreams, dict):
         raise DiscoveryParityError(f"{profile} broker.status returned invalid upstream map")
     return upstreams
@@ -329,8 +331,12 @@ def _raise_on_unavailable_probe_catalog(
     search_payload: dict[str, Any],
     probe: ProfileProbe,
 ) -> None:
-    skipped_upstreams = search_payload.get("skipped_upstreams", {})
-    if isinstance(skipped_upstreams, dict) and probe.upstream_name in skipped_upstreams:
+    skipped_upstreams = search_payload.get("skipped_upstreams")
+    if skipped_upstreams is None:
+        skipped_upstreams = {}
+    if not isinstance(skipped_upstreams, dict):
+        raise DiscoveryParityError(f"{profile} search returned invalid skipped_upstreams for {probe.upstream_name}")
+    if probe.upstream_name in skipped_upstreams:
         raise DiscoveryParityError(
             f"{profile} search skipped {probe.upstream_name}: "
             f"{skipped_upstreams[probe.upstream_name]}"

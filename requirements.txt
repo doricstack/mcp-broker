@@ -1,8 +1,20 @@
+# Maintainer bootstrap requirements for the source checkout.
+#
+# Public runtime dependencies live in pyproject.toml under [project.dependencies]
+# with lower bounds so package installers can resolve compatible versions.
+# This file is pinned on purpose: Makefile setup, CI, package checks, and release
+# smoke tests should use a reproducible toolchain.
+#
+# Comments are valid in requirements files. pip ignores blank lines and lines
+# starting with "#".
+
+# Package build and publication checks
 build==1.5.0
-jsonschema==4.25.1
+twine==6.2.0
+
+# Test runner and coverage plugins
 pytest==9.0.2
 pytest-cov==7.0.0
 pytest-sugar==1.1.1
 pytest-timeout==2.4.0
-PyYAML==6.0.3
-twine==6.2.0
+mutmut==3.5.0

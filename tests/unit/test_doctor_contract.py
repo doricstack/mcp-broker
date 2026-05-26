@@ -7,6 +7,60 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
+def test_doctor_main_help_documents_runtime_config(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker.doctor import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--help"])
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "\nValidate mcp-broker runtime config\n" in captured.out
+    assert "XXValidate" not in captured.out
+    assert "--config" in captured.out
+
+
+def test_doctor_main_requires_config_argument(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker.doctor import main
+
+    with pytest.raises(SystemExit) as exc:
+        main([])
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 2
+    assert "the following arguments are required: --config" in captured.err
+
+
+def test_doctor_command_available_expands_user_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker.doctor import _command_available
+
+    home = tmp_path / "home"
+    home.mkdir()
+    executable = home / "tool.sh"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.setenv("HOME", str(home))
+
+    assert _command_available("~/tool.sh") is True
+
+
+def test_doctor_command_available_rejects_non_executable_file(tmp_path: Path) -> None:
+    from mcp_broker.doctor import _command_available
+
+    script = tmp_path / "tool.sh"
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    script.chmod(0o644)
+
+    assert _command_available(str(script)) is False
+
+
 def test_doctor_finds_broken_enabled_stdio_commands(tmp_path: Path) -> None:
     from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
     from mcp_broker.doctor import find_broken_upstream_commands

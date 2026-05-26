@@ -75,6 +75,8 @@ Broker config supports client profiles:
 - `maintenance`
 
 Profiles can allow or deny tool prefixes and mutating tools.
-Gemini is currently an exposure profile only; this repo does not render a Gemini client config format yet.
+Gemini uses the same profile gate as other rendered clients. Its renderer writes
+`.gemini/settings.json` and can include `mcp.allowed` so Gemini exposes the
+broker tools from the configured broker server.
 
 Mutating upstreams must declare `mutating: true` in central config. Any profile that exposes a mutating upstream must list that upstream name under `profiles.<profile>.allow_mutating_upstreams`; config load fails without the allowlist entry. Runtime tool advertisement enforces the same check so hand-built config objects cannot bypass the profile gate.

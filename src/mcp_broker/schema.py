@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -20,6 +21,7 @@ DEFAULT_IDLE_TIMEOUT_SECONDS = 900
 DEFAULT_CPU_WATCHDOG_PERCENT = 80
 DEFAULT_CPU_WATCHDOG_SECONDS = 10
 DEFAULT_AUTH_REPAIR_TIMEOUT_SECONDS = 300
+ALLOWED_AUTH_PROBE_TYPES = frozenset({"oauth_token_file"})
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,56 @@ class AuthRepairPolicy:
 
 
 @dataclass(frozen=True)
+class AuthProbePolicy:
+    type: str
+    token_file: str | Path
+    required_fields: tuple[str, ...] = ()
+    refresh_token_expiry_field: str | None = None
+
+    @classmethod
+    def from_mapping(cls, path: str, data: dict[str, Any] | None) -> "AuthProbePolicy | None":
+        if data is None:
+            return None
+        raw = _mapping_or_empty(path, data)
+        _validate_keys(
+            path,
+            raw,
+            {
+                "type",
+                "token_file",
+                "required_fields",
+                "refresh_token_expiry_field",
+            },
+        )
+        probe_type = raw.get("type")
+        if not isinstance(probe_type, str) or probe_type not in ALLOWED_AUTH_PROBE_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_AUTH_PROBE_TYPES))
+            raise ValueError(f"{path}.type must be one of: {allowed}")
+        token_file = raw.get("token_file")
+        if not isinstance(token_file, str) or not token_file:
+            raise ValueError(f"{path}.token_file must be a non-empty string")
+        required_fields = raw.get("required_fields", [])
+        if not isinstance(required_fields, list):
+            raise ValueError(f"{path}.required_fields must be a list")
+        parsed_fields = tuple(required_fields)
+        if any(not isinstance(field, str) for field in parsed_fields):
+            raise ValueError(f"{path}.required_fields must contain strings")
+        if any(not field for field in parsed_fields):
+            raise ValueError(f"{path}.required_fields cannot contain empty values")
+        refresh_token_expiry_field = raw.get("refresh_token_expiry_field")
+        if refresh_token_expiry_field is not None and (
+            not isinstance(refresh_token_expiry_field, str) or not refresh_token_expiry_field
+        ):
+            raise ValueError(f"{path}.refresh_token_expiry_field must be a non-empty string")
+        return cls(
+            type=probe_type,
+            token_file=token_file,
+            required_fields=parsed_fields,
+            refresh_token_expiry_field=refresh_token_expiry_field,
+        )
+
+
+@dataclass(frozen=True)
 class SmokeProbe:
     query: str
     tool: str
@@ -217,7 +269,7 @@ def parse_profiles(path: str, data: Any) -> tuple[str, ...]:
 
 
 def parse_transport(path: str, value: Any) -> str:
-    transport = str(value or "stdio")
+    transport = "stdio" if value is None else str(value)
     if transport not in ALLOWED_UPSTREAM_TRANSPORTS:
         allowed = ", ".join(sorted(ALLOWED_UPSTREAM_TRANSPORTS))
         raise ValueError(f"{path} must be one of: {allowed}")
@@ -225,7 +277,7 @@ def parse_transport(path: str, value: Any) -> str:
 
 
 def parse_mode(path: str, value: Any) -> str:
-    mode = str(value or "shared")
+    mode = "shared" if value is None else str(value)
     if mode not in ALLOWED_UPSTREAM_MODES:
         allowed = ", ".join(sorted(ALLOWED_UPSTREAM_MODES))
         raise ValueError(f"{path} must be one of: {allowed}")
@@ -233,7 +285,10 @@ def parse_mode(path: str, value: Any) -> str:
 
 
 def parse_startup_timeout(path: str, value: Any) -> int:
-    return _positive_int(path, value or DEFAULT_STARTUP_TIMEOUT_SECONDS)
+    return _positive_int(
+        path,
+        DEFAULT_STARTUP_TIMEOUT_SECONDS if value is None else value,
+    )
 
 
 def _mapping_or_empty(path: str, data: dict[str, Any] | None) -> dict[str, Any]:

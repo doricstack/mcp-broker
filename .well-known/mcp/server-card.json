@@ -8,7 +8,7 @@
     {
       "registryType": "pypi",
       "identifier": "mcp-broker",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "transport": {
         "type": "stdio"
       }

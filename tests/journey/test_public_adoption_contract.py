@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
         ".github/ISSUE_TEMPLATE/upstream_compatibility.md",
         ".github/pull_request_template.md",
         "docs/context-reduction-measurement.md",
+        "docs/add-profile.md",
         "docs/comparison.md",
         "docs/adoption-guide.md",
         "docs/safety.md",
@@ -35,6 +37,10 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
         ".well-known/mcp/server-card.json",
         "registry/server.json",
         "registry/server.template.json",
+        "Dockerfile",
+        ".dockerignore",
+        "docker/docker-entrypoint.sh",
+        "mcpb/manifest.json",
     ]
     missing = [path for path in required_paths if not (ROOT / path).is_file()]
 
@@ -55,6 +61,7 @@ def test_readme_public_first_screen_has_adoption_content() -> None:
         "## Architecture",
         "## Comparison",
         "## Screenshots Or GIF",
+        "docs/assets/quickstart-terminal.svg",
         "SECURITY.md",
         "CONTRIBUTING.md",
     ]
@@ -111,6 +118,7 @@ def test_public_safety_docs_cover_broker_mediated_risks() -> None:
 def test_public_adoption_guides_cover_comparison_adoption_and_safety() -> None:
     comparison = (ROOT / "docs" / "comparison.md").read_text(encoding="utf-8")
     adoption = (ROOT / "docs" / "adoption-guide.md").read_text(encoding="utf-8")
+    add_profile = (ROOT / "docs" / "add-profile.md").read_text(encoding="utf-8")
     safety = (ROOT / "docs" / "safety.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
@@ -129,6 +137,14 @@ def test_public_adoption_guides_cover_comparison_adoption_and_safety() -> None:
         "too many MCP tools loaded",
         "compact broker facade",
     ]
+    required_add_profile_terms = [
+        "make profile-snippet",
+        "NEW_PROFILE",
+        "NEW_CLIENT_FORMAT",
+        "mcp-settings-json",
+        "make profile-validation PROFILE=",
+        "make facade-smoke PROFILE=",
+    ]
     required_safety_terms = [
         "mutating tools",
         "OAuth state",
@@ -140,8 +156,10 @@ def test_public_adoption_guides_cover_comparison_adoption_and_safety() -> None:
 
     assert [term for term in required_comparison_terms if term not in comparison] == []
     assert [term for term in required_adoption_terms if term not in adoption] == []
+    assert [term for term in required_add_profile_terms if term not in add_profile] == []
     assert [term for term in required_safety_terms if term not in safety] == []
     assert "docs/comparison.md" in readme
+    assert "docs/add-profile.md" in readme
     assert "docs/adoption-guide.md" in readme
     assert "docs/safety.md" in readme
 
@@ -156,6 +174,8 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
     required_install_terms = [
         "pipx install mcp-broker",
         "uv tool install mcp-broker",
+        "brew install mcp-broker",
+        "docker run",
         "mcp-broker init",
         "mcp-broker start",
         "mcp-broker status",
@@ -166,10 +186,13 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
         "mcp-publisher",
         "server.json",
         "Docker MCP Toolkit",
+        "mcpb/manifest.json",
         "Smithery",
         "Glama",
         "PulseMCP",
         "Homebrew",
+        "make release-gate",
+        "var/quality/mutation_stats.json",
     ]
     required_publication_terms = [
         "repository description",
@@ -193,9 +216,49 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
     assert '"share/mcp-broker/config" = ["config/broker.example.yaml"]' in pyproject
 
 
-def test_registry_template_is_public_safe_and_points_to_pypi_package() -> None:
-    import json
+def test_docker_packaging_contract_is_public_safe() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "docker" / "docker-entrypoint.sh").read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+    allowlist = allowlist_path.read_text(encoding="utf-8") if allowlist_path.exists() else ""
 
+    assert "ARG PYTHON_IMAGE=python:3-slim" in dockerfile
+    assert "COPY src /app/src" in dockerfile
+    assert "COPY config/broker.example.yaml /app/config/broker.example.yaml" in dockerfile
+    assert "ENTRYPOINT [\"/usr/local/bin/mcp-broker-docker\"]" in dockerfile
+    assert "MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker" in dockerfile
+    assert "mcp-broker stdio" in entrypoint
+    assert "--init-if-missing" in entrypoint
+    assert "MCP_BROKER_CONFIG" in entrypoint
+    assert "MCP_BROKER_SOCKET" in entrypoint
+    assert "docker-build:" in makefile
+    assert "docker-smoke:" in makefile
+    if allowlist:
+        assert "Dockerfile" in allowlist
+        assert ".dockerignore" in allowlist
+        assert "docker/docker-entrypoint.sh" in allowlist
+    assert "/Users/" not in dockerfile
+    assert "/Users/" not in entrypoint
+
+
+def test_mcpb_manifest_contract_is_public_safe() -> None:
+    manifest_path = ROOT / "mcpb" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["name"] == "mcp-broker"
+    assert manifest["server"]["type"] == "uv"
+    assert manifest["server"]["mcp_config"]["command"] == "uvx"
+    assert manifest["server"]["mcp_config"]["args"][:2] == ["mcp-broker", "stdio"]
+    assert "broker.call_tool" in {tool["name"] for tool in manifest["tools"]}
+    assert "broker.status" in {tool["name"] for tool in manifest["tools"]}
+
+    serialized = json.dumps(manifest, sort_keys=True)
+    assert "/Users/" not in serialized
+    assert "config/broker.private.yaml" not in serialized
+
+
+def test_registry_template_is_public_safe_and_points_to_pypi_package() -> None:
     template = json.loads((ROOT / "registry" / "server.template.json").read_text(encoding="utf-8"))
     raw = (ROOT / "registry" / "server.template.json").read_text(encoding="utf-8")
 

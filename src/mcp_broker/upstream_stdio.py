@@ -209,7 +209,7 @@ class StdioUpstreamProcess:
         if self._stderr_drainer is not None:
             self._stderr_drainer.join(timeout=KILL_WAIT_SECONDS)
             self._stderr_drainer = None
-        _close_process_pipes(process)
+        _close_process_pipes(process, include_stderr=True)
         self._emit_event("upstream.stop", state="stopped")
         return remaining_processes
 
@@ -240,7 +240,7 @@ class StdioUpstreamProcess:
         if self._process is not None and self._process.poll() is None:
             return
         if self._process is not None:
-            _close_process_pipes(self._process)
+            _close_process_pipes(self._process, include_stderr=True)
             self._remove_process_metadata()
             if self._stderr_drainer is not None:
                 self._stderr_drainer.join(timeout=KILL_WAIT_SECONDS)
@@ -271,8 +271,11 @@ class StdioUpstreamProcess:
         self._write_process_metadata()
         self._initialized = False
         self._stdout_buffer = b""
+        stderr = self._process.stderr
+        if stderr is None:
+            raise StdioUpstreamError(f"upstream stderr closed: {self.upstream.name}")
         self._stderr_drainer = _start_stderr_drainer(
-            cast(BinaryIO, self._process.stderr),
+            stderr,
             self.state_dir / "stderr.log",
         )
         self._emit_event("upstream.ready", state="running", pid=self.pid)
@@ -427,7 +430,7 @@ class StdioUpstreamProcess:
         if stdin is None:
             raise StdioUpstreamError(f"upstream stdin closed: {self.upstream.name}")
         try:
-            stdin.write(json.dumps(payload, sort_keys=True).encode("utf-8") + b"\n")
+            stdin.write(json.dumps(payload, sort_keys=True).encode() + b"\n")
             stdin.flush()
         except BrokenPipeError as exc:
             raise StdioUpstreamError(f"upstream stdin closed: {self.upstream.name}") from exc
@@ -445,7 +448,7 @@ class StdioUpstreamProcess:
         deadline = time.monotonic() + timeout_seconds
         while True:
             raw = self._read_stdout_line(stdout, deadline=deadline)
-            loaded = json.loads(raw.decode("utf-8"))
+            loaded = json.loads(raw)
             if not isinstance(loaded, dict):
                 raise StdioUpstreamError(
                     f"upstream response must be an object: {self.upstream.name}"
@@ -481,13 +484,7 @@ class StdioUpstreamProcess:
 def _start_stderr_drainer(stream: BinaryIO, path: Path) -> threading.Thread:
     def drain() -> None:
         with path.open("ab") as handle:
-            while True:
-                try:
-                    chunk = stream.read(4096)
-                except ValueError:
-                    break
-                if not chunk:
-                    break
+            while chunk := _read_stderr_chunk(stream):
                 handle.write(chunk)
                 handle.flush()
 
@@ -495,6 +492,13 @@ def _start_stderr_drainer(stream: BinaryIO, path: Path) -> threading.Thread:
     thread.daemon = True
     thread.start()
     return thread
+
+
+def _read_stderr_chunk(stream: BinaryIO) -> bytes:
+    try:
+        return stream.read(4096)
+    except ValueError:
+        return b""
 
 
 def _signal_process_group(pid: int, sig: signal.Signals) -> None:
@@ -589,7 +593,7 @@ def _process_group_members(process_group_id: int) -> tuple[int, ...]:
 def _close_process_pipes(
     process: subprocess.Popen[bytes],
     *,
-    include_stderr: bool = True,
+    include_stderr: bool,
 ) -> None:
     streams = [process.stdin, process.stdout]
     if include_stderr:

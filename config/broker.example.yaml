@@ -40,6 +40,8 @@ broker:
 # DEFAULT: compact_tools_enabled should usually stay true for chat clients.
 # max_tools protects clients from loading every upstream at once.
 # compact_tools_enabled exposes the broker facade instead of raw upstream tools.
+# broker_tool_name_style controls broker facade names only. Use `snake` for
+# clients that do not surface dotted MCP tool names reliably.
 # allow_mutating_upstreams is required before a mutating upstream can be exposed.
 profiles:
   codex:
@@ -51,6 +53,7 @@ profiles:
   gemini:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
   manual-test:
     max_tools: 200
     compact_tools_enabled: false
@@ -67,8 +70,13 @@ profiles:
     compact_tools_enabled: true
 
 # Client config render targets.
-# CHANGE: edit or add clients only when the repo supports that client's file format.
-# DEFAULT: Gemini is a profile only here because no Gemini config renderer exists yet.
+# CHANGE: edit or add clients only when the repo supports that client's file
+# format. `codex-toml` is for Codex TOML configs. `claude-json` is for Claude
+# JSON configs. `mcp-settings-json` is the generic JSON shape used by clients
+# that keep MCP entries under a top-level `mcpServers` object, such as Gemini.
+# DEFAULT: run `make profile-snippet NEW_PROFILE=<name>` for a starter block.
+# mcp_allowed_servers renders top-level `mcp.allowed` for clients that require
+# an explicit MCP server allowlist before tools appear in model-facing sessions.
 # The broker writes dry-run renders under runtime state first. Set
 # CONFIG_RENDER_APPLY=1 only after reviewing the render.
 clients:
@@ -119,6 +127,19 @@ clients:
       - "{runtime.socket_path}"
       - --profile
       - claude
+
+  gemini:
+    format: mcp-settings-json
+    config_path: $HOME/.gemini/settings.json
+    entry_name: mcp-broker
+    command: mcp-broker-client
+    mcp_allowed_servers:
+      - mcp-broker
+    args:
+      - --socket-path
+      - "{runtime.socket_path}"
+      - --profile
+      - gemini
 
 # Add upstream MCP servers under this mapping.
 # CHANGE: copy one of these patterns and edit name, command, args, and profiles.
@@ -241,6 +262,9 @@ upstreams:
   # auth_repair runs a configured upstream auth tool after matching auth errors.
   # Use this when an upstream can open a browser and persist auth into its own
   # broker-owned state or secret path before retrying the original call.
+  # auth_probe can inspect broker-owned OAuth token JSON passively. It reports
+  # expired refresh tokens through broker.status without logging token values or
+  # opening a browser.
   example-request-meta-auth:
     enabled: false
     mode: disabled
@@ -262,6 +286,13 @@ upstreams:
       EXAMPLE_AUTH_TOKEN: "{runtime.secrets_dir}/EXAMPLE_AUTH_TOKEN"
     request_meta:
       authToken: EXAMPLE_AUTH_TOKEN
+    auth_probe:
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/example-oauth.json"
+      required_fields:
+        - access_token
+        - refresh_token
+      refresh_token_expiry_field: refresh_token_expires_at
     auth_repair:
       tool: setup_auth
       arguments:

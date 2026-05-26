@@ -77,6 +77,30 @@ def test_tool_namespace_resolves_advertised_name_to_upstream_route() -> None:
         router.resolve_tool_name("mem__")
 
 
+def test_tool_namespace_resolves_upstream_tool_names_that_contain_separator() -> None:
+    from mcp_broker.config import BrokerSettings, UpstreamConfig
+    from mcp_broker.tool_namespace import ToolNamespaceRouter
+
+    router = ToolNamespaceRouter(
+        broker=BrokerSettings(tool_namespace_separator="__"),
+        upstreams={
+            "read-store": UpstreamConfig(
+                name="read-store",
+                command="node",
+                args=[],
+                mode="shared",
+                enabled=True,
+                tool_prefix="mem",
+            ),
+        },
+    )
+
+    route = router.resolve_tool_name("mem__search__deep")
+
+    assert route.upstream_name == "read-store"
+    assert route.upstream_tool_name == "search__deep"
+
+
 def test_tool_namespace_rejects_invalid_namespace_config() -> None:
     from mcp_broker.config import BrokerSettings, UpstreamConfig
     from mcp_broker.tool_namespace import ToolNamespaceRouter
@@ -90,11 +114,12 @@ def test_tool_namespace_rejects_invalid_namespace_config() -> None:
         tool_prefix="mem",
     )
 
-    with pytest.raises(ValueError, match="tool_namespace_separator cannot be empty"):
+    with pytest.raises(ValueError) as exc_info:
         ToolNamespaceRouter(
             broker=BrokerSettings(tool_namespace_separator=""),
             upstreams={"read-store": upstream},
         )
+    assert str(exc_info.value) == "broker.tool_namespace_separator cannot be empty"
 
     with pytest.raises(ValueError, match="duplicate tool prefix: mem"):
         ToolNamespaceRouter(
@@ -147,3 +172,37 @@ def test_tool_namespace_rejects_unknown_disabled_and_malformed_upstream_tools() 
 
     with pytest.raises(ValueError, match="upstream tool missing name: read-store"):
         router.advertise_tools("read-store", [{"description": "missing name"}])
+
+
+def test_tool_namespace_advertise_all_skips_enabled_false_upstreams() -> None:
+    from mcp_broker.config import BrokerSettings, UpstreamConfig
+    from mcp_broker.tool_namespace import ToolNamespaceRouter
+
+    router = ToolNamespaceRouter(
+        broker=BrokerSettings(tool_namespace_separator="."),
+        upstreams={
+            "read-store": UpstreamConfig(
+                name="read-store",
+                command="node",
+                args=[],
+                mode="shared",
+                enabled=True,
+                tool_prefix="read-store",
+            ),
+            "flag-disabled": UpstreamConfig(
+                name="flag-disabled",
+                command="node",
+                args=[],
+                mode="shared",
+                enabled=False,
+                tool_prefix="flag-disabled",
+            ),
+        },
+    )
+
+    assert router.advertise_all_tools(
+        {
+            "read-store": [{"name": "search"}],
+            "flag-disabled": [{"name": "hidden"}],
+        }
+    ) == [{"name": "read-store.search"}]

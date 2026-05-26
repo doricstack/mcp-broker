@@ -110,12 +110,13 @@ state. `broker.status` reports the profile-scoped upstream view through MCP:
 enabled or disabled state, profile exposure, mode, transport, mutation flag,
 PID, restart count, session count, last error, `auth_probe`, auth state, and
 auth-repair counters. `auth_probe` is a passive credential-source check:
-`credentials_missing`, `credentials_present`, `auth_repair_configured`, or
-`none`. Auth state is passive: `unknown` unless the upstream health snapshot
-exposes an auth signal, the passive probe proves a missing credential source, or
-the last error is an auth-shaped failure. The status tool does not open browsers,
-run OAuth setup tools, or expose secret values. It still appears inside the
-broker server, not as separate Codex `/mcp` rows.
+`credentials_missing`, `credentials_present`, `oauth_refresh_expired`,
+`auth_repair_configured`, or `none`. Auth state is passive: `unknown` unless the
+upstream health snapshot exposes an auth signal, the passive probe proves a
+missing or expired credential source, or the last error is an auth-shaped
+failure. The status tool does not open browsers, run OAuth setup tools, or
+expose secret values. It still appears inside the broker server, not as separate
+Codex `/mcp` rows.
 
 `make profile-validation PROFILE=<profile>` loads the configured upstream list
 from YAML and validates each enabled profile-visible upstream through the
@@ -167,6 +168,9 @@ configured upstream and original upstream tool name.
 aggregates configured upstream tool lists, skips disabled or profile-denied
 upstreams, rejects duplicate advertised names, and returns compact broker tools
 when compact mode is enabled and the full list would exceed the profile budget.
+Profiles may set `broker_tool_name_style: snake` to advertise compact broker
+facade names such as `broker_status` while preserving the canonical dotted
+names for routing and validation.
 The daemon `tools/list` path starts enabled stdio upstreams or opens configured
 HTTP upstream sessions on demand, reads each `tools/list` response, then passes
 those upstream tool lists through `BrokerCore` before returning the namespaced

@@ -2,9 +2,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.repo_paths import repo_root
+
 
 pytestmark = pytest.mark.unit
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = repo_root()
 
 
 def test_broker_config_loads_runtime_and_upstream_paths_from_yaml(tmp_path: Path) -> None:
@@ -443,6 +445,144 @@ upstreams: {{}}
         BrokerConfig.from_file(config_path)
 
 
+def test_broker_config_allows_duplicate_prefixes_for_disabled_upstreams(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_path = tmp_path / "broker.yaml"
+    config_path.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  active-search:
+    command: search
+    tool_prefix: search
+    profiles: [codex]
+  off-search:
+    command: search
+    enabled: false
+    tool_prefix: search
+    profiles: [codex]
+  mode-disabled-search:
+    command: search
+    mode: disabled
+    tool_prefix: search
+    profiles: [codex]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = BrokerConfig.from_file(config_path)
+
+    assert set(config.upstreams) == {
+        "active-search",
+        "off-search",
+        "mode-disabled-search",
+    }
+
+
+def test_broker_config_checks_duplicate_prefixes_after_disabled_upstream(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_path = tmp_path / "broker.yaml"
+    config_path.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  off-search:
+    command: search
+    enabled: false
+    tool_prefix: search
+    profiles: [codex]
+  first-search:
+    command: search
+    tool_prefix: search
+    profiles: [codex]
+  second-search:
+    command: search
+    tool_prefix: search
+    profiles: [codex]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate tool prefix for profile codex: search"):
+        BrokerConfig.from_file(config_path)
+
+
+def test_broker_config_skips_disabled_mutating_upstream_allowlist_checks(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_path = tmp_path / "broker.yaml"
+    config_path.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+profiles:
+  codex:
+    max_tools: 10
+    allow_mutating_upstreams: []
+upstreams:
+  off-writer:
+    command: writer
+    enabled: false
+    mutating: true
+    profiles: [codex]
+  mode-disabled-writer:
+    command: writer
+    mode: disabled
+    mutating: true
+    profiles: [codex]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = BrokerConfig.from_file(config_path)
+
+    assert set(config.upstreams) == {"off-writer", "mode-disabled-writer"}
+
+
+def test_broker_config_checks_mutating_allowlists_after_skipped_upstream(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_path = tmp_path / "broker.yaml"
+    config_path.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+profiles:
+  codex:
+    max_tools: 10
+    allow_mutating_upstreams: []
+upstreams:
+  off-reader:
+    command: reader
+    enabled: false
+    profiles: [codex]
+  active-writer:
+    command: writer
+    mutating: true
+    profiles: [codex]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="mutating upstream active-writer requires profile allowlist entry: codex",
+    ):
+        BrokerConfig.from_file(config_path)
+
+
 def test_broker_config_expands_upstream_working_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -510,6 +650,158 @@ upstreams:
     assert config.upstreams["file-auth"].env_files == {
         "FILE_AUTH_TOKEN": home / "mcp/mcp-broker/secrets/FILE_AUTH_TOKEN"
     }
+
+
+def test_broker_config_expands_runtime_log_dir_placeholder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        """
+runtime:
+  root: $HOME/mcp/mcp-broker
+upstreams:
+  file-auth:
+    command: "{runtime.log_dir}/file-auth"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = BrokerConfig.from_file(config_file)
+
+    assert config.upstreams["file-auth"].command == str(
+        home / "mcp/mcp-broker/logs/file-auth"
+    )
+
+
+def test_broker_config_rejects_duplicate_env_sources_with_sorted_targets(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  file-auth:
+    command: file-auth
+    env:
+      B_TOKEN: HOST_B_TOKEN
+      A_TOKEN: HOST_A_TOKEN
+    env_files:
+      B_TOKEN: "{{runtime.secrets_dir}}/B_TOKEN"
+      A_TOKEN: "{{runtime.secrets_dir}}/A_TOKEN"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="duplicate env source for upstream file-auth: A_TOKEN, B_TOKEN",
+    ):
+        BrokerConfig.from_file(config_file)
+
+
+def test_broker_config_rejects_invalid_session_env_source_with_allowed_name(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  session-auth:
+    command: session-auth
+    mode: per_session
+    session_env:
+      CLIENT_CWD: request_cwd
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="upstreams.session-auth.session_env.CLIENT_CWD must be one of: client_cwd",
+    ):
+        BrokerConfig.from_file(config_file)
+
+
+def test_broker_config_rejects_invalid_startup_timeout_with_path(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  file-auth:
+    command: file-auth
+    startup_timeout_seconds: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="upstreams.file-auth.startup_timeout_seconds must be greater than 0",
+    ):
+        BrokerConfig.from_file(config_file)
+
+
+def test_broker_config_expands_auth_probe_token_file_from_runtime(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+runtime:
+  root: {tmp_path}/runtime
+upstreams:
+  file-auth:
+    command: file-auth
+    auth_probe:
+      type: oauth_token_file
+      token_file: "{{runtime.secrets_dir}}/oauth-token.json"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = BrokerConfig.from_file(config_file)
+
+    assert config.upstreams["file-auth"].auth_probe is not None
+    assert config.upstreams["file-auth"].auth_probe.token_file == (
+        tmp_path / "runtime/secrets/oauth-token.json"
+    )
+
+
+def test_broker_config_rejects_unsupported_schema_version_with_exact_message(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+schema_version: 2
+runtime:
+  root: {tmp_path}/runtime
+upstreams: {{}}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="^schema_version must be 1$"):
+        BrokerConfig.from_file(config_file)
 
 
 def test_upstream_request_meta_sources_from_configured_env_file(tmp_path: Path) -> None:
@@ -742,6 +1034,119 @@ upstreams:
     assert repair.timeout_seconds == 300
 
 
+def test_upstream_oauth_token_file_auth_probe_loads_from_yaml(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    token_file = tmp_path / "runtime" / "secrets" / "oauth.json"
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+schema_version: 1
+runtime:
+  root: {tmp_path / "runtime"}
+upstreams:
+  oauth:
+    command: oauth-server
+    auth_probe:
+      type: oauth_token_file
+      token_file: "{{runtime.secrets_dir}}/oauth.json"
+      required_fields:
+        - access_token
+        - refresh_token
+      refresh_token_expiry_field: refresh_token_expires_at
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = BrokerConfig.from_file(config_file)
+    probe = config.upstreams["oauth"].auth_probe
+
+    assert probe is not None
+    assert probe.type == "oauth_token_file"
+    assert probe.token_file == token_file
+    assert probe.required_fields == ("access_token", "refresh_token")
+    assert probe.refresh_token_expiry_field == "refresh_token_expires_at"
+
+
+@pytest.mark.parametrize(
+    ("auth_probe", "message"),
+    [
+        (
+            """
+      type: unsupported
+      token_file: "{runtime.secrets_dir}/oauth.json"
+""",
+            "upstreams.oauth.auth_probe.type must be one of: oauth_token_file",
+        ),
+        (
+            """
+      type: oauth_token_file
+      token_file: ""
+""",
+            "upstreams.oauth.auth_probe.token_file must be a non-empty string",
+        ),
+        (
+            """
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/oauth.json"
+      required_fields: nope
+""",
+            "upstreams.oauth.auth_probe.required_fields must be a list",
+        ),
+        (
+            """
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/oauth.json"
+      required_fields:
+        - 7
+""",
+            "upstreams.oauth.auth_probe.required_fields must contain strings",
+        ),
+        (
+            """
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/oauth.json"
+      required_fields:
+        - ""
+""",
+            "upstreams.oauth.auth_probe.required_fields cannot contain empty values",
+        ),
+        (
+            """
+      type: oauth_token_file
+      token_file: "{runtime.secrets_dir}/oauth.json"
+      refresh_token_expiry_field: ""
+""",
+            "upstreams.oauth.auth_probe.refresh_token_expiry_field must be a non-empty string",
+        ),
+    ],
+)
+def test_upstream_oauth_token_file_auth_probe_rejects_invalid_values(
+    tmp_path: Path,
+    auth_probe: str,
+    message: str,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "broker.yaml"
+    config_file.write_text(
+        f"""
+schema_version: 1
+runtime:
+  root: {tmp_path / "runtime"}
+upstreams:
+  oauth:
+    command: oauth-server
+    auth_probe:
+{auth_probe}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        BrokerConfig.from_file(config_file)
+
+
 @pytest.mark.parametrize(
     ("auth_repair", "message"),
     [
@@ -900,7 +1305,7 @@ clients:
     format: xml
     config_path: /tmp/codex.toml
 """.strip(),
-            "clients.codex.format must be codex-toml or claude-json",
+            "clients.codex.format must be one of: claude-json, codex-toml, mcp-settings-json",
         ),
         (
             """
@@ -924,6 +1329,18 @@ clients:
     args: bad
 """.strip(),
             "clients.codex.args",
+        ),
+        (
+            """
+runtime:
+  root: /tmp/x
+clients:
+  codex:
+    format: mcp-settings-json
+    config_path: /tmp/settings.json
+    mcp_allowed_servers: bad
+""".strip(),
+            "clients.codex.mcp_allowed_servers",
         ),
         (
             """

@@ -70,6 +70,8 @@ def test_codex_app_policy_disables_configured_connectors_and_removes_tools(tmp_p
 
     assert result.disabled_connectors == 2
     assert result.removed_tools == 2
+    assert result.matched_app_directory_files == (app_directory,)
+    assert result.matched_tools_cache_files == (tools_cache,)
     assert result.changed_files == (app_directory, tools_cache)
     assert (tmp_path / "backups" / "policy-test.app-directory.json").read_text(
         encoding="utf-8"
@@ -116,6 +118,64 @@ def test_codex_app_policy_dry_run_reports_changes_without_writing(tmp_path: Path
     assert result.changed_files == (app_directory,)
     assert json.loads(app_directory.read_text(encoding="utf-8")) == before
     assert not (tmp_path / "backups").exists()
+
+
+def test_codex_app_policy_aggregates_changes_across_multiple_cache_files(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.codex_app_policy import (
+        CodexAppConnectorPolicy,
+        ConnectorSelector,
+        apply_codex_app_policy,
+    )
+
+    first_app_directory = tmp_path / "app-directory-1.json"
+    second_app_directory = tmp_path / "app-directory-2.json"
+    first_tools_cache = tmp_path / "tools-cache-1.json"
+    second_tools_cache = tmp_path / "tools-cache-2.json"
+    for path, payload in [
+        (
+            first_app_directory,
+            {"connectors": [{"id": "connector_search", "name": "Search", "isEnabled": True}]},
+        ),
+        (
+            second_app_directory,
+            {"connectors": [{"id": "connector_docs", "name": "Docs", "isEnabled": True}]},
+        ),
+        (
+            first_tools_cache,
+            {"tools": [{"connector_id": "connector_search", "connector_name": "Search"}]},
+        ),
+        (
+            second_tools_cache,
+            {"tools": [{"connector_id": "connector_docs", "connector_name": "Docs"}]},
+        ),
+    ]:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = apply_codex_app_policy(
+        CodexAppConnectorPolicy(
+            enabled=True,
+            app_directory_globs=(str(tmp_path / "app-directory-*.json"),),
+            tools_cache_globs=(str(tmp_path / "tools-cache-*.json"),),
+            disable_connectors=(
+                ConnectorSelector(id="connector_search"),
+                ConnectorSelector(id="connector_docs"),
+            ),
+        ),
+        backup_dir=tmp_path / "backups",
+        backup_label="policy-test",
+        dry_run=True,
+    )
+
+    assert result.disabled_connectors == 2
+    assert result.removed_tools == 2
+    assert result.changed_files == (
+        first_app_directory,
+        second_app_directory,
+        first_tools_cache,
+        second_tools_cache,
+    )
 
 
 def test_codex_app_policy_reports_unchanged_files_and_dry_run_tool_removals(
@@ -218,6 +278,19 @@ def test_codex_app_policy_disabled_or_missing_policy_is_noop(tmp_path: Path) -> 
     assert disabled_result.dry_run is False
 
 
+def test_codex_app_policy_does_not_count_already_disabled_connectors() -> None:
+    from mcp_broker.codex_app_policy import ConnectorSelector, _disable_connectors
+
+    payload = {
+        "connectors": [
+            {"id": "connector_search", "name": "Search", "isEnabled": False},
+        ]
+    }
+
+    assert _disable_connectors(payload, (ConnectorSelector(id="connector_search"),)) == (False, 0)
+    assert payload["connectors"][0]["isEnabled"] is False
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_error"),
     [
@@ -240,7 +313,7 @@ def test_codex_app_policy_rejects_invalid_app_directory_cache(
     app_directory = tmp_path / "app-directory.json"
     app_directory.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(ValueError) as exc_info:
         apply_codex_app_policy(
             CodexAppConnectorPolicy(
                 enabled=True,
@@ -252,6 +325,8 @@ def test_codex_app_policy_rejects_invalid_app_directory_cache(
             backup_label="policy-test",
             dry_run=True,
         )
+    assert expected_error in str(exc_info.value)
+    assert not str(exc_info.value).startswith("XX")
 
 
 @pytest.mark.parametrize(
@@ -275,7 +350,7 @@ def test_codex_app_policy_rejects_invalid_tools_cache(
     tools_cache = tmp_path / "tools-cache.json"
     tools_cache.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(ValueError) as exc_info:
         apply_codex_app_policy(
             CodexAppConnectorPolicy(
                 enabled=True,
@@ -287,6 +362,7 @@ def test_codex_app_policy_rejects_invalid_tools_cache(
             backup_label="policy-test",
             dry_run=True,
         )
+    assert str(exc_info.value) == expected_error
 
 
 def test_codex_app_policy_reports_unmatched_globs(tmp_path: Path) -> None:
@@ -312,3 +388,87 @@ def test_codex_app_policy_reports_unmatched_globs(tmp_path: Path) -> None:
         f"app_directory_globs matched no files: {tmp_path}/missing-apps/*.json",
         f"tools_cache_globs matched no files: {tmp_path}/missing-tools/*.json",
     )
+
+
+def test_codex_app_policy_matches_connector_values_by_id_or_name() -> None:
+    from mcp_broker.codex_app_policy import ConnectorSelector, _matches_values
+
+    selectors = (
+        ConnectorSelector(id="connector_docs", reason="covered by broker"),
+        ConnectorSelector(name="Calendar", reason="covered by broker"),
+    )
+
+    assert _matches_values("connector_docs", "Docs", selectors) is True
+    assert _matches_values("connector_other", "Calendar", selectors) is True
+    assert _matches_values("connector_other", "Other", selectors) is False
+    assert _matches_values(None, None, selectors) is False
+
+
+def test_codex_app_policy_matches_tools_by_top_level_and_meta_values() -> None:
+    from mcp_broker.codex_app_policy import ConnectorSelector, _matches_tool
+
+    assert _matches_tool(
+        {
+            "connector_id": "connector_docs",
+            "tool": {"_meta": {"connector_id": "connector_other"}},
+        },
+        (ConnectorSelector(id="connector_docs"),),
+    )
+    assert _matches_tool(
+        {"tool": {"_meta": {"connector_id": "connector_calendar"}}},
+        (ConnectorSelector(id="connector_calendar"),),
+    )
+    assert _matches_tool(
+        {
+            "connector_name": "Docs",
+            "tool": {"_meta": {"connector_name": "Other"}},
+        },
+        (ConnectorSelector(name="Docs"),),
+    )
+    assert _matches_tool(
+        {"tool": {"_meta": {"connector_name": "Calendar"}}},
+        (ConnectorSelector(name="Calendar"),),
+    )
+    assert not _matches_tool(
+        {
+            "connector_id": "connector_docs",
+            "connector_name": "Docs",
+            "tool": {"_meta": {"connector_id": "connector_calendar"}},
+        },
+        (ConnectorSelector(id="connector_calendar", name="Calendar"),),
+    )
+    assert not _matches_tool({"tool": {}}, (ConnectorSelector(id="connector_docs"),))
+    assert not _matches_tool(
+        {"tool": {"_meta": "bad"}},
+        (ConnectorSelector(id="connector_docs", name="Docs"),),
+    )
+
+
+def test_codex_app_policy_backup_creates_nested_backup_directory(tmp_path: Path) -> None:
+    from mcp_broker.codex_app_policy import _backup
+
+    source = tmp_path / "cache.json"
+    source.write_text("{}", encoding="utf-8")
+
+    backup = _backup(source, backup_dir=tmp_path / "nested" / "backups", backup_label="label")
+
+    assert backup == tmp_path / "nested" / "backups" / "label.cache.json"
+    assert backup.read_text(encoding="utf-8") == "{}"
+
+
+def test_codex_app_policy_writes_stable_json_bytes(tmp_path: Path) -> None:
+    from mcp_broker.codex_app_policy import _write_json
+
+    path = tmp_path / "cache.json"
+
+    _write_json(path, {"z": 1, "a": {"b": 2}})
+
+    assert path.read_bytes() == b'{\n  "a": {\n    "b": 2\n  },\n  "z": 1\n}\n'
+
+
+def test_codex_app_policy_string_or_none_rejects_empty_and_non_string_values() -> None:
+    from mcp_broker.codex_app_policy import _string_or_none
+
+    assert _string_or_none("connector_docs") == "connector_docs"
+    assert _string_or_none("") is None
+    assert _string_or_none(42) is None

@@ -152,6 +152,32 @@ def test_broker_list_tools_uses_compact_mode_when_budget_would_be_exceeded() -> 
     }
 
 
+def test_broker_list_tools_can_render_compact_tools_with_profile_safe_names() -> None:
+    from mcp_broker.broker import BrokerCore
+    from mcp_broker.config import BrokerSettings
+    from mcp_broker.profiles import ToolExposureProfile
+
+    broker = BrokerCore(
+        settings=BrokerSettings(tool_namespace_separator="."),
+        upstreams=_upstreams(),
+        profile=ToolExposureProfile(
+            name="llm",
+            max_tools=1,
+            compact_tools_enabled=True,
+            broker_tool_name_style="snake",
+        ),
+    )
+
+    result = broker.compact_tools()
+
+    assert [tool["name"] for tool in result["tools"]] == [
+        "broker_search_tools",
+        "broker_describe_tool",
+        "broker_call_tool",
+        "broker_status",
+    ]
+
+
 def test_broker_list_tools_enforces_budget_when_compact_mode_is_disabled() -> None:
     from mcp_broker.broker import BrokerCore
     from mcp_broker.config import BrokerSettings

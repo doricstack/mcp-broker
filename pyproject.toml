@@ -14,9 +14,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mcp-broker/mcp-broker"
-Documentation = "https://github.com/mcp-broker/mcp-broker#readme"
-Issues = "https://github.com/mcp-broker/mcp-broker/issues"
+Homepage = "https://github.com/NavinAgrawal/mcp-broker"
+Documentation = "https://github.com/NavinAgrawal/mcp-broker#readme"
+Issues = "https://github.com/NavinAgrawal/mcp-broker/issues"
 
 [project.scripts]
 mcp-broker = "mcp_broker.cli:main"

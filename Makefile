@@ -1,10 +1,10 @@
 # mcp-broker - central MCP process broker
 
 .PHONY: help setup venv deps config-init config-validate test test-unit test-journey test-live test-e2e test-quick \
-        test-cov runtime-layout doctor broker-start broker-stop broker-status broker-reap broker-smoke \
+        test-cov runtime-layout doctor broker-start broker-stop broker-status broker-wait broker-reap broker-smoke \
         tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance project-mcp-audit project-mcp-migrate secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload config-backup config-render codex-app-policy config-rollback \
-        systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke windows-powershell-smoke release-smoke \
-        package-build package-check public-export public-export-check public-release-dry-run require-maintainer-tools violations grade-quality precommit quality-gate maintainer-violations maintainer-grade-quality maintainer-precommit maintainer-quality-gate clean
+        profile-snippet systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke windows-powershell-smoke release-smoke \
+        package-build package-check docker-build docker-smoke docker-buildx mcpb-validate mutation mutation-linux precommit quality-gate release-gate clean
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
@@ -18,6 +18,7 @@ PYTHON_BIN        ?= python3
 VENV_DIR          ?= $(ROOT)/venv-mcp-broker
 PYTHON            ?= $(VENV_DIR)/bin/python
 PIP               ?= $(VENV_DIR)/bin/pip
+MUTMUT            ?= $(VENV_DIR)/bin/mutmut
 PIP_UPGRADE       ?= 0
 REQUIREMENTS      ?= $(ROOT)/requirements.txt
 
@@ -32,14 +33,21 @@ STATE_DIR         ?= $(RUNTIME_ROOT)/state
 SECRETS_DIR       ?= $(RUNTIME_ROOT)/secrets
 CLIENT            ?= codex
 PROFILE           ?= codex
+NEW_PROFILE       ?= local-client
+NEW_CLIENT_FORMAT ?= mcp-settings-json
+NEW_CLIENT_CONFIG_PATH ?= $$HOME/.$(NEW_PROFILE)/settings.json
+NEW_CLIENT_ENTRY_NAME ?= mcp-broker
+NEW_CLIENT_COMMAND ?= mcp-broker-client
+NEW_BROKER_TOOL_NAME_STYLE ?= dotted
 CONFIG_RENDER_APPLY ?= 0
 CONFIG_RENDER_TARGET_PATH ?=
 CONFIG_BACKUP_LABEL ?=
 CODEX_APP_POLICY_APPLY ?= 0
 SECRET_NAME       ?=
-FACADE_QUERY      ?= memory
-FACADE_CALL_TOOL  ?= memory.get_project_scope
-FACADE_CALL_ARGS  ?= {}
+FACADE_QUERY      ?=
+FACADE_CALL_TOOL  ?=
+FACADE_CALL_ARGS  ?=
+FACADE_REQUEST_TIMEOUT_SECONDS ?= 70
 PARITY_LEFT_PROFILE ?= codex
 PARITY_RIGHT_PROFILE ?= claude
 DISCOVERY_QUERY   ?= $(FACADE_QUERY)
@@ -64,13 +72,13 @@ MCP_BROKER_DAEMON_COMMAND ?=
 WINDOWS_APPLY    ?= 0
 WINDOWS_TASK     ?= mcp-broker
 LINUX_SMOKE_IMAGE ?= $(or $(MCP_BROKER_LINUX_SMOKE_IMAGE),python:3-bookworm)
-PUBLIC_REPO       ?= $(ROOT)/var/public-export-check
-PUBLIC_EXPORT_ALLOWLIST ?= $(ROOT)/public-export/allowlist.txt
-PUBLIC_EXPORT_DENYLIST ?= $(ROOT)/public-export/denylist.txt
-PUBLIC_EXPORT_DELETE_STALE ?= 1
+UNAME_S           := $(shell uname -s)
+RELEASE_MUTATION_TARGET ?= $(if $(filter Darwin,$(UNAME_S)),mutation-linux,mutation)
 
 PYTEST_MAXFAIL    ?= 1
 PYTEST_TIMEOUT    ?= 30
+PYTEST_LIVE_TIMEOUT ?= 120
+PYTEST_COV_TIMEOUT ?= $(PYTEST_LIVE_TIMEOUT)
 PYTEST_ARGS       ?=
 COV_FAIL_UNDER    ?= 100
 COV_SRC           ?= src/mcp_broker
@@ -79,14 +87,27 @@ COV_FILE          ?= $(COV_DIR)/.coverage
 TEST_LOG_DIR      ?= $(ROOT)/var/test-logs
 QUALITY_DIR       ?= $(ROOT)/var/quality
 PACKAGE_DIST_DIR  ?= $(ROOT)/dist
-VIOLATIONS_JSON   ?= $(QUALITY_DIR)/violations.json
-VIOLATIONS_LOG    ?= $(QUALITY_DIR)/violations.log
-GRADE_REPORT_JSON ?= $(QUALITY_DIR)/grade_quality_report.json
-SHARED_SCRIPTS_DIR ?= $(HOME)/.llm-shared/scripts
-CHECK_VIOLATIONS ?= $(SHARED_SCRIPTS_DIR)/check-violations.sh
-GRADE_QUALITY    ?= $(SHARED_SCRIPTS_DIR)/grade_quality.sh
-GIT_SECURITY_GUARD ?= $(SHARED_SCRIPTS_DIR)/git-security-guard.sh
+DOCKER_IMAGE      ?= mcp-broker:local
+DOCKER_PLATFORM   ?=
+DOCKER_PLATFORMS  ?= linux/amd64,linux/arm64
+DOCKER_PUSH       ?= 0
+DOCKER_SBOM       ?= true
+DOCKER_PROVENANCE ?= true
+DOCKER_SOURCE_URL ?= https://github.com/NavinAgrawal/mcp-broker
+PACKAGE_VERSION   ?= $(shell PYTHONPATH="$(ROOT)/src" "$(PYTHON_BIN)" -c 'import mcp_broker; print(mcp_broker.__version__)')
+MCPB_MANIFEST     ?= $(ROOT)/mcpb/manifest.json
 PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT)
+PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT)
+PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT)
+BROKER_WAIT_SECONDS ?= 10
+MUTATION_MAX_CHILDREN ?= 4
+MUTATION_ARGS    ?=
+MUTATION_IMAGE   ?= python:3.11-bookworm
+MUTATION_STATS_JSON ?= $(QUALITY_DIR)/mutation_stats.json
+MUTATION_LOG ?= $(QUALITY_DIR)/mutation-linux.log
+MUTATION_MUTANTS_DIR ?= $(QUALITY_DIR)/mutants-linux
+MUTATION_MIN_SCORE ?= 100
+MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout check_was_interrupted_by_user segfault not_checked
 
 PY_UNIT_DIR       ?= tests/unit
 PY_JOURNEY_DIR    ?= tests/journey
@@ -145,6 +166,8 @@ deps: $(VENV_DIR)/bin/python ## Install Python dependencies
 	@$(PIP) install -r $(REQUIREMENTS)
 	@find "$(VENV_DIR)"/lib/python*/site-packages -maxdepth 1 \( -name "mcp_broker-*.dist-info" -o -name "__editable__.mcp_broker-*.pth" \) -exec rm -rf {} +
 	@$(PIP) install -e .
+	@mkdir -p "$(VENV_DIR)/share/mcp-broker/config"
+	@cp "$(CONFIG_TEMPLATE_PATH)" "$(VENV_DIR)/share/mcp-broker/config/broker.example.yaml"
 	@touch $(VENV_DIR)/.deps.stamp
 	$(call log_success,"Dependencies ready")
 
@@ -179,7 +202,7 @@ test-journey: ## Run journey tests
 
 test-live: ## Run live tests
 	$(call log_step,"Live tests")
-	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m pytest $(PYTEST_COMMON) $(PYTEST_LIVE_TARGETS)
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m pytest $(PYTEST_LIVE_COMMON) $(PYTEST_LIVE_TARGETS)
 	$(call log_success,"Live tests passed")
 
 test-e2e: ## Run e2e tests
@@ -196,7 +219,7 @@ test-cov: ## Run tests with coverage gate
 	$(call log_step,"Coverage tests")
 	@mkdir -p $(COV_DIR)
 	@rm -f $(COV_FILE)
-	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m pytest $(PYTEST_COMMON) \
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m pytest $(PYTEST_COV_COMMON) \
 		--cov=$(COV_SRC) --cov-branch --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER) tests
 	$(call log_success,"Coverage gate passed")
 
@@ -218,12 +241,25 @@ broker-stop: runtime-layout ## Request broker daemon shutdown
 broker-status: runtime-layout ## Query broker daemon health
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.daemon status --runtime-root "$(RUNTIME_ROOT)" --socket-path "$(SOCKET_PATH)"
 
+broker-wait: runtime-layout ## Wait until the broker daemon accepts health checks
+	@deadline=$$((SECONDS + $(BROKER_WAIT_SECONDS))); \
+	while (( SECONDS <= deadline )); do \
+		if PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.daemon status --runtime-root "$(RUNTIME_ROOT)" --socket-path "$(SOCKET_PATH)" >/dev/null 2>&1; then \
+			printf "\033[1;32m[OK]\033[0m Broker ready: %s\n" "$(SOCKET_PATH)"; \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	printf "\033[1;31m[ERROR]\033[0m Broker did not become ready within %s seconds: %s\n" "$(BROKER_WAIT_SECONDS)" "$(SOCKET_PATH)" >&2; \
+	exit 1
+
 broker-reap: runtime-layout ## Reap stale broker-owned pidfiles, sockets, and orphaned process groups
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.runtime_reaper --runtime-root "$(RUNTIME_ROOT)"
 
 broker-smoke: runtime-layout ## Run broker wiring safety smoke without writing client configs
 	@$(MAKE) --no-print-directory config-render CLIENT=codex CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	@$(MAKE) --no-print-directory config-render CLIENT=claude CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
+	@$(MAKE) --no-print-directory config-render CLIENT=gemini CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	@$(MAKE) --no-print-directory broker-reap RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	$(call log_success,"Broker smoke passed")
 
@@ -236,7 +272,8 @@ facade-smoke: runtime-layout broker-reap ## Exercise compact broker facade throu
 		--profile "$(PROFILE)" \
 		--query "$(FACADE_QUERY)" \
 		--call-tool "$(FACADE_CALL_TOOL)" \
-		--call-args '$(FACADE_CALL_ARGS)'
+		--call-args '$(FACADE_CALL_ARGS)' \
+		--request-timeout-seconds "$(FACADE_REQUEST_TIMEOUT_SECONDS)"
 
 codex-facade-smoke: PROFILE=codex
 codex-facade-smoke: facade-smoke ## Exercise compact Codex broker facade through the client shim
@@ -245,7 +282,7 @@ claude-facade-smoke: PROFILE=claude
 claude-facade-smoke: facade-smoke ## Exercise compact Claude broker facade through the client shim without wiring Claude
 
 gemini-facade-smoke: PROFILE=gemini
-gemini-facade-smoke: facade-smoke ## Exercise compact Gemini broker facade profile without rendering a Gemini client
+gemini-facade-smoke: facade-smoke ## Exercise compact Gemini broker facade profile
 
 profile-validation: runtime-layout broker-reap ## Validate all enabled upstreams for PROFILE using YAML smoke probes
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.profile_validation \
@@ -275,7 +312,7 @@ codex-claude-discovery-parity: PARITY_RIGHT_PROFILE=claude
 codex-claude-discovery-parity: discovery-parity ## Compare Codex and Claude broker discovery without wiring Claude
 
 codex-deferred-acceptance: PROFILE=codex
-codex-deferred-acceptance: runtime-layout ## Print maintainer-only Codex deferred-tool acceptance steps
+codex-deferred-acceptance: runtime-layout
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.deferred_acceptance \
 		--config "$(CONFIG_PATH)" \
 		--profile "$(PROFILE)" \
@@ -304,6 +341,7 @@ launchagent-load: deps runtime-layout ## Load and kickstart the installed broker
 	@launchctl bootstrap "$(LAUNCHAGENT_DOMAIN)" "$(LAUNCHAGENT_PLIST)"
 	@launchctl enable "$(LAUNCHAGENT_DOMAIN)/$(LAUNCHAGENT_LABEL)"
 	@launchctl kickstart -k "$(LAUNCHAGENT_DOMAIN)/$(LAUNCHAGENT_LABEL)"
+	@$(MAKE) --no-print-directory broker-wait RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)" BROKER_WAIT_SECONDS="$(BROKER_WAIT_SECONDS)"
 	$(call log_success,"LaunchAgent loaded: $(LAUNCHAGENT_LABEL)")
 
 launchagent-uninstall: runtime-layout ## Plan LaunchAgent removal by default; set LAUNCHAGENT_APPLY=1 to remove it
@@ -456,6 +494,15 @@ project-mcp-migrate: runtime-layout ## Back up and empty covered project .mcp.js
 config-rollback: runtime-layout ## Restore latest backup for one client config
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.config_render rollback --config "$(CONFIG_PATH)" --client "$(CLIENT)"
 
+profile-snippet: ## Print a generic profile/client YAML snippet; set NEW_PROFILE and NEW_CLIENT_FORMAT
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.profile_snippet \
+		--profile "$(NEW_PROFILE)" \
+		--client-format "$(NEW_CLIENT_FORMAT)" \
+		--config-path '$(NEW_CLIENT_CONFIG_PATH)' \
+		--entry-name "$(NEW_CLIENT_ENTRY_NAME)" \
+		--command "$(NEW_CLIENT_COMMAND)" \
+		--broker-tool-name-style "$(NEW_BROKER_TOOL_NAME_STYLE)"
+
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
 
@@ -468,84 +515,83 @@ package-check: package-build ## Validate built package metadata
 	@$(PYTHON) -m twine check "$(PACKAGE_DIST_DIR)"/*
 	$(call log_success,"Package artifacts passed twine check")
 
-public-export: ## Copy public-safe files to PUBLIC_REPO after allowlist, denylist, marker, and secret scans
-	@test -n "$(PUBLIC_REPO)" || { $(call log_error,"Set PUBLIC_REPO"); exit 1; }
-	@if [[ "$(PUBLIC_EXPORT_DELETE_STALE)" == "1" ]]; then \
-		DELETE_ARGS=(); \
+docker-build: ## Build the local Docker image
+	$(call log_step,"Building Docker image $(DOCKER_IMAGE)")
+	@docker build $(if $(DOCKER_PLATFORM),--platform "$(DOCKER_PLATFORM)",) \
+		--build-arg VERSION="$(PACKAGE_VERSION)" \
+		--build-arg VCS_REF="$$(git -C "$(ROOT)" rev-parse --short HEAD 2>/dev/null || printf unknown)" \
+		--build-arg SOURCE_URL="$(DOCKER_SOURCE_URL)" \
+		-t "$(DOCKER_IMAGE)" "$(ROOT)"
+	$(call log_success,"Docker image built: $(DOCKER_IMAGE)")
+
+docker-smoke: docker-build ## Smoke test the Docker stdio entrypoint
+	$(call log_step,"Smoke testing Docker image $(DOCKER_IMAGE)")
+	@mkdir -p "$(TEST_LOG_DIR)"
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | docker run --rm -i "$(DOCKER_IMAGE)" | tee "$(TEST_LOG_DIR)/docker-smoke.jsonl" | grep -q '"tools"'
+	$(call log_success,"Docker smoke passed")
+
+docker-buildx: ## Build multi-arch Docker image with SBOM/provenance; set DOCKER_PUSH=1 to push
+	$(call log_step,"Building multi-arch Docker image $(DOCKER_IMAGE)")
+	@if [[ "$(DOCKER_PUSH)" == "1" ]]; then \
+		OUTPUT_ARG="--push"; \
 	else \
-		DELETE_ARGS=(--no-delete-stale); \
+		OUTPUT_ARG="--load"; \
+		if [[ "$(DOCKER_PLATFORMS)" == *,* ]]; then \
+			printf "\033[1;31m[ERROR]\033[0m docker-buildx without DOCKER_PUSH=1 supports one platform only; set DOCKER_PLATFORMS=linux/arm64 for local load\n" >&2; \
+			exit 1; \
+		fi; \
 	fi; \
-	$(PYTHON_BIN) "$(ROOT)/scripts/public-export.py" \
-		--repo-root "$(ROOT)" \
-		--public-repo "$(PUBLIC_REPO)" \
-		--allowlist "$(PUBLIC_EXPORT_ALLOWLIST)" \
-		--denylist "$(PUBLIC_EXPORT_DENYLIST)" \
-		"$${DELETE_ARGS[@]}"
-
-public-export-check: public-export ## Validate exported public checkout skeleton
-	@test -f "$(PUBLIC_REPO)/README.md"
-	@test -f "$(PUBLIC_REPO)/LICENSE"
-	@test -f "$(PUBLIC_REPO)/SECURITY.md"
-	@test -f "$(PUBLIC_REPO)/CONTRIBUTING.md"
-	@test -f "$(PUBLIC_REPO)/CHANGELOG.md"
-	@test -f "$(PUBLIC_REPO)/ROADMAP.md"
-	@test -f "$(PUBLIC_REPO)/.github/ISSUE_TEMPLATE/bug_report.md"
-	@test -f "$(PUBLIC_REPO)/src/mcp_broker/broker.py"
-	@test ! -e "$(PUBLIC_REPO)/AGENTS.md"
-	@test ! -e "$(PUBLIC_REPO)/CLAUDE.md"
-	@test ! -e "$(PUBLIC_REPO)/TODO.md"
-	@test ! -e "$(PUBLIC_REPO)/docs/plans"
-	@test ! -e "$(PUBLIC_REPO)/docs/current-mcp-inventory.md"
-	$(call log_success,"public-export-check passed")
-
-public-release-dry-run: ## Export to a clean public tree and run setup, validation, smoke, and public tests
-	@"$(ROOT)/scripts/public-release-dry-run.sh"
-
-require-maintainer-tools:
-	@test -x "$(CHECK_VIOLATIONS)" || { $(call log_error,"Missing maintainer tool: CHECK_VIOLATIONS=$(CHECK_VIOLATIONS)"); exit 2; }
-	@test -x "$(GRADE_QUALITY)" || { $(call log_error,"Missing maintainer tool: GRADE_QUALITY=$(GRADE_QUALITY)"); exit 2; }
-	@test -x "$(GIT_SECURITY_GUARD)" || { $(call log_error,"Missing maintainer tool: GIT_SECURITY_GUARD=$(GIT_SECURITY_GUARD)"); exit 2; }
-
-violations: maintainer-violations
-
-grade-quality: maintainer-grade-quality
-
-maintainer-violations: require-maintainer-tools
-	@mkdir -p "$(QUALITY_DIR)"
-	@"$(CHECK_VIOLATIONS)" \
-		--repo-root "$(ROOT)" \
-		--log --log-file "$(VIOLATIONS_LOG)" \
-		--json --json-file "$(VIOLATIONS_JSON)"
-
-maintainer-grade-quality: require-maintainer-tools maintainer-violations
-	@mkdir -p "$(QUALITY_DIR)"
-	@"$(GRADE_QUALITY)" \
-		--no-refresh \
-		--violations-json "$(VIOLATIONS_JSON)" \
-		--output-json "$(GRADE_REPORT_JSON)" \
+	docker buildx build \
+		--platform "$(DOCKER_PLATFORMS)" \
+		--build-arg VERSION="$(PACKAGE_VERSION)" \
+		--build-arg VCS_REF="$$(git -C "$(ROOT)" rev-parse --short HEAD 2>/dev/null || printf unknown)" \
+		--build-arg SOURCE_URL="$(DOCKER_SOURCE_URL)" \
+		--sbom=$(DOCKER_SBOM) \
+		--provenance=$(DOCKER_PROVENANCE) \
+		-t "$(DOCKER_IMAGE)" \
+		$$OUTPUT_ARG \
 		"$(ROOT)"
-	@$(PYTHON) "$(ROOT)/scripts/enforce_grade_quality.py" "$(GRADE_REPORT_JSON)"
+	$(call log_success,"Docker buildx completed: $(DOCKER_IMAGE)")
+
+mcpb-validate: ## Validate MCPB manifest metadata
+	$(call log_step,"Validating MCPB manifest")
+	@npx -y @anthropic-ai/mcpb validate "$(MCPB_MANIFEST)"
+	$(call log_success,"MCPB manifest passed")
 
 precommit: test-unit test-journey ## Public commit gate using repo-local checks
 	$(call log_success,"Precommit gate passed")
 
-maintainer-precommit: require-maintainer-tools
-	@if git -C "$(ROOT)" remote get-url origin >/dev/null 2>&1; then \
-		"$(GIT_SECURITY_GUARD)" --repo-root "$(ROOT)" --list-alerts --check-gitguardian; \
-	else \
-		printf "\033[1;33m[WARN]\033[0m origin remote not configured yet - GitHub/GitGuardian remote checks deferred until repo creation\n"; \
-	fi
-	@$(MAKE) --no-print-directory test-unit
-	@$(MAKE) --no-print-directory test-journey
-	@$(MAKE) --no-print-directory maintainer-violations
-
 quality-gate: test-cov ## Public quality gate using repo-local tests and coverage
 	$(call log_success,"Quality gate passed")
 
-maintainer-quality-gate: test-cov maintainer-violations maintainer-grade-quality
-	$(call log_success,"Maintainer quality gate passed")
+mutation: deps ## Run mutation tests with mutmut
+	$(call log_step,"Mutation tests")
+	@mkdir -p "$(QUALITY_DIR)"
+	@rm -rf "$(ROOT)/.mutmut-cache" "$(ROOT)/mutants" "$(MUTATION_STATS_JSON)"
+	@$(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN) $(MUTATION_ARGS)
+	@$(MUTMUT) results
+	@$(PYTHON) "$(ROOT)/scripts/check_mutation_stats.py" \
+		--mutants-dir "$(ROOT)/mutants" \
+		--output-json "$(MUTATION_STATS_JSON)" \
+		--min-score "$(MUTATION_MIN_SCORE)" \
+		$(if $(MUTATION_ARGS),--include-mutants $(MUTATION_ARGS),) \
+		--fail-statuses $(MUTATION_FAIL_STATUSES)
+	$(call log_success,"Mutation tests passed")
+
+mutation-linux: ## Run mutation tests inside a Linux container
+	@MCP_BROKER_MUTATION_IMAGE="$(MUTATION_IMAGE)" \
+		MCP_BROKER_MUTATION_MAX_CHILDREN="$(MUTATION_MAX_CHILDREN)" \
+		MCP_BROKER_MUTATION_ARGS="$(MUTATION_ARGS)" \
+		MCP_BROKER_MUTATION_LOG="$(MUTATION_LOG)" \
+		MCP_BROKER_MUTATION_MUTANTS_DIR="$(MUTATION_MUTANTS_DIR)" \
+		"$(ROOT)/scripts/linux-mutation.sh"
+
+release-gate: quality-gate package-check release-smoke $(RELEASE_MUTATION_TARGET) ## Run release gates with mutation last
+	$(call log_success,"Release gate passed")
 
 clean: ## Remove generated artifacts
-	@rm -rf "$(ROOT)/var/coverage" "$(ROOT)/var/test-logs" "$(ROOT)/var/quality" "$(ROOT)/.pytest_cache" "$(ROOT)/htmlcov" "$(ROOT)/dist" "$(ROOT)/build"
+	@rm -rf "$(ROOT)/var/coverage" "$(ROOT)/var/test-logs" "$(ROOT)/var/quality" "$(ROOT)/.pytest_cache" "$(ROOT)/.mutmut-cache" "$(ROOT)/mutants" "$(ROOT)/htmlcov" "$(ROOT)/dist" "$(ROOT)/build"
 	@rm -f "$(ROOT)/violations.json" "$(ROOT)/violations.log" "$(ROOT)/grade_quality_report.json"
 	$(call log_success,"Clean complete")
+
+-include $(ROOT)/local.mk

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import socket
-import sys
 import threading
+import time
 from typing import Sequence
 
 from mcp_broker import __version__
@@ -19,6 +18,7 @@ from mcp_broker.config import BrokerConfig, UpstreamConfig
 from mcp_broker.daemon_helpers import (
     configured_upstream_health as _configured_upstream_health,
     health_profile as _health_profile,
+    merge_passive_auth_probe as _merge_passive_auth_probe,
     passive_auth_probe as _passive_auth_probe,
     per_session_health_snapshot as _per_session_health_snapshot,
     process_exists as _process_exists,
@@ -41,18 +41,6 @@ class BrokerDaemonError(Exception):
     """Raised when daemon lifecycle operations fail."""
 
 
-def _merge_passive_auth_probe(
-    snapshot: dict[str, object],
-    probe: dict[str, object],
-) -> dict[str, object]:
-    merged = snapshot | {"auth_probe": probe.get("auth_probe", "none")}
-    if merged.get("last_error") is None and probe.get("last_error") is not None:
-        merged["last_error"] = probe["last_error"]
-    if merged.get("auth_state") in {None, "unknown"} and probe.get("auth_state") is not None:
-        merged["auth_state"] = probe["auth_state"]
-    return merged
-
-
 @dataclass
 class BrokerDaemon(BrokerDaemonUpstreamMixin):
     runtime_root: Path
@@ -63,6 +51,8 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
         self._paths = RuntimePaths.from_root(self.runtime_root)
         self._server: socket.socket | None = None
         self._thread: threading.Thread | None = None
+        self._connection_threads: list[threading.Thread] = []
+        self._connection_threads_lock = threading.Lock()
         self._stop_requested = threading.Event()
         self._protocol = McpProtocolHandler(server_name="mcp-broker", server_version=__version__)
         self._stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamProcess] = {}
@@ -71,6 +61,7 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
         self._cleanup_lock = threading.Lock()
         self._cleanup_done = False
         self._log_lock = threading.Lock()
+        self._status_snapshot_lock = threading.Lock()
         self._stop_logged = False
         self._started_at: str | None = None
         self._requests_total = 0
@@ -134,10 +125,26 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
         self.join(timeout=5)
 
     def join(self, *, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
         thread = self._thread
         if thread is not None:
             thread.join(timeout=timeout)
+        self._join_connection_threads(max(0.0, deadline - time.monotonic()))
         self._cleanup()
+
+    def _join_connection_threads(self, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._connection_threads_lock:
+                threads = [thread for thread in self._connection_threads if thread.is_alive()]
+                self._connection_threads = threads
+            if not threads:
+                return
+            for thread in threads:
+                remaining = max(0.0, deadline - time.monotonic())
+                if remaining <= 0:
+                    return
+                thread.join(timeout=remaining)
 
     def _serve_loop(self) -> None:
         server = self._server
@@ -148,9 +155,25 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
                 connection, _ = server.accept()
             except OSError:
                 break
-            with connection:
-                self._handle_connection(connection)
+            self._start_connection_thread(connection)
+        self._join_connection_threads(5)
         self._cleanup()
+
+    def _start_connection_thread(self, connection: socket.socket) -> None:
+        thread = threading.Thread(
+            target=self._handle_connection_with_context,
+            args=(connection,),
+            name="mcp-broker-connection",
+        )
+        thread.daemon = True
+        with self._connection_threads_lock:
+            self._connection_threads = [item for item in self._connection_threads if item.is_alive()]
+            self._connection_threads.append(thread)
+        thread.start()
+
+    def _handle_connection_with_context(self, connection: socket.socket) -> None:
+        with connection:
+            self._handle_connection(connection)
 
     def _handle_connection(self, connection: socket.socket) -> None:
         raw = connection.recv(65536)
@@ -167,6 +190,8 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
             if response is not None:
                 self._send_response(connection, response)
             self._write_request_log_safely(request.get("id"), request.get("method"), response)
+            if request.get("method") == "broker/stop":
+                self._wake_server()
 
     def _send_response(self, connection: socket.socket, response: dict[str, object]) -> None:
         connection.sendall(json.dumps(response, sort_keys=True).encode("utf-8") + b"\n")
@@ -281,7 +306,8 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
             return JsonRpcResponse.error(request.id, -32602, str(exc))
         call_upstream = self._call_upstream_for_session(session_id, session_context)
         list_upstream = self._list_upstream_for_session(session_id, session_context)
-        if name.startswith("broker."):
+        canonical_name = profile.canonical_broker_tool_name(name) if profile is not None else name
+        if canonical_name.startswith("broker."):
             try:
                 result = BrokerCatalogFacade(
                     broker_config=self.broker_config,
@@ -635,55 +661,34 @@ class BrokerDaemon(BrokerDaemonUpstreamMixin):
         }
         path = self.status_snapshot_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_name(f"{path.name}.tmp")
-        tmp_path.write_text(json.dumps(snapshot, sort_keys=True), encoding="utf-8")
-        tmp_path.replace(path)
+        with self._status_snapshot_lock:
+            tmp_path = path.with_name(f"{path.name}.{threading.get_ident()}.tmp")
+            tmp_path.write_text(json.dumps(snapshot, sort_keys=True), encoding="utf-8")
+            tmp_path.replace(path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run and inspect mcp-broker daemon")
-    parser.add_argument("command", choices=("serve", "status", "stop"))
-    parser.add_argument("--runtime-root", required=True)
-    parser.add_argument("--socket-path", required=True)
-    parser.add_argument("--config")
-    args = parser.parse_args(argv)
-    runtime_root = Path(args.runtime_root)
-    socket_path = Path(args.socket_path)
-    if args.command == "serve":
-        BrokerDaemon(
-            runtime_root=runtime_root,
-            socket_path=socket_path,
-            broker_config=_broker_config_for_serve(args.config),
-        ).serve_forever()
-        return 0
-    response = _client_request(socket_path, _broker_method_for_command(args.command))
-    sys.stdout.write(json.dumps(response, sort_keys=True) + "\n")
-    return 0
+    from mcp_broker.daemon_cli import main as daemon_cli_main
+
+    return daemon_cli_main(argv, daemon_cls=BrokerDaemon, request_fn=_client_request)
 
 
 def _broker_config_for_serve(config_path: str | Path | None) -> BrokerConfig | None:
-    if config_path is None:
-        return None
-    return BrokerConfig.from_file(Path(config_path))
+    from mcp_broker.daemon_cli import _broker_config_for_serve as broker_config_for_serve
+
+    return broker_config_for_serve(config_path)
 
 
 def _broker_method_for_command(command: str) -> str:
-    if command == "status":
-        return "broker/health"
-    return f"broker/{command}"
+    from mcp_broker.daemon_cli import _broker_method_for_command as broker_method_for_command
+
+    return broker_method_for_command(command)
 
 
 def _client_request(socket_path: Path, method: str) -> dict[str, object]:
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.connect(str(socket_path))
-        client.sendall(json.dumps({"id": method, "method": method}).encode("utf-8") + b"\n")
-        chunks: list[bytes] = []
-        while True:
-            chunk = client.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-        return json.loads(b"".join(chunks).decode("utf-8"))
+    from mcp_broker.daemon_cli import _client_request as client_request
+
+    return client_request(socket_path, method)
 
 
 if __name__ == "__main__":

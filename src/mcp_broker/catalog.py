@@ -14,6 +14,7 @@ from mcp_broker.profiles import ToolExposureProfile
 ToolLister = Callable[[str, int], list[dict[str, object]]]
 ToolCaller = Callable[[str, str, dict[str, Any], int], dict[str, Any]]
 StatusProvider = Callable[[set[str] | None], dict[str, dict[str, object]]]
+_CLIENT_CONTROL_ARGUMENTS = frozenset({"wait_for_previous"})
 
 
 class BrokerCatalogFacade:
@@ -35,15 +36,21 @@ class BrokerCatalogFacade:
         self._status_provider = status_provider or (lambda _visible_upstreams: {})
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if name == "broker.search_tools":
+        canonical_name = self._canonical_broker_tool_name(name)
+        if canonical_name == "broker.search_tools":
             return self._search_tools(arguments)
-        if name == "broker.describe_tool":
+        if canonical_name == "broker.describe_tool":
             return self._describe_tool(arguments)
-        if name == "broker.call_tool":
+        if canonical_name == "broker.call_tool":
             return self._call_managed_tool(arguments)
-        if name == "broker.status":
+        if canonical_name == "broker.status":
             return self._status(arguments)
         raise BrokerToolError(code="unknown_broker_tool", message=f"unknown broker tool: {name}")
+
+    def _canonical_broker_tool_name(self, name: str) -> str:
+        if self._profile is None:
+            return name
+        return self._profile.canonical_broker_tool_name(name)
 
     def _search_tools(self, arguments: dict[str, Any]) -> dict[str, Any]:
         query = str(arguments.get("query", "")).strip()
@@ -83,7 +90,12 @@ class BrokerCatalogFacade:
         return core.call_tool(tool_name, tool_arguments, self._call_upstream)
 
     def _status(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        if arguments:
+        status_arguments = {
+            name: value
+            for name, value in arguments.items()
+            if name not in _CLIENT_CONTROL_ARGUMENTS
+        }
+        if status_arguments:
             raise ValueError("broker.status does not accept arguments")
         exposed_upstreams = {
             upstream_name
@@ -94,7 +106,7 @@ class BrokerCatalogFacade:
         upstreams = {}
         for upstream_name, upstream in self._broker_config.upstreams.items():
             exposed = self._status_exposes_upstream(upstream_name, upstream)
-            if not exposed and upstream.enabled:
+            if not exposed and upstream.enabled and upstream.mode != "disabled":
                 continue
             snapshot = health.get(upstream_name, {})
             upstreams[upstream_name] = {

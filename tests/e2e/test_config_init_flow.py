@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.repo_paths import make_command
 
 pytestmark = pytest.mark.e2e
 
@@ -18,18 +19,17 @@ def test_config_init_creates_generic_private_config_in_custom_path(
     runtime_root = tmp_path / "runtime"
 
     init_result = subprocess.run(
-        [
-            "make",
+        make_command(
             "config-init",
             f"CONFIG_PRIVATE_PATH={private_config}",
-        ],
+        ),
         cwd=ROOT,
-        check=True,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
+    assert init_result.returncode == 0, init_result.stdout + init_result.stderr
     assert "Created private config" in init_result.stdout
     assert private_config.is_file()
     assert private_config.read_text(encoding="utf-8") == PUBLIC_CONFIG_FILE.read_text(
@@ -60,19 +60,18 @@ def test_config_init_creates_generic_private_config_in_custom_path(
     assert all(upstream["enabled"] is False for upstream in loaded["upstreams"].values())
 
     validate_result = subprocess.run(
-        [
-            "make",
+        make_command(
             "config-validate",
             f"CONFIG_PATH={private_config}",
             f"CONFIG_PRIVATE_PATH={private_config}",
             f"RUNTIME_ROOT={runtime_root}",
             f"SOCKET_PATH={runtime_root / 'sockets' / 'broker.sock'}",
-        ],
+        ),
         cwd=ROOT,
-        check=True,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
+    assert validate_result.returncode == 0, validate_result.stdout + validate_result.stderr
     assert "Config validation passed" in validate_result.stdout

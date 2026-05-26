@@ -16,7 +16,7 @@ from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError
 
 def build_tool_count_report(*, profile: str, tools: list[dict[str, Any]]) -> dict[str, Any]:
     tool_names = [str(tool["name"]) for tool in tools]
-    upstream_counts = Counter(name.split(".", 1)[0] for name in tool_names)
+    upstream_counts = Counter(_tool_prefix(name) for name in tool_names)
     return {
         "profile": profile,
         "total_tools": len(tool_names),
@@ -57,13 +57,7 @@ def _list_profile_tools(
         socket_path=config.runtime.socket_path,
         broker_config=config,
     )
-    started_daemon = False
-    try:
-        daemon.start()
-        started_daemon = True
-    except BrokerDaemonError as exc:
-        if "broker daemon already running" not in str(exc):
-            raise
+    started_daemon = _start_daemon_or_reuse(daemon)
     try:
         _request(
             config.runtime.socket_path,
@@ -100,14 +94,31 @@ def _request(socket_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(30)
         client.connect(str(socket_path))
-        client.sendall(json.dumps(payload).encode("utf-8") + b"\n")
+        client.sendall(json.dumps(payload).encode() + b"\n")
         data = b""
         while not data.endswith(b"\n"):
             chunk = client.recv(65536)
             if not chunk:
                 break
             data += chunk
-    return json.loads(data.decode("utf-8"))
+    if not data.endswith(b"\n"):
+        raise ValueError("broker response closed before newline frame")
+    return json.loads(data)
+
+
+def _tool_prefix(tool_name: str) -> str:
+    prefix, _separator, _suffix = tool_name.partition(".")
+    return prefix
+
+
+def _start_daemon_or_reuse(daemon: BrokerDaemon) -> bool:
+    try:
+        daemon.start()
+    except BrokerDaemonError as exc:
+        if "broker daemon already running" not in str(exc):
+            raise
+        return False
+    return True
 
 
 if __name__ == "__main__":

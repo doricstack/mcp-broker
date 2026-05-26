@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import os
 from typing import Mapping
 
@@ -46,9 +47,12 @@ def passive_auth_probe(
     upstream: UpstreamConfig,
     *,
     environ: Mapping[str, str],
+    now: datetime | None = None,
 ) -> dict[str, object]:
     if not upstream.enabled or upstream.mode == "disabled":
         return {"auth_probe": "none"}
+    if upstream.auth_probe is not None:
+        return _passive_configured_auth_probe(upstream, now=now or datetime.now(timezone.utc))
     missing_sources: list[str] = []
     for source_name in upstream.env.values():
         if not environ.get(source_name):
@@ -72,6 +76,95 @@ def passive_auth_probe(
     return {"auth_probe": "none"}
 
 
+def _passive_configured_auth_probe(
+    upstream: UpstreamConfig,
+    *,
+    now: datetime,
+) -> dict[str, object]:
+    probe = upstream.auth_probe
+    assert probe is not None
+    if not _secret_file_has_value(probe.token_file):
+        return {
+            "auth_probe": "credentials_missing",
+            "auth_state": "unauthenticated",
+            "last_error": f"missing OAuth token file for upstream {upstream.name}",
+        }
+    try:
+        raw = probe.token_file.read_text(encoding="utf-8")
+        token_data = json.loads(raw)
+    except (AttributeError, OSError, json.JSONDecodeError):
+        return {
+            "auth_probe": "credentials_missing",
+            "auth_state": "unauthenticated",
+            "last_error": f"invalid OAuth token file for upstream {upstream.name}",
+        }
+    if not isinstance(token_data, dict):
+        return {
+            "auth_probe": "credentials_missing",
+            "auth_state": "unauthenticated",
+            "last_error": f"invalid OAuth token file for upstream {upstream.name}",
+        }
+    missing_fields = [
+        field
+        for field in probe.required_fields
+        if not isinstance(token_data.get(field), str) or not token_data.get(field)
+    ]
+    if missing_fields:
+        return {
+            "auth_probe": "credentials_missing",
+            "auth_state": "unauthenticated",
+            "last_error": (
+                f"missing OAuth token field for upstream {upstream.name}: "
+                f"{', '.join(missing_fields)}"
+            ),
+        }
+    expiry_field = probe.refresh_token_expiry_field
+    if expiry_field:
+        expiry = _parse_oauth_expiry(token_data.get(expiry_field))
+        if expiry is None:
+            return {
+                "auth_probe": "credentials_missing",
+                "auth_state": "unauthenticated",
+                "last_error": (
+                    f"invalid OAuth refresh-token expiry for upstream {upstream.name}: "
+                    f"{expiry_field}"
+                ),
+            }
+        if expiry <= now:
+            return {
+                "auth_probe": "oauth_refresh_expired",
+                "auth_state": "unauthenticated",
+                "last_error": f"expired OAuth refresh token for upstream {upstream.name}",
+            }
+    return {"auth_probe": "credentials_present"}
+
+
+def _parse_oauth_expiry(value: object) -> datetime | None:
+    if isinstance(value, int | float):
+        return datetime.fromtimestamp(value, timezone.utc)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return datetime.fromtimestamp(parsed.timestamp(), timezone.utc)
+
+
+def merge_passive_auth_probe(
+    snapshot: dict[str, object],
+    probe: dict[str, object],
+) -> dict[str, object]:
+    merged = snapshot | {"auth_probe": probe.get("auth_probe", "none")}
+    if merged.get("last_error") is None and probe.get("last_error") is not None:
+        merged["last_error"] = probe["last_error"]
+    if merged.get("auth_state") in {None, "unknown"} and probe.get("auth_state") is not None:
+        merged["auth_state"] = probe["auth_state"]
+    return merged
+
+
 def _secret_file_has_value(secret_path: object) -> bool:
     if not hasattr(secret_path, "read_text"):
         return False
@@ -79,7 +172,7 @@ def _secret_file_has_value(secret_path: object) -> bool:
         value = secret_path.read_text(encoding="utf-8")
     except OSError:
         return False
-    return value.rstrip("\r\n") != ""
+    return any(char not in "\r\n" for char in value)
 
 
 def stdio_client_key(upstream: UpstreamConfig, *, session_id: str | None) -> str | tuple[str, str]:

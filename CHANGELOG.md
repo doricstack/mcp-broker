@@ -2,6 +2,15 @@
 
 All notable public changes will be recorded here.
 
+## 0.1.2 - 2026-05-26
+
+- Harden mutation-gate coverage for configuration, profile validation, project
+  MCP import, daemon helpers, upstream lifecycle, and runtime cleanup paths.
+- Remove mutation skip comments and require zero survived, untested, skipped,
+  suspicious, timeout, interrupted, segfault, or unchecked mutants for release.
+- Keep public export and maintainer release gates green with 100% coverage and
+  100% mutation score.
+
 ## 0.1.1 - 2026-05-25
 
 - Correct MCP Registry namespace casing in package README, registry metadata,

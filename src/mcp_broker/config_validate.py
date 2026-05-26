@@ -39,7 +39,10 @@ def validate_config_file(config_path: Path, schema_path: Path) -> ConfigValidati
 
 def _load_json_mapping(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
-        loaded = json.load(handle)
+        try:
+            loaded = json.load(handle)
+        except json.JSONDecodeError as exc:
+            raise ConfigValidationError(f"schema file must contain valid JSON: {path}: {exc.msg}") from exc
     if not isinstance(loaded, dict):
         raise ConfigValidationError(f"schema file must contain a JSON object: {path}")
     return loaded
@@ -47,7 +50,10 @@ def _load_json_mapping(path: Path) -> dict[str, Any]:
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle)
+        try:
+            loaded = yaml.safe_load(handle)
+        except yaml.YAMLError as exc:
+            raise ConfigValidationError(f"config file must contain valid YAML: {path}: {exc}") from exc
     if not isinstance(loaded, dict):
         raise ConfigValidationError(f"config file must contain a YAML mapping: {path}")
     return loaded

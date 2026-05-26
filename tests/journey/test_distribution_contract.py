@@ -50,8 +50,7 @@ def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
     assert "$HOME/Projects" not in install_doc
     forbidden_minor_image = "python:" + ".".join(("3", "13"))
     assert forbidden_minor_image not in pyproject
-    private_owner = "Navin" + "Agrawal"
-    assert private_owner not in pyproject
+    assert "https://github.com/NavinAgrawal/mcp-broker" in pyproject
 
 
 def test_release_version_is_single_sourced_and_public_metadata_matches() -> None:
@@ -82,6 +81,9 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert server["version"] == package_version
     assert server["packages"][0]["version"] == package_version
     assert server["packages"][0]["identifier"] == pyproject["project"]["name"]
+    assert pyproject["project"]["urls"]["Homepage"] == server["repository"]["url"]
+    assert pyproject["project"]["urls"]["Documentation"] == f"{server['repository']['url']}#readme"
+    assert pyproject["project"]["urls"]["Issues"] == f"{server['repository']['url']}/issues"
     assert f"mcp-name: {server['name']}" in readme
     assert 'server_version="0.0.1"' not in daemon
     assert '"version": "0.0.1"' not in upstream_stdio
@@ -101,6 +103,8 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     }
     assert "make precommit" in workflows["ci.yml"]
     assert "make release-smoke" in workflows["ci.yml"]
+    assert "make release-gate" in workflows["publish-pypi.yml"]
+    assert "make precommit RUNTIME_ROOT" not in workflows["publish-pypi.yml"]
     assert "pypa/gh-action-pypi-publish" in workflows["publish-pypi.yml"]
     assert "id-token: write" in workflows["publish-pypi.yml"]
     assert "./venv-mcp-broker/bin/python - <<'PY'" in workflows["publish-mcp-registry.yml"]
@@ -123,6 +127,37 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "twine==" in requirements
 
 
+def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+
+    for term in [
+        "ARG VERSION=",
+        "ARG VCS_REF=",
+        "ARG SOURCE_URL=",
+        "org.opencontainers.image.title",
+        "org.opencontainers.image.version",
+        "org.opencontainers.image.revision",
+        "org.opencontainers.image.source",
+        "org.opencontainers.image.licenses",
+    ]:
+        assert term in dockerfile
+
+    for term in [
+        "docker-buildx:",
+        "DOCKER_PLATFORMS",
+        "--sbom=$(DOCKER_SBOM)",
+        "--provenance=$(DOCKER_PROVENANCE)",
+        "--platform \"$(DOCKER_PLATFORMS)\"",
+    ]:
+        assert term in makefile
+
+    assert "SBOM" in distribution
+    assert "provenance" in distribution
+    assert "linux/amd64,linux/arm64" in distribution
+
+
 def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     script = ROOT / "scripts" / "release-smoke.sh"
     linux_script = ROOT / "scripts" / "linux-container-smoke.sh"
@@ -131,15 +166,19 @@ def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     linux_text = linux_script.read_text(encoding="utf-8")
 
     assert script.is_file()
-    assert "tar" in text
-    assert "tar_option_supported" in text
-    assert 'exclude=".git"' in text
+    assert "scripts/public-export.py" in text
+    assert "--allowlist" in text
+    assert "--denylist" in text
+    assert "--exclude venv-mcp-broker" in text
+    assert "--exclude var" in text
     assert "make config-init" in text
     assert "make config-validate" in text
     assert "make broker-smoke" in text
     assert "/Users/" not in text
-    assert "/Users/" not in (ROOT / "scripts" / "public-export.py").read_text(encoding="utf-8")
-    assert '--exclude="config/broker.private.yaml"' in text
+    export_helper = ROOT / "scripts" / "public-export.py"
+    if export_helper.exists():
+        assert "/Users/" not in export_helper.read_text(encoding="utf-8")
+    assert "config/broker.private.yaml" not in text
     assert "PIP_UPGRADE       ?= 0" in makefile
     assert "tar_option_supported" in linux_text
     assert "TAR_CREATE_OPTIONS" in linux_text

@@ -13,6 +13,7 @@ import yaml
 
 from mcp_broker.client_config import ClientRenderConfig
 from mcp_broker.schema import (
+    AuthProbePolicy,
     AuthRepairPolicy,
     DEFAULT_CPU_WATCHDOG_PERCENT,
     DEFAULT_CPU_WATCHDOG_SECONDS,
@@ -31,6 +32,7 @@ from mcp_broker.profiles import ToolExposureProfile
 
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SESSION_ENV_SOURCES = frozenset({"client_cwd"})
+SESSION_ENV_ALLOWED_MESSAGE = ", ".join(sorted(SESSION_ENV_SOURCES))
 
 TOP_LEVEL_KEYS = frozenset(
     {
@@ -57,6 +59,7 @@ PROFILE_KEYS = frozenset(
     {
         "max_tools",
         "compact_tools_enabled",
+        "broker_tool_name_style",
         "allow_mutating_upstreams",
     }
 )
@@ -84,6 +87,7 @@ UPSTREAM_KEYS = frozenset(
         "health",
         "resources",
         "auth_repair",
+        "auth_probe",
         "smoke",
     }
 )
@@ -247,6 +251,7 @@ class UpstreamConfig:
     health: HealthPolicy = field(default_factory=HealthPolicy)
     resources: ResourcePolicy = field(default_factory=ResourcePolicy)
     auth_repair: AuthRepairPolicy | None = None
+    auth_probe: AuthProbePolicy | None = None
     smoke: SmokeProbe | None = None
 
     @classmethod
@@ -298,6 +303,11 @@ class UpstreamConfig:
             auth_repair=AuthRepairPolicy.from_mapping(
                 f"upstreams.{name}.auth_repair",
                 data.get("auth_repair"),
+            ),
+            auth_probe=_parse_auth_probe(
+                f"upstreams.{name}.auth_probe",
+                data.get("auth_probe"),
+                runtime=runtime,
             ),
             smoke=SmokeProbe.from_mapping(f"upstreams.{name}.smoke", data.get("smoke")),
         )
@@ -468,8 +478,7 @@ def _parse_session_env(path: str, value: Any) -> dict[str, str]:
         if not isinstance(target_name, str) or not ENV_NAME_PATTERN.match(target_name):
             raise ValueError(f"{path} keys must be environment variable names")
         if not isinstance(source_name, str) or source_name not in SESSION_ENV_SOURCES:
-            allowed = ", ".join(sorted(SESSION_ENV_SOURCES))
-            raise ValueError(f"{path}.{target_name} must be one of: {allowed}")
+            raise ValueError(f"{path}.{target_name} must be one of: {SESSION_ENV_ALLOWED_MESSAGE}")
         parsed[target_name] = source_name
     return parsed
 
@@ -530,6 +539,23 @@ def _parse_upstream_policies(name: str, data: dict[str, Any]) -> dict[str, objec
             data.get("resources"),
         ),
     }
+
+
+def _parse_auth_probe(
+    path: str,
+    value: Any,
+    *,
+    runtime: RuntimeConfig,
+) -> AuthProbePolicy | None:
+    policy = AuthProbePolicy.from_mapping(path, value)
+    if policy is None:
+        return None
+    return AuthProbePolicy(
+        type=policy.type,
+        token_file=Path(_expand_config_text(policy.token_file, runtime)).expanduser(),
+        required_fields=policy.required_fields,
+        refresh_token_expiry_field=policy.refresh_token_expiry_field,
+    )
 
 
 def _parse_env_files(path: str, value: Any, *, runtime: RuntimeConfig) -> dict[str, Path]:

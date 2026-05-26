@@ -9,7 +9,7 @@ usage() {
   cat <<'USAGE'
 usage: release-smoke.sh [--help]
 
-Creates a clean tree from tracked files and runs the public setup path:
+Creates a clean tree and runs the setup path:
   make config-init
   make setup
   make config-validate
@@ -18,6 +18,7 @@ Creates a clean tree from tracked files and runs the public setup path:
 Environment:
   MCP_BROKER_RELEASE_SMOKE_DIR    Optional existing work directory
   MCP_BROKER_RELEASE_SMOKE_KEEP   Set to 1 to keep the temporary directory
+  PYTHON_BIN                      Python used to run the private export helper
 USAGE
 }
 
@@ -46,43 +47,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-tar_option_supported() {
-  local option="$1"
-  local probe_dir
-  probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/mcp-broker-tar-probe.XXXXXX")"
-  if tar "$option" -cf /dev/null -C "$probe_dir" . >/dev/null 2>&1; then
-    rm -rf "$probe_dir"
-    return 0
-  fi
-  rm -rf "$probe_dir"
-  return 1
-}
-
-ARCHIVE_PATH="$WORK_DIR/source.tar"
 CLONE_DIR="$WORK_DIR/source"
 RUNTIME_ROOT="$WORK_DIR/runtime"
 HOME_DIR="$WORK_DIR/home"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 mkdir -p "$CLONE_DIR" "$RUNTIME_ROOT" "$HOME_DIR"
-TAR_CREATE_OPTIONS=()
-if tar_option_supported "--no-xattrs"; then
-  TAR_CREATE_OPTIONS+=(--no-xattrs)
+
+if [[ -f "$ROOT/scripts/public-export.py" && -f "$ROOT/public-export/allowlist.txt" ]]; then
+  "$PYTHON_BIN" "$ROOT/scripts/public-export.py" \
+    --repo-root "$ROOT" \
+    --public-repo "$CLONE_DIR" \
+    --allowlist "$ROOT/public-export/allowlist.txt" \
+    --denylist "$ROOT/public-export/denylist.txt"
+else
+  tar \
+    --exclude .git \
+    --exclude .pytest_cache \
+    --exclude .mutmut-cache \
+    --exclude build \
+    --exclude dist \
+    --exclude htmlcov \
+    --exclude mutants \
+    --exclude var \
+    --exclude venv-mcp-broker \
+    -C "$ROOT" -cf - . | tar -C "$CLONE_DIR" -xf -
 fi
-if tar_option_supported "--no-mac-metadata"; then
-  TAR_CREATE_OPTIONS+=(--no-mac-metadata)
-fi
-COPYFILE_DISABLE=1 tar \
-  "${TAR_CREATE_OPTIONS[@]}" \
-  --exclude=".git" \
-  --exclude="venv-mcp-broker" \
-  --exclude="config/broker.private.yaml" \
-  --exclude="var/coverage/*" \
-  --exclude="var/quality/*" \
-  --exclude="var/test-logs/*" \
-  -C "$ROOT" \
-  -cf "$ARCHIVE_PATH" \
-  .
-tar -xf "$ARCHIVE_PATH" -C "$CLONE_DIR"
 
 (cd "$CLONE_DIR" && HOME="$HOME_DIR" make config-init RUNTIME_ROOT="$RUNTIME_ROOT")
 (cd "$CLONE_DIR" && HOME="$HOME_DIR" make setup RUNTIME_ROOT="$RUNTIME_ROOT")

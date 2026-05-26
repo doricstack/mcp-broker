@@ -1,19 +1,36 @@
 import io
+import json
 import os
 from pathlib import Path
 import signal
 import subprocess
 import sys
+import time
 from typing import Any, cast
 
 import pytest
 
+from mcp_broker import __version__
 from mcp_broker.config import UpstreamConfig
+from mcp_broker.protocol import SUPPORTED_PROTOCOL_VERSIONS
+from mcp_broker.upstream_process import (
+    KILL_WAIT_SECONDS,
+    PROCESS_GROUP_VERIFY_SECONDS,
+    STOP_TIMEOUT_SECONDS,
+)
 from mcp_broker.upstream_stdio import (
     StdioUpstreamError,
     StdioUpstreamProcess,
     StdioUpstreamTimeout,
+    _close_process_pipes,
+    _format_response_error,
+    _is_jsonrpc_notification,
+    _process_group_id,
+    _process_group_members,
+    _read_stderr_chunk,
+    _signal_process_group,
     _start_stderr_drainer,
+    _wait_for_process_group_stop,
 )
 
 
@@ -70,6 +87,136 @@ for line in sys.stdin:
     assert "stderr:0" in (absolute_state_dir / "stderr.log").read_text(encoding="utf-8")
 
 
+def test_stdio_upstream_emits_call_start_ready_and_stop_events(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "event_worker.py",
+        """
+import json
+import sys
+
+for line in sys.stdin:
+    request = json.loads(line)
+    print(json.dumps({
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {"name": request["params"]["name"]},
+    }), flush=True)
+""",
+    )
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+
+    try:
+        assert client.call_tool("fake.echo", {}, timeout_seconds=1) == {"name": "fake.echo"}
+        running_events = list(events)
+    finally:
+        client.stop()
+
+    assert running_events[0] == {
+        "event": "upstream.call",
+        "upstream": "fake",
+        "method": "tools/call",
+        "tool_name": "fake.echo",
+        "timeout_seconds": 1,
+    }
+    assert running_events[1] == {
+        "event": "upstream.start",
+        "upstream": "fake",
+        "state": "starting",
+    }
+    assert running_events[2]["event"] == "upstream.ready"
+    assert running_events[2]["upstream"] == "fake"
+    assert running_events[2]["state"] == "running"
+    assert isinstance(running_events[2]["pid"], int)
+    assert events[-2] == {
+        "event": "upstream.kill",
+        "upstream": "fake",
+        "signal": "SIGKILL",
+        "reason": "final_cleanup",
+    }
+    assert events[-1] == {
+        "event": "upstream.stop",
+        "upstream": "fake",
+        "state": "stopped",
+    }
+
+
+def test_stdio_upstream_sends_exact_tool_call_payload(tmp_path: Path) -> None:
+    requests_path = tmp_path / "call-requests.jsonl"
+    script = _script(
+        tmp_path,
+        "call_payload_worker.py",
+        f"""
+import json
+from pathlib import Path
+import sys
+
+requests_path = Path({str(requests_path)!r})
+
+for line in sys.stdin:
+    request = json.loads(line)
+    with requests_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(request, sort_keys=True) + "\\n")
+    print(json.dumps({{
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {{"ok": True}},
+    }}), flush=True)
+""",
+    )
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    try:
+        assert client.call_tool("fake.echo", {"value": "hello"}, timeout_seconds=1) == {"ok": True}
+        assert client.call_tool("fake.echo", {"value": "again"}, timeout_seconds=1) == {"ok": True}
+    finally:
+        client.stop()
+
+    requests = [
+        json.loads(line) for line in requests_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert requests == [
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "tools/call",
+            "params": {
+                "name": "fake.echo",
+                "arguments": {"value": "hello"},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "fake.echo",
+                "arguments": {"value": "again"},
+            },
+        },
+    ]
+
+
+def test_stdio_upstream_initial_internal_state_contract(tmp_path: Path) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    assert client._last_error is None
+    assert client._initialized is False
+
+
 def test_stdio_stderr_drainer_stops_when_stream_is_already_closed(tmp_path: Path) -> None:
     stream = io.BytesIO(b"")
     stream.close()
@@ -80,6 +227,131 @@ def test_stdio_stderr_drainer_stops_when_stream_is_already_closed(tmp_path: Path
 
     assert not thread.is_alive()
     assert log_path.read_bytes() == b""
+
+
+def test_stdio_stderr_drainer_writes_stream_and_uses_upstream_name(tmp_path: Path) -> None:
+    stream = io.BytesIO(b"first\nsecond\n")
+    log_path = tmp_path / "upstream-alpha" / "stderr.log"
+    log_path.parent.mkdir()
+
+    thread = _start_stderr_drainer(stream, log_path)
+    thread.join(timeout=1)
+
+    assert thread.name == "mcp-broker-stderr-upstream-alpha"
+    assert thread.daemon is True
+    assert not thread.is_alive()
+    assert log_path.read_bytes() == b"first\nsecond\n"
+
+
+def test_stdio_stderr_drainer_reads_fixed_chunks_and_flushes_each_write(
+    tmp_path: Path,
+) -> None:
+    class Stream:
+        def __init__(self) -> None:
+            self.sizes: list[int] = []
+            self.reads = iter([b"first", b"second", b""])
+
+        def read(self, size: int) -> bytes:
+            self.sizes.append(size)
+            return next(self.reads)
+
+    stream = Stream()
+    log_path = tmp_path / "upstream-alpha" / "stderr.log"
+    log_path.parent.mkdir()
+
+    thread = _start_stderr_drainer(cast(Any, stream), log_path)
+    thread.join(timeout=1)
+
+    assert stream.sizes == [4096, 4096, 4096]
+    assert log_path.read_bytes() == b"firstsecond"
+
+
+def test_stdio_stderr_chunk_reader_returns_empty_for_closed_stream() -> None:
+    stream = io.BytesIO(b"")
+    stream.close()
+
+    assert _read_stderr_chunk(stream) == b""
+
+
+def test_close_process_pipes_closes_stderr_by_default() -> None:
+    process = cast(
+        subprocess.Popen[bytes],
+        type(
+            "FakeProcess",
+            (),
+            {
+                "stdin": io.BytesIO(),
+                "stdout": io.BytesIO(),
+                "stderr": io.BytesIO(),
+            },
+        )(),
+    )
+
+    _close_process_pipes(process, include_stderr=True)
+
+    assert process.stdin.closed
+    assert process.stdout.closed
+    assert process.stderr.closed
+
+
+def test_close_process_pipes_can_leave_stderr_open_for_drainer() -> None:
+    process = cast(
+        subprocess.Popen[bytes],
+        type(
+            "FakeProcess",
+            (),
+            {
+                "stdin": io.BytesIO(),
+                "stdout": io.BytesIO(),
+                "stderr": io.BytesIO(),
+            },
+        )(),
+    )
+
+    _close_process_pipes(process, include_stderr=False)
+
+    assert process.stdin.closed
+    assert process.stdout.closed
+    assert not process.stderr.closed
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ({}, False),
+        ({"jsonrpc": "2.0", "method": "notifications/progress"}, True),
+        ({"jsonrpc": "2.0", "method": "notifications/progress", "params": {}}, True),
+        ({"jsonrpc": "2.0", "id": None, "method": "notifications/progress"}, False),
+        ({"jsonrpc": "2.0", "id": 0, "method": "notifications/progress"}, False),
+        ({"jsonrpc": "2.0", "method": 123}, False),
+    ],
+)
+def test_jsonrpc_notification_detection_truth_table(
+    message: dict[str, Any],
+    expected: bool,
+) -> None:
+    assert _is_jsonrpc_notification(message) is expected
+
+
+@pytest.mark.parametrize(
+    ("error", "formatted"),
+    [
+        ({}, "{}"),
+        ({"code": -32000}, "-32000"),
+        ({"message": "Auth token missing"}, "Auth token missing"),
+        ({"data": False}, "data=False"),
+        ({"data": {"hint": "login"}}, "data={'hint': 'login'}"),
+        (
+            {"code": -32000, "message": "Auth token missing", "data": {"hint": "login"}},
+            "-32000 Auth token missing data={'hint': 'login'}",
+        ),
+    ],
+)
+def test_response_error_formatting_truth_table(
+    error: dict[str, Any],
+    formatted: str,
+) -> None:
+    assert _format_response_error(error) == formatted
 
 
 def test_stdio_upstream_injects_configured_request_meta(tmp_path: Path) -> None:
@@ -118,6 +390,46 @@ for line in sys.stdin:
         client.stop()
 
     assert result == {"meta": {"authToken": "request-token"}}
+
+
+def test_stdio_upstream_request_meta_reads_configured_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _script(
+        tmp_path,
+        "env_meta_worker.py",
+        """
+import json
+import sys
+
+for line in sys.stdin:
+    request = json.loads(line)
+    print(json.dumps({
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {"meta": request["params"].get("_meta", {})},
+    }), flush=True)
+""",
+    )
+    monkeypatch.setenv("AUTH_SOURCE", "env-token")
+    client = StdioUpstreamProcess(
+        UpstreamConfig(
+            name="fake",
+            command=sys.executable,
+            args=[str(script)],
+            env={"AUTH_TARGET": "AUTH_SOURCE"},
+            request_meta={"authToken": "AUTH_TARGET"},
+        ),
+        runtime_state_dir=tmp_path / "runtime-state",
+    )
+
+    try:
+        result = client.call_tool("fake.echo", {}, timeout_seconds=1)
+    finally:
+        client.stop()
+
+    assert result == {"meta": {"authToken": "env-token"}}
 
 
 def test_stdio_upstream_injects_configured_session_environment(tmp_path: Path) -> None:
@@ -212,6 +524,240 @@ for line in sys.stdin:
         client.stop()
 
 
+def test_stdio_upstream_clears_last_error_after_successful_tools_list(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "tools_success_worker.py",
+        """
+import json
+import sys
+
+for line in sys.stdin:
+    request = json.loads(line)
+    if request["method"] == "initialize":
+        print(json.dumps({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": request["params"]["protocolVersion"],
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "fake", "version": "0.0.1"},
+            },
+        }), flush=True)
+        continue
+    if request["method"] == "notifications/initialized":
+        continue
+    print(json.dumps({
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {"tools": [{"name": "echo"}]},
+    }), flush=True)
+""",
+    )
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._last_error = "old failure"
+
+    try:
+        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+        assert client.health_snapshot()["last_error"] is None
+    finally:
+        client.stop()
+
+
+def test_stdio_upstream_emits_tools_list_and_initialization_contract(
+    tmp_path: Path,
+) -> None:
+    requests_path = tmp_path / "requests.jsonl"
+    script = _script(
+        tmp_path,
+        "handshake_worker.py",
+        f"""
+import json
+from pathlib import Path
+import sys
+
+requests_path = Path({str(requests_path)!r})
+
+for line in sys.stdin:
+    request = json.loads(line)
+    with requests_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(request, sort_keys=True) + "\\n")
+    if request["method"] == "initialize":
+        print(json.dumps({{
+            "jsonrpc": "2.0",
+            "method": "notifications/progress",
+        }}), flush=True)
+        print(json.dumps({{
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {{
+                "protocolVersion": request["params"]["protocolVersion"],
+                "capabilities": {{"tools": {{}}}},
+                "serverInfo": {{"name": "fake", "version": "0.0.1"}},
+            }},
+        }}), flush=True)
+        continue
+    if request["method"] == "notifications/initialized":
+        continue
+    print(json.dumps({{
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {{"tools": [{{"name": "echo"}}]}},
+    }}), flush=True)
+""",
+    )
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+
+    try:
+        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+    finally:
+        client.stop()
+
+    requests = [
+        json.loads(line) for line in requests_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[0] == {
+        "event": "upstream.call",
+        "upstream": "fake",
+        "method": "tools/list",
+        "timeout_seconds": 1,
+    }
+    assert requests[0] == {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": SUPPORTED_PROTOCOL_VERSIONS[0],
+            "capabilities": {},
+            "clientInfo": {"name": "mcp-broker", "version": __version__},
+        },
+    }
+    assert requests[1] == {
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    }
+    assert requests[2] == {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+    }
+    assert requests[3] == {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+    }
+    assert [request["method"] for request in requests].count("initialize") == 1
+
+
+def test_stdio_upstream_retries_tool_call_after_not_initialized_with_same_request_contract(
+    tmp_path: Path,
+) -> None:
+    requests_path = tmp_path / "retry-requests.jsonl"
+    script = _script(
+        tmp_path,
+        "retry_worker.py",
+        f"""
+import json
+from pathlib import Path
+import sys
+
+requests_path = Path({str(requests_path)!r})
+tool_calls = 0
+
+for line in sys.stdin:
+    request = json.loads(line)
+    with requests_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(request, sort_keys=True) + "\\n")
+    if request["method"] == "tools/call":
+        tool_calls += 1
+        if tool_calls == 1:
+            print(json.dumps({{
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "error": {{"code": -32002, "message": "Server not initialized"}},
+            }}), flush=True)
+            continue
+        print(json.dumps({{"jsonrpc": "2.0", "method": "notifications/progress"}}), flush=True)
+        print(json.dumps({{
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {{"ok": request["params"]}},
+        }}), flush=True)
+        continue
+    if request["method"] == "initialize":
+        print(json.dumps({{
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {{
+                "protocolVersion": request["params"]["protocolVersion"],
+                "capabilities": {{"tools": {{}}}},
+                "serverInfo": {{"name": "fake", "version": "0.0.1"}},
+            }},
+        }}), flush=True)
+""",
+    )
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    try:
+        assert client.call_tool("fake.echo", {"value": "hello"}, timeout_seconds=1) == {
+            "ok": {
+                "name": "fake.echo",
+                "arguments": {"value": "hello"},
+            }
+        }
+    finally:
+        client.stop()
+
+    requests = [
+        json.loads(line) for line in requests_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert requests == [
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "tools/call",
+            "params": {
+                "name": "fake.echo",
+                "arguments": {"value": "hello"},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": SUPPORTED_PROTOCOL_VERSIONS[0],
+                "capabilities": {},
+                "clientInfo": {"name": "mcp-broker", "version": __version__},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "fake.echo",
+                "arguments": {"value": "hello"},
+            },
+        },
+    ]
+
+
 def test_stdio_upstream_logs_tools_list_timeout_event(tmp_path: Path) -> None:
     script = _script(
         tmp_path,
@@ -261,6 +807,79 @@ for line in sys.stdin:
         "timeout_seconds": 1,
     } in events
     assert client.health_snapshot()["last_error"] == "upstream timed out: fake"
+
+
+def test_stdio_upstream_logs_tool_call_timeout_event_and_restart(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "slow_call_worker.py",
+        """
+import sys
+import time
+
+for _line in sys.stdin:
+    time.sleep(2)
+""",
+    )
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+
+    try:
+        with pytest.raises(StdioUpstreamTimeout, match="upstream timed out: fake"):
+            client.call_tool("fake.echo", {"value": "late"}, timeout_seconds=1)
+    finally:
+        client.stop()
+
+    assert {
+        "event": "upstream.timeout",
+        "upstream": "fake",
+        "method": "tools/call",
+        "tool_name": "fake.echo",
+        "timeout_seconds": 1,
+    } in events
+    assert {
+        "event": "upstream.restart",
+        "upstream": "fake",
+        "restart_count": 1,
+        "reason": "timeout",
+    } in events
+    assert client.health_snapshot()["last_error"] == "upstream timed out: fake"
+
+
+def test_stdio_upstream_timeout_reset_clears_protocol_state(tmp_path: Path) -> None:
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+    client._initialized = True
+    client._stdout_buffer = b'{"late": true}\n'
+    client._restart_count = 2
+    client._last_error = "upstream timed out: fake"
+
+    client._reset_after_timeout_locked()
+
+    assert client._initialized is False
+    assert client._stdout_buffer == b""
+    assert client.health_snapshot()["restarts"] == 3
+    assert client.health_snapshot()["last_error"] == "upstream timed out: fake"
+    assert events == [
+        {
+            "event": "upstream.restart",
+            "upstream": "fake",
+            "restart_count": 3,
+            "reason": "timeout",
+        }
+    ]
 
 
 def test_stdio_upstream_restarts_after_timeout_before_next_request(tmp_path: Path) -> None:
@@ -657,6 +1276,41 @@ def test_response_is_not_initialized_rejects_non_initialization_errors() -> None
     )
 
 
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        ({"error": {"code": -32002}}, True),
+        ({"error": {"code": -32002, "message": "anything"}}, True),
+        ({"error": {"code": -32600, "message": "Server not initialized"}}, True),
+        (
+            {
+                "error": {
+                    "code": -32600,
+                    "message": "Received request before initialization was complete",
+                }
+            },
+            True,
+        ),
+        (
+            {"error": {"code": -32602, "message": "Invalid request parameters", "data": "x"}},
+            False,
+        ),
+        (
+            {"error": {"code": -32602, "message": "Wrong message", "data": ""}},
+            False,
+        ),
+        ({"error": {"code": -32600, "message": "initialized already"}}, False),
+    ],
+)
+def test_response_is_not_initialized_truth_table(
+    response: dict[str, Any],
+    expected: bool,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    assert upstream_stdio._response_is_not_initialized(response) is expected
+
+
 def test_stdio_upstream_rejects_bad_tools_list_response(tmp_path: Path) -> None:
     script = _script(
         tmp_path,
@@ -706,6 +1360,51 @@ for line in sys.stdin:
         client.stop()
 
 
+def test_stdio_upstream_rejects_non_object_tools_list_entries(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "bad_tools_entry_worker.py",
+        """
+import json
+import sys
+
+for line in sys.stdin:
+    request = json.loads(line)
+    if request["method"] == "initialize":
+        print(json.dumps({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": request["params"]["protocolVersion"],
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "fake", "version": "0.0.1"},
+            },
+        }), flush=True)
+        continue
+    if request["method"] == "notifications/initialized":
+        continue
+    print(json.dumps({
+        "jsonrpc": "2.0",
+        "id": request["id"],
+        "result": {"tools": [{"name": "good"}, "bad"]}
+    }), flush=True)
+""",
+    )
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, args=[str(script)]),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    try:
+        with pytest.raises(
+            StdioUpstreamError,
+            match="upstream tools/list response invalid: fake",
+        ):
+            client.list_tools(timeout_seconds=1)
+    finally:
+        client.stop()
+
+
 def test_stdio_upstream_reports_health_snapshot(tmp_path: Path) -> None:
     script = _script(
         tmp_path,
@@ -744,6 +1443,43 @@ for line in sys.stdin:
         assert snapshot["last_error"] is None
     finally:
         client.stop()
+
+
+def test_stdio_upstream_health_samples_the_running_process_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    sampled_cpu_groups: list[int] = []
+    sampled_memory_groups: list[int] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._process = cast(Any, RunningProcessForHealth())
+    monkeypatch.setattr(upstream_stdio.os, "getpgid", lambda _pid: 1234)
+    monkeypatch.setattr(
+        upstream_stdio,
+        "sample_process_group_cpu_percent",
+        lambda pgid: sampled_cpu_groups.append(pgid) or 12.5,
+    )
+    monkeypatch.setattr(
+        upstream_stdio,
+        "sample_process_group_memory_mb",
+        lambda pgid: sampled_memory_groups.append(pgid) or 64.0,
+    )
+
+    assert client.health_snapshot() == {
+        "state": "running",
+        "pid": 999998,
+        "cpu_percent": 12.5,
+        "memory_mb": 64.0,
+        "restarts": 0,
+        "last_error": None,
+    }
+    assert sampled_cpu_groups == [1234]
+    assert sampled_memory_groups == [1234]
 
 
 def test_stdio_upstream_reports_exited_status_and_restarts(tmp_path: Path) -> None:
@@ -806,6 +1542,200 @@ time.sleep(30)
         client.stop()
 
 
+def test_stdio_upstream_start_uses_subprocess_contract_and_session_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    calls: list[dict[str, object]] = []
+
+    class StartedProcess:
+        pid = 999998
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+        stderr = io.BytesIO()
+
+        def poll(self) -> None:
+            return None
+
+    def fake_popen(args: list[str], **kwargs: object) -> StartedProcess:
+        calls.append({"args": args, **kwargs})
+        return StartedProcess()
+
+    monkeypatch.setattr(upstream_stdio.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("CONFIGURED_VALUE", "configured")
+    client = StdioUpstreamProcess(
+        UpstreamConfig(
+            name="fake",
+            command="/bin/fake",
+            args=["--serve"],
+            working_dir=tmp_path / "work",
+            env={"STATIC_ENV": "CONFIGURED_VALUE"},
+            session_env={"PROJECT_DIR": "client_cwd"},
+        ),
+        runtime_state_dir=tmp_path / "state",
+        session_context={"client_cwd": str(tmp_path / "project")},
+    )
+    client._initialized = True
+    client._stdout_buffer = b'{"stale": true}\n'
+
+    client.ensure_running()
+
+    assert len(calls) == 1
+    call = calls[0]
+    env = cast(dict[str, str], call["env"])
+    assert call["args"] == ["/bin/fake", "--serve"]
+    assert call["cwd"] == tmp_path / "work"
+    assert call["stdin"] is subprocess.PIPE
+    assert call["stdout"] is subprocess.PIPE
+    assert call["stderr"] is subprocess.PIPE
+    assert call["start_new_session"] is True
+    assert env["STATIC_ENV"] == "configured"
+    assert env["PROJECT_DIR"] == str(tmp_path / "project")
+    assert env["MCP_BROKER_CLIENT_CWD"] == str(tmp_path / "project")
+    assert env["MCP_BROKER_UPSTREAM_STATE_DIR"] == str(tmp_path / "state" / "upstreams" / "fake")
+    assert (tmp_path / "state" / "upstreams" / "fake").is_dir()
+    assert client._initialized is False
+    assert client._stdout_buffer == b""
+
+
+def test_stdio_upstream_start_defaults_missing_client_cwd_to_empty_string(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    calls: list[dict[str, object]] = []
+
+    class StartedProcess:
+        pid = 999998
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+        stderr = io.BytesIO()
+
+        def poll(self) -> None:
+            return None
+
+    def fake_popen(args: list[str], **kwargs: object) -> StartedProcess:
+        calls.append({"args": args, **kwargs})
+        return StartedProcess()
+
+    monkeypatch.setattr(upstream_stdio.subprocess, "Popen", fake_popen)
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command="/bin/fake"),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    client.ensure_running()
+
+    env = cast(dict[str, str], calls[0]["env"])
+    assert env["MCP_BROKER_CLIENT_CWD"] == ""
+
+
+def test_stdio_upstream_start_fails_when_stderr_pipe_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class StartedProcess:
+        pid = 999998
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+        stderr = None
+
+        def poll(self) -> None:
+            return None
+
+    def fake_popen(args: list[str], **kwargs: object) -> StartedProcess:
+        return StartedProcess()
+
+    monkeypatch.setattr(upstream_stdio.subprocess, "Popen", fake_popen)
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command="/bin/fake"),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    with pytest.raises(StdioUpstreamError, match="upstream stderr closed: fake"):
+        client.ensure_running()
+
+    assert client._stderr_drainer is None
+
+
+def test_stdio_upstream_restart_emits_restart_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+    client._process = cast(Any, ExitedProcessWithPipes())
+    monkeypatch.setattr(
+        upstream_stdio.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("spawn failed")),
+    )
+
+    with pytest.raises(StdioUpstreamError, match="upstream failed to start: fake: spawn failed"):
+        client._start()
+
+    assert {
+        "event": "upstream.restart",
+        "upstream": "fake",
+        "restart_count": 1,
+    } in events
+    assert {
+        "event": "upstream.backoff",
+        "upstream": "fake",
+        "state": "backoff",
+    } in events
+
+
+def test_stdio_upstream_restart_preserves_incremental_restart_count_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    events: list[dict[str, object]] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+    drainer = RecordingDrainer()
+    client._process = cast(Any, ExitedProcessWithPipes())
+    client._stderr_drainer = drainer
+    client._restart_count = 4
+    monkeypatch.setattr(
+        upstream_stdio.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("spawn failed")),
+    )
+
+    with pytest.raises(StdioUpstreamError, match="upstream failed to start: fake: spawn failed"):
+        client._start()
+
+    assert drainer.join_timeouts == [KILL_WAIT_SECONDS]
+    assert client._stderr_drainer is None
+    assert client.health_snapshot()["restarts"] == 5
+    assert {
+        "event": "upstream.restart",
+        "upstream": "fake",
+        "restart_count": 5,
+    } in events
+
+
 def test_stdio_upstream_ensure_running_maps_unexpected_restart_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -826,6 +1756,24 @@ def test_stdio_upstream_ensure_running_maps_unexpected_restart_failure(
         client.ensure_running()
 
     assert client.health_snapshot()["last_error"] == "spawn bug"
+
+
+def test_stdio_upstream_ensure_running_clears_prior_error_on_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._last_error = "old failure"
+    monkeypatch.setattr(upstream_stdio.StdioUpstreamProcess, "_start", lambda self: None)
+
+    client.ensure_running()
+
+    assert client.health_snapshot()["last_error"] is None
 
 
 def test_stdio_upstream_ensure_running_records_start_failure(tmp_path: Path) -> None:
@@ -1003,6 +1951,274 @@ def test_stdio_upstream_rejects_closed_pipes(tmp_path: Path) -> None:
         client._write_request(cast(Any, ClosedPipeProcess(stdin=BrokenPipeStdin(), stdout=None)), {})
 
 
+def test_stdio_write_request_sorts_keys_appends_newline_and_flushes(tmp_path: Path) -> None:
+    stdin = RecordingStdin()
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    client._write_request(
+        cast(Any, ClosedPipeProcess(stdin=stdin, stdout=io.BytesIO())),
+        {"z": 2, "a": 1},
+    )
+
+    assert stdin.writes == [b'{"a": 1, "z": 2}\n']
+    assert stdin.flushes == 1
+
+
+def test_stdio_read_response_reports_non_object_payload_directly(tmp_path: Path) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"[]\n")
+    os.close(write_fd)
+
+    with os.fdopen(read_fd, "rb") as stdout:
+        process = ClosedPipeProcess(stdin=io.BytesIO(), stdout=stdout)
+        with pytest.raises(
+            StdioUpstreamError,
+            match="upstream response must be an object: fake",
+        ):
+            client._read_response(cast(Any, process), timeout_seconds=1)
+
+
+def test_stdio_jsonrpc_payload_ids_increment_and_omit_absent_params(tmp_path: Path) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    first_id, first_payload = client._jsonrpc_payload("tools/list", None)
+    second_id, second_payload = client._jsonrpc_payload("tools/call", {})
+
+    assert first_id == 0
+    assert first_payload == {"jsonrpc": "2.0", "id": 0, "method": "tools/list"}
+    assert second_id == 1
+    assert second_payload == {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {},
+    }
+
+
+def test_stdio_read_stdout_line_returns_buffered_line_without_select(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._stdout_buffer = b'{"first": true}\n{"second": true}\n'
+    monkeypatch.setattr(
+        upstream_stdio.select,
+        "select",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("select not needed")),
+    )
+
+    assert client._read_stdout_line(io.BytesIO(), deadline=time.monotonic()) == b'{"first": true}'
+    assert client._stdout_buffer == b'{"second": true}\n'
+
+
+def test_stdio_read_stdout_line_reads_from_pipe_and_preserves_extra_bytes(
+    tmp_path: Path,
+) -> None:
+    read_fd, write_fd = os.pipe()
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    os.write(write_fd, b'{"first": true}\n{"second": true}')
+    os.close(write_fd)
+
+    with os.fdopen(read_fd, "rb") as stdout:
+        assert (
+            client._read_stdout_line(stdout, deadline=time.monotonic() + 1)
+            == b'{"first": true}'
+        )
+        assert client._stdout_buffer == b'{"second": true}'
+
+
+def test_stdio_read_stdout_line_passes_remaining_deadline_to_select(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class Readable:
+        def fileno(self) -> int:
+            return 41
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    stdout = Readable()
+
+    def fake_select(
+        readers: list[object],
+        _writers: list[object],
+        _errors: list[object],
+        timeout: float,
+    ) -> tuple[list[object], list[object], list[object]]:
+        assert readers == [stdout]
+        assert timeout == pytest.approx(2.5)
+        return [stdout], [], []
+
+    def fake_read(fd: int, size: int) -> bytes:
+        assert fd == 41
+        assert size == 4096
+        return b'{"ok": true}\n{"next": true}'
+
+    monkeypatch.setattr(upstream_stdio.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(upstream_stdio.select, "select", fake_select)
+    monkeypatch.setattr(upstream_stdio.os, "read", fake_read)
+
+    assert client._read_stdout_line(cast(Any, stdout), deadline=12.5) == b'{"ok": true}'
+    assert client._stdout_buffer == b'{"next": true}'
+
+
+def test_stdio_read_stdout_line_clamps_expired_deadline_to_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+
+    def fake_select(
+        _readers: list[object],
+        _writers: list[object],
+        _errors: list[object],
+        timeout: float,
+    ) -> tuple[list[object], list[object], list[object]]:
+        assert timeout == 0
+        return [], [], []
+
+    monkeypatch.setattr(upstream_stdio.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(upstream_stdio.select, "select", fake_select)
+
+    with pytest.raises(StdioUpstreamTimeout, match="upstream timed out: fake"):
+        client._read_stdout_line(FilenoOnly(), deadline=9.0)
+
+
+def test_stdio_read_stdout_line_appends_chunks_before_splitting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class Readable:
+        def fileno(self) -> int:
+            return 41
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    chunks = iter([b'{"ok": ', b'true}\n{"next": true}'])
+
+    monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([Readable()], [], []))
+    monkeypatch.setattr(upstream_stdio.os, "read", lambda _fd, _size: next(chunks))
+
+    assert client._read_stdout_line(cast(Any, Readable()), deadline=time.monotonic() + 1) == b'{"ok": true}'
+    assert client._stdout_buffer == b'{"next": true}'
+
+
+def test_stdio_read_stdout_line_times_out_when_pipe_is_not_readable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([], [], []))
+
+    with pytest.raises(StdioUpstreamTimeout, match="upstream timed out: fake"):
+        client._read_stdout_line(FilenoOnly(), deadline=time.monotonic() + 1)
+
+
+@pytest.mark.error_simulation
+def test_stdio_read_stdout_line_reports_eof_before_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class Readable:
+        def fileno(self) -> int:
+            return 43
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    reads = 0
+
+    def read_eof(fd: int, size: int) -> bytes:
+        nonlocal reads
+        assert fd == 43
+        assert size == 4096
+        reads += 1
+        if reads > 1:
+            raise AssertionError("EOF must stop after one read")
+        return b""
+
+    monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([Readable()], [], []))
+    monkeypatch.setattr(upstream_stdio.os, "read", read_eof)
+
+    with pytest.raises(StdioUpstreamError, match="upstream exited without response: fake"):
+        client._read_stdout_line(cast(Any, Readable()), deadline=time.monotonic() + 1)
+
+    assert reads == 1
+
+
+def test_stdio_read_stdout_line_reports_eof_without_spinning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class Readable:
+        def fileno(self) -> int:
+            return 41
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    reads = 0
+
+    def fake_read(fd: int, size: int) -> bytes:
+        nonlocal reads
+        assert fd == 41
+        assert size == 4096
+        reads += 1
+        if reads > 1:
+            raise AssertionError("EOF must stop after one read")
+        return b""
+
+    monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([Readable()], [], []))
+    monkeypatch.setattr(upstream_stdio.os, "read", fake_read)
+
+    with pytest.raises(StdioUpstreamError, match="upstream exited without response: fake"):
+        client._read_stdout_line(cast(Any, Readable()), deadline=time.monotonic() + 1)
+
+    assert reads == 1
+
+
 @pytest.mark.error_simulation
 def test_stdio_upstream_stop_handles_missing_and_stubborn_process(
     tmp_path: Path,
@@ -1029,6 +2245,68 @@ def test_stdio_upstream_stop_handles_missing_and_stubborn_process(
         (process.pid, upstream_stdio.signal.SIGKILL),
     ]
     assert client._process is None
+
+
+@pytest.mark.error_simulation
+def test_stdio_upstream_stop_uses_process_group_and_cleanup_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    events: list[dict[str, object]] = []
+    close_calls: list[bool] = []
+    waited_groups: list[int | None] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        event_logger=lambda event, upstream, fields: events.append(
+            {"event": event, "upstream": upstream} | fields
+        ),
+    )
+    process = StubbornProcess()
+    drainer = RecordingDrainer()
+    client._process = cast(Any, process)
+    client._stderr_drainer = drainer
+
+    monkeypatch.setattr(upstream_stdio, "_process_group_id", lambda pid: 1234)
+    monkeypatch.setattr(upstream_stdio, "_signal_process_group", lambda _pid, _sig: None)
+    monkeypatch.setattr(
+        upstream_stdio,
+        "_wait_for_process_group_stop",
+        lambda pgid: waited_groups.append(pgid) or (777,),
+    )
+    monkeypatch.setattr(
+        upstream_stdio,
+        "_close_process_pipes",
+        lambda _process, *, include_stderr: close_calls.append(include_stderr),
+    )
+
+    assert client.stop() == (777,)
+
+    assert process.wait_timeouts == [
+        STOP_TIMEOUT_SECONDS,
+        max(STOP_TIMEOUT_SECONDS, KILL_WAIT_SECONDS),
+    ]
+    assert waited_groups == [1234]
+    assert close_calls == [False, True]
+    assert drainer.join_timeouts == [KILL_WAIT_SECONDS]
+    assert client._stderr_drainer is None
+    assert events == [
+        {
+            "event": "upstream.kill",
+            "upstream": "fake",
+            "signal": "SIGKILL",
+            "reason": "stop_timeout",
+        },
+        {
+            "event": "upstream.kill",
+            "upstream": "fake",
+            "signal": "SIGKILL",
+            "reason": "final_cleanup",
+        },
+        {"event": "upstream.stop", "upstream": "fake", "state": "stopped"},
+    ]
 
 
 @pytest.mark.error_simulation
@@ -1091,6 +2369,80 @@ def test_stdio_upstream_stop_removes_metadata_by_name_when_path_not_cached(
     assert client._process is None
 
 
+def test_stdio_upstream_writes_and_removes_cached_process_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+    from mcp_broker.runtime_reaper import RuntimePaths
+
+    paths = RuntimePaths.from_root(tmp_path / "runtime")
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        runtime_paths=paths,
+    )
+    client._process = cast(Any, RunningProcessForHealth())
+    monkeypatch.setattr(upstream_stdio.os, "getpgid", lambda pid: pid + 1)
+    monkeypatch.setattr(upstream_stdio.os, "getpid", lambda: 222)
+
+    client._write_process_metadata()
+
+    metadata_path = paths.upstream_pid_dir / "fake.json"
+    assert client._process_metadata_path == metadata_path
+    assert json.loads(metadata_path.read_text(encoding="utf-8")) == {
+        "broker_pid": 222,
+        "name": "fake",
+        "owner": "mcp-broker",
+        "pid": 999998,
+        "process_group_id": 999999,
+    }
+
+    client._remove_process_metadata()
+
+    assert not metadata_path.exists()
+    assert client._process_metadata_path is None
+
+
+def test_stdio_upstream_remove_metadata_prefers_cached_path_over_runtime_name(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.runtime_reaper import RuntimePaths
+
+    paths = RuntimePaths.from_root(tmp_path / "runtime")
+    paths.ensure()
+    cached_path = tmp_path / "custom-metadata.json"
+    fallback_path = paths.upstream_pid_dir / "fake.json"
+    cached_path.write_text("cached", encoding="utf-8")
+    fallback_path.write_text("fallback", encoding="utf-8")
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+        runtime_paths=paths,
+    )
+    client._process_metadata_path = cached_path
+
+    client._remove_process_metadata()
+
+    assert not cached_path.exists()
+    assert fallback_path.read_text(encoding="utf-8") == "fallback"
+    assert client._process_metadata_path is None
+
+
+def test_stdio_upstream_remove_metadata_tolerates_missing_cached_path(
+    tmp_path: Path,
+) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._process_metadata_path = tmp_path / "already-gone.json"
+
+    client._remove_process_metadata()
+
+    assert client._process_metadata_path is None
+
+
 @pytest.mark.error_simulation
 def test_stdio_upstream_stop_handles_parent_that_survives_sigkill(
     tmp_path: Path,
@@ -1130,6 +2482,53 @@ def test_stdio_process_group_wait_reports_remaining_members(
     assert upstream_stdio._wait_for_process_group_stop(999) == (111, 222)
 
 
+def test_stdio_process_group_wait_uses_strict_deadline_and_final_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    times = iter([0.0, 0.0, PROCESS_GROUP_VERIFY_SECONDS])
+    groups: list[int | None] = []
+
+    def fake_members(process_group_id: int | None) -> tuple[int, ...]:
+        groups.append(process_group_id)
+        return (process_group_id or 0,)
+
+    monkeypatch.setattr(upstream_stdio.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(upstream_stdio, "_process_group_members", fake_members)
+
+    assert _wait_for_process_group_stop(999) == (999,)
+    assert groups == [999, 999]
+
+
+def test_stdio_process_group_wait_polls_until_group_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    times = iter([0.0, 0.0, 0.1])
+    seen_groups: list[int] = []
+    waits: list[float] = []
+    members = iter([(111,), ()])
+
+    class Pause:
+        def wait(self, *, timeout: float) -> bool:
+            waits.append(timeout)
+            return False
+
+    def fake_members(process_group_id: int) -> tuple[int, ...]:
+        seen_groups.append(process_group_id)
+        return next(members)
+
+    monkeypatch.setattr(upstream_stdio.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(upstream_stdio.threading, "Event", Pause)
+    monkeypatch.setattr(upstream_stdio, "_process_group_members", fake_members)
+
+    assert _wait_for_process_group_stop(999) == ()
+    assert seen_groups == [999, 999]
+    assert waits == [0.01]
+
+
 def test_stdio_process_group_members_parses_ps_output(monkeypatch: pytest.MonkeyPatch) -> None:
     from mcp_broker import upstream_stdio
 
@@ -1139,6 +2538,85 @@ def test_stdio_process_group_members_parses_ps_output(monkeypatch: pytest.Monkey
     monkeypatch.setattr(upstream_stdio.subprocess, "run", lambda *_, **__: Completed())
 
     assert upstream_stdio._process_group_members(999) == (111, 222)
+
+
+def test_stdio_process_group_members_uses_non_throwing_ps_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    class Completed:
+        stdout = " 333 \n444\n"
+
+    def fake_run(args: list[str], **kwargs: object) -> Completed:
+        calls.append((args, kwargs))
+        return Completed()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _process_group_members(777) == (333, 444)
+    assert calls == [
+        (
+            ["ps", "-o", "pid=", "-g", "777"],
+            {"check": False, "capture_output": True, "text": True},
+        )
+    ]
+
+
+def test_stdio_process_group_members_returns_empty_tuple_for_empty_ps_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Completed:
+        stdout = "\n   \n"
+
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: Completed())
+
+    assert _process_group_members(777) == ()
+
+
+@pytest.mark.error_simulation
+def test_stdio_process_group_helpers_ignore_vanished_or_forbidden_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    signals: list[signal.Signals] = []
+
+    def missing_group(_pid: int) -> int:
+        raise ProcessLookupError
+
+    def forbidden_signal(_pid: int, sig: signal.Signals) -> None:
+        signals.append(sig)
+        raise PermissionError
+
+    monkeypatch.setattr(upstream_stdio.os, "getpgid", missing_group)
+    monkeypatch.setattr(upstream_stdio.os, "killpg", forbidden_signal)
+
+    assert _process_group_id(999) is None
+    _signal_process_group(999, signal.SIGTERM)
+    assert signals == [signal.SIGTERM]
+
+
+def test_stdio_process_group_helpers_call_success_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups: list[int] = []
+    signals: list[tuple[int, signal.Signals]] = []
+
+    monkeypatch.setattr(os, "getpgid", lambda pid: groups.append(pid) or 1234)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    assert _process_group_id(999) == 1234
+    _signal_process_group(1234, signal.SIGKILL)
+
+    assert groups == [999]
+    assert signals == [(1234, signal.SIGKILL)]
+
+
+def test_stdio_process_group_wait_returns_empty_for_missing_group() -> None:
+    from mcp_broker import upstream_stdio
+
+    assert upstream_stdio._wait_for_process_group_stop(None) == ()
 
 
 @pytest.mark.error_simulation
@@ -1167,14 +2645,22 @@ def test_stdio_start_restarts_without_stderr_drainer(
 
 
 def test_stdio_close_process_pipes_skips_missing_stream_and_optional_stderr() -> None:
-    from mcp_broker.upstream_stdio import _close_process_pipes
-
     process = ExitedProcessWithPipes(stdin=None)
 
     _close_process_pipes(cast(Any, process), include_stderr=False)
 
     assert process.stdout.closed is True
     assert process.stderr.closed is False
+
+
+def test_stdio_close_process_pipes_closes_stderr_by_default() -> None:
+    process = ExitedProcessWithPipes()
+
+    _close_process_pipes(cast(Any, process), include_stderr=True)
+
+    assert process.stdin.closed is True
+    assert process.stdout.closed is True
+    assert process.stderr.closed is True
 
 
 class ClosedPipeProcess:
@@ -1190,6 +2676,24 @@ class BrokenPipeStdin:
 
     def flush(self) -> None:
         raise AssertionError("flush should not run after a broken pipe")
+
+
+class RecordingStdin:
+    def __init__(self) -> None:
+        self.writes: list[bytes] = []
+        self.flushes = 0
+
+    def write(self, payload: bytes) -> int:
+        self.writes.append(payload)
+        return len(payload)
+
+    def flush(self) -> None:
+        self.flushes += 1
+
+
+class FilenoOnly:
+    def fileno(self) -> int:
+        return 0
 
 
 class ExitedProcessWithPipes:
@@ -1227,6 +2731,9 @@ class StubbornProcess:
 
     def wait(self, *, timeout: float) -> int:
         self.waits += 1
+        if not hasattr(self, "wait_timeouts"):
+            self.wait_timeouts = []
+        self.wait_timeouts.append(timeout)
         if self.waits == 1:
             raise subprocess.TimeoutExpired("fake", timeout)
         return 0
@@ -1247,6 +2754,14 @@ class NeverExitsProcess:
     def wait(self, *, timeout: float) -> int:
         self.waits += 1
         raise subprocess.TimeoutExpired("fake", timeout)
+
+
+class RecordingDrainer:
+    def __init__(self) -> None:
+        self.join_timeouts: list[float] = []
+
+    def join(self, *, timeout: float) -> None:
+        self.join_timeouts.append(timeout)
 
 
 def _script(tmp_path: Path, name: str, body: str) -> Path:

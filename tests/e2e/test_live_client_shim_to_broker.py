@@ -57,6 +57,44 @@ def test_client_shim_forwards_stdio_to_real_broker_socket(tmp_path: Path) -> Non
     assert result.stderr == b""
 
 
+def test_top_level_stdio_command_runs_real_broker_and_client(tmp_path: Path) -> None:
+    config_path = _broker_config(tmp_path)
+    runtime_root = tmp_path / "runtime"
+    socket_path = _socket_path(tmp_path)
+    request = (
+        b'{"jsonrpc":"2.0","id":"e2e","method":"initialize",'
+        b'"params":{"protocolVersion":"2025-11-25"}}\n'
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mcp_broker.cli",
+            "stdio",
+            "--runtime-root",
+            str(runtime_root),
+            "--socket-path",
+            str(socket_path),
+            "--config",
+            str(config_path),
+            "--profile",
+            "manual-test",
+        ],
+        cwd=ROOT,
+        input=request,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        timeout=10,
+    )
+
+    response = json.loads(result.stdout.decode("utf-8"))
+    assert response["id"] == "e2e"
+    assert response["result"]["serverInfo"]["name"] == "mcp-broker"
+    assert result.stderr == b""
+
+
 def _broker_config(tmp_path: Path) -> Path:
     runtime_root = tmp_path / "runtime"
     path = tmp_path / "broker.yaml"

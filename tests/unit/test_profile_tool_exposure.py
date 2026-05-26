@@ -85,6 +85,25 @@ def test_profile_tool_exposure_enforces_budget_and_can_return_compact_broker_too
     ]
 
 
+def test_profile_tool_exposure_allows_tool_count_equal_to_budget() -> None:
+    from mcp_broker.config import BrokerSettings
+    from mcp_broker.profiles import ToolExposureProfile
+    from mcp_broker.tool_namespace import ToolNamespaceRouter
+
+    router = ToolNamespaceRouter(
+        broker=BrokerSettings(tool_namespace_separator="."),
+        upstreams=_profiled_upstreams(),
+        profile=ToolExposureProfile(name="llm", max_tools=2),
+    )
+
+    assert router.advertise_all_tools(
+        {
+            "read-store": [{"name": "search"}],
+            "diagram-renderer": [{"name": "render"}],
+        }
+    ) == [{"name": "read-store.search"}, {"name": "diagram-renderer.render"}]
+
+
 def test_profile_tool_exposure_rejects_invalid_profile_settings() -> None:
     from mcp_broker.profiles import ToolExposureProfile
 

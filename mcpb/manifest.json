@@ -1,0 +1,105 @@
+{
+  "manifest_version": "0.4",
+  "name": "mcp-broker",
+  "display_name": "mcp-broker",
+  "version": "0.1.1",
+  "description": "Local MCP broker that exposes many configured upstream MCP servers through one client entry.",
+  "long_description": "mcp-broker runs a local broker process and a compact stdio facade so MCP clients can connect to one local server instead of loading every upstream tool directly.",
+  "author": {
+    "name": "mcp-broker maintainers"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NavinAgrawal/mcp-broker"
+  },
+  "homepage": "https://github.com/NavinAgrawal/mcp-broker",
+  "documentation": "https://github.com/NavinAgrawal/mcp-broker#readme",
+  "support": "https://github.com/NavinAgrawal/mcp-broker/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "mcp-broker",
+    "mcp_config": {
+      "command": "uvx",
+      "args": [
+        "mcp-broker",
+        "stdio",
+        "--runtime-root",
+        "${user_config.runtime_root}",
+        "--socket-path",
+        "${user_config.socket_path}",
+        "--config",
+        "${user_config.config_path}",
+        "--profile",
+        "${user_config.profile}",
+        "--init-if-missing"
+      ],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "broker.search_tools",
+      "description": "Search configured upstream MCP tools without loading every upstream tool into the client session."
+    },
+    {
+      "name": "broker.describe_tool",
+      "description": "Describe one configured upstream MCP tool."
+    },
+    {
+      "name": "broker.call_tool",
+      "description": "Call one configured upstream MCP tool through the broker."
+    },
+    {
+      "name": "broker.status",
+      "description": "Report broker and upstream health for the selected profile."
+    }
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "broker",
+    "codex",
+    "claude"
+  ],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "user_config": {
+    "runtime_root": {
+      "type": "directory",
+      "title": "Runtime directory",
+      "description": "Directory for broker runtime state, logs, sockets, and generated private config.",
+      "required": true,
+      "default": "${HOME}/mcp/mcp-broker"
+    },
+    "socket_path": {
+      "type": "string",
+      "title": "Socket path",
+      "description": "Unix socket path used by the broker client facade.",
+      "required": true,
+      "default": "${HOME}/mcp/mcp-broker/sockets/broker.sock"
+    },
+    "config_path": {
+      "type": "file",
+      "title": "Config path",
+      "description": "Private broker YAML config. The broker creates it from the public example when missing.",
+      "required": true,
+      "default": "${HOME}/mcp/mcp-broker/config/broker.yaml"
+    },
+    "profile": {
+      "type": "string",
+      "title": "Client profile",
+      "description": "Broker profile used to filter and expose upstream MCP tools.",
+      "required": true,
+      "default": "claude"
+    }
+  }
+}

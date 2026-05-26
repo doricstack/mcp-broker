@@ -109,10 +109,11 @@ Use `broker.status` after an auth failure. `auth_state` reports
 `unauthenticated` for auth-shaped failures and `unknown` when the broker has no
 passive signal. `auth_probe` reports `credentials_missing` when configured env
 or secret-file sources are absent, `credentials_present` when those sources
-exist, `auth_repair_configured` when only a repair setup tool is configured, or
-`none` when no passive auth source exists. `auth_repair_attempts`,
-`auth_repair_successes`, and `auth_repair_failures` show whether a configured
-repair tool ran after a matching upstream error.
+exist, `oauth_refresh_expired` when a configured OAuth token file has an expired
+refresh-token timestamp, `auth_repair_configured` when only a repair setup tool
+is configured, or `none` when no passive auth source exists.
+`auth_repair_attempts`, `auth_repair_successes`, and `auth_repair_failures` show
+whether a configured repair tool ran after a matching upstream error.
 
 ## Profile Denials
 
@@ -140,3 +141,25 @@ Fix profile exposure in `config/broker.private.yaml` only after confirming:
 - The profile has an explicit `allow_mutating_upstreams` entry when needed.
 - Each enabled profile-visible upstream has a safe `smoke` probe.
 - `make quality-gate` and `make broker-smoke` pass after the change.
+
+## Gemini Shows Broker Disabled
+
+Symptoms:
+- `gemini mcp list` shows the broker entry as disabled.
+- The message says MCP servers are disabled because the folder is untrusted.
+
+Checks:
+
+```bash
+gemini mcp list
+make gemini-facade-smoke
+make gemini-profile-validation
+```
+
+If the Make targets pass, the broker config is valid. Trust the workspace in
+Gemini CLI, restart Gemini, then rerun `gemini mcp list`.
+
+If Gemini reports the broker as connected but cannot call any broker tools,
+check that the Gemini profile uses `broker_tool_name_style: snake` and that the
+Gemini client block sets `mcp_allowed_servers` to the broker entry name. Gemini
+should then call the broker status facade as `mcp_mcp-broker_broker_status`.

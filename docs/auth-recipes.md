@@ -198,9 +198,27 @@ flow:
   are absent or empty.
 - `credentials_present`: configured credential sources exist, but the broker
   has not called the upstream to prove the token is accepted.
+- `oauth_refresh_expired`: a configured broker-owned OAuth token JSON file has
+  an expired refresh-token timestamp.
 - `auth_repair_configured`: the upstream has a configured setup tool that can
   run only after a matching auth error.
 - `none`: no passive auth source is configured.
+
+For OAuth-backed MCPs that store token JSON in a broker-owned secret or state
+file, configure a passive token-file probe:
+
+```yaml
+auth_probe:
+  type: oauth_token_file
+  token_file: "{runtime.secrets_dir}/example-oauth.json"
+  required_fields:
+    - access_token
+    - refresh_token
+  refresh_token_expiry_field: refresh_token_expires_at
+```
+
+The broker reads only enough structure to report missing fields, invalid JSON,
+or expired refresh tokens. It does not log token values or file paths.
 
 `auth_state` is `unauthenticated` when the broker has seen an auth-shaped
 failure, `authenticated` after a repair succeeds, and `unknown` when no passive

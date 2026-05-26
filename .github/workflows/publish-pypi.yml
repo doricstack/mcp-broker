@@ -25,10 +25,7 @@ jobs:
         run: make setup RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
 
       - name: Run release gates
-        run: |
-          make precommit RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
-          make release-smoke
-          make package-check
+        run: make release-gate RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
