@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 import uuid
@@ -7,10 +6,27 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.json_report import report_from_stdout
+
 
 pytestmark = pytest.mark.live
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_discovery_parity_report_parser_ignores_make_directory_noise() -> None:
+    report = report_from_stdout(
+        "\n".join(
+            [
+                "make[1]: Entering directory '/tmp/repo'",
+                '{"matches": true, "mismatches": []}',
+                "make[1]: Leaving directory '/tmp/repo'",
+            ]
+        ),
+        label="discovery parity",
+    )
+
+    assert report == {"matches": True, "mismatches": []}
 
 
 def test_make_discovery_parity_compares_profiles_through_client_shim(
@@ -78,7 +94,7 @@ def test_make_discovery_parity_compares_profiles_through_client_shim(
         stderr=subprocess.PIPE,
     )
 
-    report = json.loads(result.stdout.splitlines()[-1])
+    report = report_from_stdout(result.stdout, label="discovery parity")
 
     assert (
         discovery_parity_main(

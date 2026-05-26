@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 import uuid
@@ -6,6 +5,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from tests.support.json_report import report_from_stdout
 
 
 pytestmark = pytest.mark.live
@@ -42,7 +43,7 @@ def test_make_profile_validation_uses_yaml_configured_smoke_probes(
         stderr=subprocess.PIPE,
     )
 
-    report = json.loads(result.stdout.splitlines()[-1])
+    report = report_from_stdout(result.stdout, label="profile validation")
 
     assert report["matches"] is True
     assert report["profile"] == "llm"

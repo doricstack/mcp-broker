@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 import uuid
@@ -6,6 +5,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from tests.support.json_report import report_from_stdout
 
 
 pytestmark = pytest.mark.live
@@ -67,7 +68,7 @@ def test_make_tools_count_reports_exact_namespaced_tool_counts(tmp_path: Path) -
         stderr=subprocess.PIPE,
     )
 
-    report = json.loads(result.stdout.splitlines()[-1])
+    report = report_from_stdout(result.stdout, label="tools count")
 
     assert report["profile"] == "manual-test"
     assert report["total_tools"] == 2
@@ -139,7 +140,7 @@ def test_make_tools_count_reuses_running_broker_without_stopping_it(tmp_path: Pa
             stderr=subprocess.PIPE,
         )
 
-        report = json.loads(result.stdout.splitlines()[-1])
+        report = report_from_stdout(result.stdout, label="tools count")
 
         assert report["profile"] == "llm-profile"
         assert report["total_tools"] == 4

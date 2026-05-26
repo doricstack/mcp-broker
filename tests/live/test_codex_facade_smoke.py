@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 import uuid
@@ -7,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.json_report import report_from_stdout
+
 
 pytestmark = pytest.mark.live
 
@@ -14,14 +15,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_facade_smoke_report_parser_ignores_make_directory_noise() -> None:
-    report = _facade_smoke_report_from_stdout(
+    report = report_from_stdout(
         "\n".join(
             [
                 "make[1]: Entering directory '/tmp/repo'",
                 '{"profile": "codex", "called_tool": "fake.echo"}',
                 "make[1]: Leaving directory '/tmp/repo'",
             ]
-        )
+        ),
+        label="facade smoke",
     )
 
     assert report == {"profile": "codex", "called_tool": "fake.echo"}
@@ -87,7 +89,7 @@ def test_make_codex_facade_smoke_uses_client_shim_and_calls_upstream(
         stderr=subprocess.PIPE,
     )
 
-    report = _facade_smoke_report_from_stdout(result.stdout)
+    report = report_from_stdout(result.stdout, label="facade smoke")
 
     assert report["profile"] == "codex"
     assert report["advertised_tools"] == [
@@ -177,7 +179,7 @@ def test_make_claude_facade_smoke_uses_claude_profile_without_wiring(
         stderr=subprocess.PIPE,
     )
 
-    report = _facade_smoke_report_from_stdout(result.stdout)
+    report = report_from_stdout(result.stdout, label="facade smoke")
 
     assert report["profile"] == "claude"
     assert report["advertised_tools"] == [
@@ -232,16 +234,3 @@ for line in sys.stdin:
         encoding="utf-8",
     )
     return path
-
-
-def _facade_smoke_report_from_stdout(stdout: str) -> dict[str, object]:
-    for line in reversed(stdout.splitlines()):
-        if not line.startswith("{"):
-            continue
-        try:
-            report = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(report, dict):
-            return report
-    raise AssertionError(f"facade smoke did not emit a JSON report: {stdout!r}")
