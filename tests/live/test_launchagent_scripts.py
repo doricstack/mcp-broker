@@ -206,6 +206,7 @@ def _env_with_controlled_make(tmp_path: Path, *, exit_code: int) -> dict[str, st
     env.update(
         {
             "HOME": str(tmp_path / "home"),
+            "XDG_CONFIG_HOME": str(tmp_path / "home" / ".config"),
             "MCP_BROKER_RUNTIME_ROOT": str(tmp_path / "runtime"),
             "MCP_BROKER_MAKE_LOG": str(tmp_path / "make.log"),
             "PATH": str(bin_dir) + os.pathsep + env["PATH"],
