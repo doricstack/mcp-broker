@@ -85,14 +85,16 @@ docker run --rm \
     set -euo pipefail
     apt-get update
     apt-get install -y --no-install-recommends make
-    mkdir -p /workspace /tmp/home /tmp/runtime
+    mkdir -p /workspace /tmp/home/.config /tmp/runtime
     tar -xf /tmp/source.tar -C /workspace
     cd /workspace
-    HOME=/tmp/home make config-init RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
-    HOME=/tmp/home make setup RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
-    HOME=/tmp/home make config-validate RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
-    HOME=/tmp/home make broker-smoke RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
-    HOME=/tmp/home make systemd-install RUNTIME_ROOT=/tmp/runtime CONFIG_PATH=/workspace/config/broker.private.yaml PYTHON_BIN=python3
+    export HOME=/tmp/home
+    export XDG_CONFIG_HOME=/tmp/home/.config
+    make config-init RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
+    make setup RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
+    make config-validate RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
+    make broker-smoke RUNTIME_ROOT=/tmp/runtime PYTHON_BIN=python3
+    make systemd-install RUNTIME_ROOT=/tmp/runtime CONFIG_PATH=/workspace/config/broker.private.yaml PYTHON_BIN=python3
   '
 
 printf "linux_container_smoke=true image=%s\n" "$IMAGE"

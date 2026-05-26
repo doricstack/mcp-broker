@@ -54,6 +54,7 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "windows-uninstall",
         "windows-unload",
         "linux-container-smoke",
+        "linux-release-gate",
         "windows-powershell-smoke",
         "release-smoke",
         "docker-build",

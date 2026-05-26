@@ -3,7 +3,7 @@
 .PHONY: help setup venv deps config-init config-validate test test-unit test-journey test-live test-e2e test-quick \
         test-cov runtime-layout doctor broker-start broker-stop broker-status broker-wait broker-reap broker-smoke \
         tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance project-mcp-audit project-mcp-migrate secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload config-backup config-render codex-app-policy config-rollback \
-        profile-snippet systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke windows-powershell-smoke release-smoke \
+        profile-snippet systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke release-smoke \
         package-build package-check docker-build docker-smoke docker-buildx mcpb-validate mutation mutation-linux precommit quality-gate release-gate clean
 
 SHELL := /bin/bash
@@ -72,6 +72,7 @@ MCP_BROKER_DAEMON_COMMAND ?=
 WINDOWS_APPLY    ?= 0
 WINDOWS_TASK     ?= mcp-broker
 LINUX_SMOKE_IMAGE ?= $(or $(MCP_BROKER_LINUX_SMOKE_IMAGE),python:3-bookworm)
+LINUX_RELEASE_GATE_IMAGE ?= $(or $(MCP_BROKER_LINUX_RELEASE_GATE_IMAGE),python:3.13-bookworm)
 UNAME_S           := $(shell uname -s)
 RELEASE_MUTATION_TARGET ?= $(if $(filter Darwin,$(UNAME_S)),mutation-linux,mutation)
 
@@ -424,6 +425,9 @@ windows-unload: windows-uninstall ## Remove the Windows Scheduled Task
 
 linux-container-smoke: ## Run public setup and systemd dry-run inside a Linux container
 	@MCP_BROKER_LINUX_SMOKE_IMAGE="$(LINUX_SMOKE_IMAGE)" "$(ROOT)/scripts/linux-container-smoke.sh"
+
+linux-release-gate: ## Run the PyPI workflow release gate inside Linux
+	@MCP_BROKER_LINUX_RELEASE_GATE_IMAGE="$(LINUX_RELEASE_GATE_IMAGE)" "$(ROOT)/scripts/linux-release-gate.sh"
 
 windows-powershell-smoke: ## Run Windows Scheduled Task PowerShell dry-run checks
 	@"$(ROOT)/scripts/windows-powershell-smoke.sh"

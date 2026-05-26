@@ -64,6 +64,8 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     upstream_stdio = (ROOT / "src" / "mcp_broker" / "upstream_stdio.py").read_text(encoding="utf-8")
     upstream_http = (ROOT / "src" / "mcp_broker" / "upstream_http.py").read_text(encoding="utf-8")
     server = json.loads((ROOT / "registry" / "server.json").read_text(encoding="utf-8"))
+    server_template = json.loads((ROOT / "registry" / "server.template.json").read_text(encoding="utf-8"))
+    mcpb_manifest = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
@@ -84,6 +86,9 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert server["name"] == f"io.github.{repository_match.group(1)}/{repository_match.group(2)}"
     assert server["version"] == package_version
     assert server["packages"][0]["version"] == package_version
+    assert server_template["version"] == package_version
+    assert server_template["packages"][0]["version"] == package_version
+    assert mcpb_manifest["version"] == package_version
     assert server["packages"][0]["identifier"] == pyproject["project"]["name"]
     assert pyproject["project"]["urls"]["Homepage"] == server["repository"]["url"]
     assert pyproject["project"]["urls"]["Documentation"] == f"{server['repository']['url']}#readme"
@@ -175,9 +180,11 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
 def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     script = ROOT / "scripts" / "release-smoke.sh"
     linux_script = ROOT / "scripts" / "linux-container-smoke.sh"
+    linux_release_gate_script = ROOT / "scripts" / "linux-release-gate.sh"
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     text = script.read_text(encoding="utf-8")
     linux_text = linux_script.read_text(encoding="utf-8")
+    linux_release_gate_text = linux_release_gate_script.read_text(encoding="utf-8")
 
     assert script.is_file()
     assert "scripts/public-export.py" in text
@@ -188,6 +195,7 @@ def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     assert "make config-init" in text
     assert "make config-validate" in text
     assert "make broker-smoke" in text
+    assert 'XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR"' in text
     assert "/Users/" not in text
     export_helper = ROOT / "scripts" / "public-export.py"
     if export_helper.exists():
@@ -196,6 +204,16 @@ def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     assert "PIP_UPGRADE       ?= 0" in makefile
     assert "tar_option_supported" in linux_text
     assert "TAR_CREATE_OPTIONS" in linux_text
+    assert "linux-release-gate" in makefile
+    assert "make release-gate" in linux_release_gate_text
+    assert "GITHUB_ACTIONS=true" in linux_release_gate_text
+    assert "XDG_CONFIG_HOME=/tmp/home/.config" in linux_release_gate_text
+    assert "git init -q" in linux_release_gate_text
+    assert "git ls-files -co --exclude-standard -z" in linux_release_gate_text
+    assert "git config --global --add safe.directory /workspace" in linux_release_gate_text
+    assert "git add ." in linux_release_gate_text
+    assert "--exclude=\"var/coverage/*\"" not in linux_release_gate_text
+    assert "/Users/" not in linux_release_gate_text
 
 
 def test_systemd_service_contract_uses_runtime_root_and_config_path() -> None:

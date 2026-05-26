@@ -198,7 +198,7 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
         "repository description",
         "model-context-protocol",
         "pinned demo issue",
-        "first release notes",
+        "release notes",
     ]
     required_community_terms = [
         "GitHub Discussions",

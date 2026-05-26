@@ -8,6 +8,14 @@ Package metadata is release-aligned at `0.1.2`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
+Current public package status:
+
+- PyPI: `mcp-broker 0.1.2` is published.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker 0.1.2` is published and
+  marked latest.
+- Homebrew: the public tap still points at `0.1.1`; refresh the tap formula
+  before calling Homebrew current for `0.1.2`.
+
 The package command surface is:
 
 ```bash
@@ -64,6 +72,17 @@ make release-gate
 That target keeps mutation last and writes mutation evidence under
 `var/quality/mutation_stats.json`.
 
+Before publishing from GitHub Actions, run the Linux parity gate when Docker is
+available:
+
+```bash
+make linux-release-gate
+```
+
+That target runs the PyPI workflow release gate inside a Linux container with
+`GITHUB_ACTIONS`, `RUNNER_TEMP`, `HOME`, and `XDG_CONFIG_HOME` set to runner-like
+values.
+
 ## Homebrew
 
 Homebrew is published through:
@@ -79,6 +98,10 @@ untouched during install, and preserves the runtime root contract:
 ```text
 $HOME/mcp/mcp-broker/
 ```
+
+The public tap currently installs `0.1.1`. It must be updated and retested
+against the `0.1.2` PyPI source artifact before the Homebrew row is current for
+this release.
 
 ## MCP Registry
 
@@ -112,6 +135,9 @@ mcp-publisher publish
 
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
+
+The `0.1.2` registry workflow succeeded after PyPI publication and the registry
+marks `0.1.2` as the latest entry.
 
 Reference docs:
 

@@ -56,20 +56,20 @@ The demo should show:
 - comparing 609 to 43 advertised tool definitions and 276,989 to 45,281 serialized `o200k_base` tool tokens
 ```
 
-## First Release Notes
+## Current Release Notes
 
 Release title:
 
 ```text
-mcp-broker 0.1.1
+mcp-broker 0.1.2
 ```
 
-Use these first release notes as the starting body:
+Use these release notes as the starting body:
 
-first release notes:
+release notes:
 
 ```text
-Initial public release of mcp-broker.
+mcp-broker 0.1.2 refreshes the public package and registry metadata.
 
 Highlights:
 - one compact MCP facade for many upstream MCP servers
@@ -78,6 +78,7 @@ Highlights:
 - shared and per-session upstream process modes
 - macOS LaunchAgent, Linux systemd user service, and Windows Scheduled Task install flows
 - public export gate for clean-history release from a private working repo
+- Linux release-gate parity for the PyPI workflow path
 - measured context reduction: 609 to 43 advertised tool definitions and 276,989 to 45,281 serialized `o200k_base` tool tokens
 
 Docs:

@@ -32,6 +32,19 @@ Required result:
   `not_checked`.
 - PyPI publication workflow runs `make release-gate` before publishing.
 
+Run the Linux release parity gate before triggering PyPI:
+
+```bash
+make linux-release-gate
+```
+
+Required result:
+- The same release gate used by the PyPI workflow passes inside a Linux
+  container.
+- The container has runner-like `GITHUB_ACTIONS`, `RUNNER_TEMP`, `HOME`, and
+  `XDG_CONFIG_HOME` values so CI-only stdout and service-manager path behavior
+  is exercised before publication.
+
 When releasing from the private source repo, also run the private export gate:
 
 ```bash

@@ -133,8 +133,9 @@ Public release status:
 
 - The repo is designed to stay public-safe.
 - Private upstream inventory, account paths, OAuth state, secrets, sockets, logs, and generated client configs stay outside git.
-- Current source release target is `0.1.2`; PyPI, MCP Registry, and Homebrew
-  publication remain at `0.1.1` until the release workflow completes.
+- Current GitHub, PyPI, and MCP Registry release is `0.1.2`.
+- Homebrew currently installs `0.1.1` from the public tap; the tap formula
+  needs a `0.1.2` refresh.
 - Docker image support is available for container-friendly configs. Docker MCP Catalog submission still requires Docker review.
 - MCPB metadata is present at `mcpb/manifest.json` for local directory review.
 

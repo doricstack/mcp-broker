@@ -53,6 +53,8 @@ HOME_DIR="$WORK_DIR/home"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 mkdir -p "$CLONE_DIR" "$RUNTIME_ROOT" "$HOME_DIR"
+XDG_CONFIG_HOME_DIR="$HOME_DIR/.config"
+mkdir -p "$XDG_CONFIG_HOME_DIR"
 
 if [[ -f "$ROOT/scripts/public-export.py" && -f "$ROOT/public-export/allowlist.txt" ]]; then
   "$PYTHON_BIN" "$ROOT/scripts/public-export.py" \
@@ -74,10 +76,10 @@ else
     -C "$ROOT" -cf - . | tar -C "$CLONE_DIR" -xf -
 fi
 
-(cd "$CLONE_DIR" && HOME="$HOME_DIR" make config-init RUNTIME_ROOT="$RUNTIME_ROOT")
-(cd "$CLONE_DIR" && HOME="$HOME_DIR" make setup RUNTIME_ROOT="$RUNTIME_ROOT")
-(cd "$CLONE_DIR" && HOME="$HOME_DIR" make config-validate RUNTIME_ROOT="$RUNTIME_ROOT")
-(cd "$CLONE_DIR" && HOME="$HOME_DIR" make broker-smoke RUNTIME_ROOT="$RUNTIME_ROOT")
+(cd "$CLONE_DIR" && HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR" make config-init RUNTIME_ROOT="$RUNTIME_ROOT")
+(cd "$CLONE_DIR" && HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR" make setup RUNTIME_ROOT="$RUNTIME_ROOT")
+(cd "$CLONE_DIR" && HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR" make config-validate RUNTIME_ROOT="$RUNTIME_ROOT")
+(cd "$CLONE_DIR" && HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR" make broker-smoke RUNTIME_ROOT="$RUNTIME_ROOT")
 
 PRIVATE_PATH_MARKER="/""Users/"
 if grep -R "$PRIVATE_PATH_MARKER" "$CLONE_DIR/README.md" "$CLONE_DIR/docs" "$CLONE_DIR/config" "$CLONE_DIR/scripts" >/dev/null 2>&1; then
