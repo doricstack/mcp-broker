@@ -170,6 +170,25 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert "mutate_only_covered_lines=true" in setup_cfg
 
 
+def test_hidden_maintainer_violations_target_is_public_safe() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "maintainer-violations:" in makefile
+    assert "maintainer-grade-quality:" in makefile
+    assert "require-violations-tool:" in makefile
+    assert "require-grade-quality-tool:" in makefile
+    assert "CHECK_VIOLATIONS ?= $(SHARED_SCRIPTS_DIR)/check-violations.sh" in makefile
+    assert "GRADE_QUALITY    ?= $(SHARED_SCRIPTS_DIR)/grade_quality.sh" in makefile
+    assert "GRADE_REPORT_JSON ?= $(QUALITY_DIR)/grade_quality_report.json" in makefile
+    assert "VIOLATIONS_JSON   ?= $(QUALITY_DIR)/violations.json" in makefile
+    assert "VIOLATIONS_LOG    ?= $(QUALITY_DIR)/violations.log" in makefile
+    assert '--log-file "$(VIOLATIONS_LOG)"' in makefile
+    assert '--json-file "$(VIOLATIONS_JSON)"' in makefile
+    assert '--violations-json "$(VIOLATIONS_JSON)"' in makefile
+    assert '--output-json "$(GRADE_REPORT_JSON)"' in makefile
+    assert "~/.llm-shared" not in makefile
+
+
 def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     live_section = makefile.split("test-live:", maxsplit=1)[1].split(

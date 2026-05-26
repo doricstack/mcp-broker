@@ -4,7 +4,7 @@
         test-cov runtime-layout doctor broker-start broker-stop broker-status broker-wait broker-reap broker-smoke \
         tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance project-mcp-audit project-mcp-migrate secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload config-backup config-render codex-app-policy config-rollback \
         profile-snippet systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke release-smoke \
-        package-build package-check docker-build docker-smoke docker-buildx mcpb-validate mutation mutation-linux precommit quality-gate release-gate clean
+        package-build package-check docker-build docker-smoke docker-buildx mcpb-validate require-violations-tool require-grade-quality-tool violations grade-quality maintainer-violations maintainer-grade-quality mutation mutation-linux precommit quality-gate release-gate clean
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
@@ -87,6 +87,15 @@ COV_DIR           ?= $(ROOT)/var/coverage
 COV_FILE          ?= $(COV_DIR)/.coverage
 TEST_LOG_DIR      ?= $(ROOT)/var/test-logs
 QUALITY_DIR       ?= $(ROOT)/var/quality
+GENERATED_SCAN_EXCLUDE_PATHS ?= \
+	$(ROOT)/.mutmut-cache \
+	$(ROOT)/mutants \
+	$(ROOT)/var/public-export-check \
+	$(QUALITY_DIR)/mutants-* \
+	$(QUALITY_DIR)/mutation-linux*.log
+VIOLATIONS_JSON   ?= $(QUALITY_DIR)/violations.json
+VIOLATIONS_LOG    ?= $(QUALITY_DIR)/violations.log
+GRADE_REPORT_JSON ?= $(QUALITY_DIR)/grade_quality_report.json
 PACKAGE_DIST_DIR  ?= $(ROOT)/dist
 DOCKER_IMAGE      ?= mcp-broker:local
 DOCKER_PLATFORM   ?=
@@ -109,6 +118,9 @@ MUTATION_LOG ?= $(QUALITY_DIR)/mutation-linux.log
 MUTATION_MUTANTS_DIR ?= $(QUALITY_DIR)/mutants-linux
 MUTATION_MIN_SCORE ?= 100
 MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout check_was_interrupted_by_user segfault not_checked
+SHARED_SCRIPTS_DIR ?= $(HOME)/.llm-shared/scripts
+CHECK_VIOLATIONS ?= $(SHARED_SCRIPTS_DIR)/check-violations.sh
+GRADE_QUALITY    ?= $(SHARED_SCRIPTS_DIR)/grade_quality.sh
 
 PY_UNIT_DIR       ?= tests/unit
 PY_JOURNEY_DIR    ?= tests/journey
@@ -561,6 +573,33 @@ mcpb-validate: ## Validate MCPB manifest metadata
 	$(call log_step,"Validating MCPB manifest")
 	@npx -y @anthropic-ai/mcpb validate "$(MCPB_MANIFEST)"
 	$(call log_success,"MCPB manifest passed")
+
+require-violations-tool:
+	@test -x "$(CHECK_VIOLATIONS)" || { $(call log_error,"Missing maintainer tool: CHECK_VIOLATIONS=$(CHECK_VIOLATIONS)"); exit 2; }
+
+require-grade-quality-tool: require-violations-tool
+	@test -x "$(GRADE_QUALITY)" || { $(call log_error,"Missing maintainer tool: GRADE_QUALITY=$(GRADE_QUALITY)"); exit 2; }
+
+violations: maintainer-violations
+
+grade-quality: maintainer-grade-quality
+
+maintainer-violations: require-violations-tool
+	@mkdir -p "$(QUALITY_DIR)"
+	@for generated_path in $(GENERATED_SCAN_EXCLUDE_PATHS); do rm -rf $$generated_path; done
+	@"$(CHECK_VIOLATIONS)" \
+		--repo-root "$(ROOT)" \
+		--log --log-file "$(VIOLATIONS_LOG)" \
+		--json --json-file "$(VIOLATIONS_JSON)"
+
+maintainer-grade-quality: require-grade-quality-tool maintainer-violations
+	@mkdir -p "$(QUALITY_DIR)"
+	@"$(GRADE_QUALITY)" \
+		--no-refresh \
+		--violations-json "$(VIOLATIONS_JSON)" \
+		--output-json "$(GRADE_REPORT_JSON)" \
+		"$(ROOT)"
+	@$(PYTHON) "$(ROOT)/scripts/enforce_grade_quality.py" "$(GRADE_REPORT_JSON)"
 
 precommit: test-unit test-journey ## Public commit gate using repo-local checks
 	$(call log_success,"Precommit gate passed")

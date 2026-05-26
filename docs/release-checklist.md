@@ -53,7 +53,9 @@ make maintainer-release-gate
 
 Required result:
 - Public release dry-run passes against an exported checkout.
-- The exported Makefile has no private maintainer targets.
+- The exported Makefile keeps public gates repo-local and exposes only hidden
+  maintainer compatibility targets for maintainers with the shared quality
+  scripts installed.
 
 Run the broker smoke gate:
 
@@ -148,6 +150,7 @@ Release is allowed only when:
 - Rollback test passes.
 - `make doctor` reports no stale broker-owned resources.
 
-Maintainers with the private shared quality scripts installed can run the hidden
-maintainer gate before release. That gate is not part of the public setup
-contract.
+Maintainers with the shared quality scripts installed can run the hidden
+`maintainer-violations` and `maintainer-grade-quality` targets before release.
+Those targets write reports under `var/quality/` and are not part of the public
+setup contract.
