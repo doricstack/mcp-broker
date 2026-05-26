@@ -8,6 +8,9 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+  repository_dispatch:
+    types:
+      - publish-pypi
 
 jobs:
   publish:

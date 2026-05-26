@@ -44,10 +44,11 @@ make package-check
 
 Publishing is automated by `.github/workflows/publish-pypi.yml`. The workflow
 runs `make release-gate` before the PyPI publish step. It runs for published
-GitHub releases and `v*` tag pushes, so a release can still publish if GitHub
-does not emit a release workflow run for a recreated tag. The publish step uses
-`skip-existing: true` so a duplicate event for the same package files exits
-without uploading duplicate files after the release gate has already passed.
+GitHub releases, `v*` tag pushes, and the `publish-pypi` repository-dispatch
+event, so maintainers have a fallback if GitHub does not emit a release or tag
+workflow run for an existing version. The publish step uses `skip-existing: true`
+so a duplicate event for the same package files exits without uploading
+duplicate files after the release gate has already passed.
 
 Before tagging a release, run:
 
