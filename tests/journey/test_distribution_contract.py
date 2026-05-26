@@ -21,6 +21,7 @@ def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
     required_pyproject_terms = [
         'name = "mcp-broker"',
         'requires-python = ">=3.10"',
+        "Local MCP broker for sharing upstream MCP servers across MCP clients",
         "mcp-broker-client",
         "mcp-broker-daemon",
         "[project.urls]",
@@ -51,6 +52,9 @@ def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
     forbidden_minor_image = "python:" + ".".join(("3", "13"))
     assert forbidden_minor_image not in pyproject
     assert "https://github.com/NavinAgrawal/mcp-broker" in pyproject
+    assert "Codex and Claude sessions" not in pyproject
+    assert "to Codex and Claude." not in readme
+    assert "Renders Codex and Claude MCP config entries" not in readme
 
 
 def test_release_version_is_single_sourced_and_public_metadata_matches() -> None:
@@ -98,6 +102,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
 
     assert set(workflows) >= {
         "ci.yml",
+        "publish-python.yml",
         "publish-pypi.yml",
         "publish-mcp-registry.yml",
     }
@@ -112,6 +117,10 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert '"v*"' in workflows["publish-pypi.yml"]
     assert "repository_dispatch:" in workflows["publish-pypi.yml"]
     assert "publish-pypi" in workflows["publish-pypi.yml"]
+    assert "make release-gate" in workflows["publish-python.yml"]
+    assert "pypa/gh-action-pypi-publish" in workflows["publish-python.yml"]
+    assert "id-token: write" in workflows["publish-python.yml"]
+    assert "publish-python" in workflows["publish-python.yml"]
     assert "./venv-mcp-broker/bin/python - <<'PY'" in workflows["publish-mcp-registry.yml"]
     assert "cp registry/server.json server.json" in workflows["publish-mcp-registry.yml"]
     assert "mcp-publisher login github-oidc" in workflows["publish-mcp-registry.yml"]

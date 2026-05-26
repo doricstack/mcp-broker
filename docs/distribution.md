@@ -50,6 +50,11 @@ workflow run for an existing version. The publish step uses `skip-existing: true
 so a duplicate event for the same package files exits without uploading
 duplicate files after the release gate has already passed.
 
+`.github/workflows/publish-python.yml` is a workflow-ID recovery fallback for
+cases where GitHub Actions stops dispatching the primary workflow record. PyPI
+Trusted Publishing must trust the fallback workflow filename before it can
+publish with OIDC.
+
 Before tagging a release, run:
 
 ```bash

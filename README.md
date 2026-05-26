@@ -3,7 +3,7 @@
 
 `mcp-broker` is a local Model Context Protocol process broker for AI coding tools.
 
-It lets Codex, Claude, and other MCP clients connect to one local broker entry. The broker owns upstream MCP server startup, reuse, cleanup, profile exposure, status, and safe tool routing.
+It lets MCP clients connect to one local broker entry. The broker owns upstream MCP server startup, reuse, cleanup, profile exposure, status, and safe tool routing.
 
 The core idea is simple: do not make every agent session load every upstream tool definition before the user asks a task.
 
@@ -21,7 +21,7 @@ AI coding sessions with many MCP servers tend to accumulate the same problems:
 `mcp-broker` puts a small broker facade in front of those upstreams:
 
 ```text
-Codex / Claude / Gemini profile
+Client profile
         |
         | one local MCP entry
         v
@@ -67,7 +67,7 @@ See [docs/context-reduction-measurement.md](docs/context-reduction-measurement.m
 ## What it does
 
 - Runs one local broker daemon over a Unix socket.
-- Exposes one lightweight stdio client shim to Codex and Claude.
+- Exposes one lightweight stdio client shim to MCP clients.
 - Starts upstream MCP servers on demand.
 - Reuses shared upstreams across sessions when configured.
 - Isolates per-session upstreams when state must not be shared.
@@ -76,7 +76,7 @@ See [docs/context-reduction-measurement.md](docs/context-reduction-measurement.m
 - Enforces profile-level tool budgets and exposure gates.
 - Blocks mutating upstream exposure unless a profile allowlist grants it.
 - Stores runtime state under `$HOME/mcp/mcp-broker`, outside the repo.
-- Renders Codex and Claude MCP config entries with dry-run, backup, and rollback.
+- Renders MCP client config entries with dry-run, backup, and rollback.
 - Provides LaunchAgent install and uninstall flows for macOS.
 - Provides Linux systemd user-service render, install, unload, and removal flows.
 - Provides Windows PowerShell Scheduled Task render, install, and removal flows.
@@ -86,7 +86,7 @@ See [docs/context-reduction-measurement.md](docs/context-reduction-measurement.m
 
 Use `mcp-broker` if you:
 
-- use Codex, Claude Code, or multiple MCP clients
+- use Codex, Claude Code, Gemini CLI, or other MCP clients
 - have more MCP tools than you want in every session
 - need shared local MCP servers without duplicate process startup
 - want one place for OAuth state, browser state, sockets, logs, and cleanup

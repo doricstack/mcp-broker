@@ -43,7 +43,7 @@ Runtime client config render definitions live in `config/broker.private.yaml` un
 `config/broker.example.yaml` is a generic public template and does not contain the current private upstream inventory.
 Related client backup files also live in central config under `clients.<name>.backup_paths`.
 Rendering is dry-run unless `CONFIG_RENDER_APPLY=1` is set on the Makefile target.
-Dry-run writes the candidate client config under `~/mcp/mcp-broker/renders/` and does not touch Codex or Claude config files.
+Dry-run writes the candidate client config under `~/mcp/mcp-broker/renders/` and does not touch live client config files.
 `make config-backup CLIENT=<client>` copies the configured target and related backup paths without rendering or writing client config.
 Applied renders create a backup under `~/mcp/mcp-broker/backups/<client>/` before writing the configured target file.
 Rollback restores the latest backup for the selected client.

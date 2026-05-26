@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-broker"
-description = "Local MCP broker for sharing upstream MCP servers across Codex and Claude sessions"
+description = "Local MCP broker for sharing upstream MCP servers across MCP clients"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]

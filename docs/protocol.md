@@ -2,12 +2,12 @@
 
 ## Client Side
 
-Codex and Claude will see one MCP server: `mcp-broker`.
+Rendered MCP clients see one MCP server: `mcp-broker`.
 
 The client shim speaks normal stdio MCP to the LLM client. Internally it forwards requests to the broker over a Unix socket.
 
 This means the client-facing transport is stdio even when an upstream MCP is
-remote HTTP. Codex and Claude launch `mcp-broker-client` as a local command;
+remote HTTP. Local stdio clients launch `mcp-broker-client` as a local command;
 the broker then handles each upstream's configured transport.
 
 ## Broker Side
