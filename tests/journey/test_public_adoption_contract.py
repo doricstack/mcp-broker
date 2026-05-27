@@ -328,5 +328,9 @@ def test_directory_submission_check_is_make_backed() -> None:
         "broker.status",
         "https://github.com/NavinAgrawal/mcp-broker",
         "docs/context-reduction-measurement.md",
+        "https://glama.ai/",
+        "https://www.pulsemcp.com/submit",
+        "smithery mcp publish",
+        "server.mcpb",
     ]:
         assert term in packet

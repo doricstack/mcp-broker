@@ -59,11 +59,24 @@ make directory-submission-check
 Submit in this order after the package works from a clean machine:
 
 - Official MCP Registry: use `registry/server.json` and `mcp-publisher`.
-- Glama: submit the public GitHub repository and verify rendered tool schemas.
-- PulseMCP: submit the public GitHub repository or rely on official registry ingestion when available.
+- Glama: submit the public GitHub repository from `https://glama.ai/` and
+  verify rendered tool schemas, safety annotations, install docs, and score.
+- PulseMCP: submit the public GitHub repository at
+  `https://www.pulsemcp.com/submit`, or rely on Official MCP Registry
+  ingestion if the listing appears after the registry processing window.
 - Smithery: use the local stdio/MCPB path only after package install, config,
   upgrade, and uninstall smoke passes.
 - Docker MCP Catalog: submit after Dockerfile and custom catalog smoke pass.
+
+Smithery MCPB command after account or namespace auth is ready:
+
+```bash
+make mcpb-pack
+smithery mcp publish dist/mcp-broker-1.1.0.mcpb -n <smithery-namespace>/mcp-broker
+```
+
+Smithery publishes the MCPB bundle as `server.mcpb`; keep the source manifest
+at `mcpb/manifest.json` and rerun `make mcpb-smoke` before upload.
 
 ## Secondary Directories
 
