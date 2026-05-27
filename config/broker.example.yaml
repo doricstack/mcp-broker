@@ -54,6 +54,9 @@ profiles:
     max_tools: 80
     compact_tools_enabled: true
     broker_tool_name_style: snake
+  docker:
+    max_tools: 80
+    compact_tools_enabled: true
   manual-test:
     max_tools: 200
     compact_tools_enabled: false

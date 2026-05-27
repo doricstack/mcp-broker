@@ -69,7 +69,8 @@ docker-build: ## Build the local Docker image
 docker-smoke: docker-build ## Smoke test the Docker stdio entrypoint
 	$(call log_step,"Smoke testing Docker image $(DOCKER_IMAGE)")
 	@mkdir -p "$(TEST_LOG_DIR)"
-	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | docker run --rm -i "$(DOCKER_IMAGE)" | tee "$(TEST_LOG_DIR)/docker-smoke.jsonl" | grep -q '"tools"'
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | docker run --rm -i "$(DOCKER_IMAGE)" > "$(TEST_LOG_DIR)/docker-smoke.jsonl"
+	@grep -q '"tools"' "$(TEST_LOG_DIR)/docker-smoke.jsonl"
 	$(call log_success,"Docker smoke passed")
 
 docker-buildx: ## Build multi-arch Docker image with SBOM/provenance; set DOCKER_PUSH=1 to push
@@ -117,7 +118,9 @@ docker-publish-check: ## Verify published Docker manifests
 
 docker-release-smoke: ## Smoke test the published Docker image
 	$(call log_step,"Smoke testing published Docker image $(DOCKER_RELEASE_IMAGE)")
-	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-release-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | docker run --rm -i "$(DOCKER_RELEASE_IMAGE)" | grep -q '"tools"'
+	@mkdir -p "$(TEST_LOG_DIR)"
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-release-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | docker run --rm -i "$(DOCKER_RELEASE_IMAGE)" > "$(TEST_LOG_DIR)/docker-release-smoke.jsonl"
+	@grep -q '"tools"' "$(TEST_LOG_DIR)/docker-release-smoke.jsonl"
 	$(call log_success,"Docker release smoke passed: $(DOCKER_RELEASE_IMAGE)")
 
 mcpb-validate: ## Validate MCPB manifest metadata

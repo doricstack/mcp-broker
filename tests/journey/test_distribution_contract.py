@@ -385,6 +385,15 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
     assert "docker mcp catalog remove" in makefile
     assert "DOCKER_MCP_CATALOG_FILE ?= $(ROOT)/docker/mcp-catalog/mcp-broker.yaml" in makefile
     assert "DOCKER_MCP_CATALOG_REF ?= mcp-broker-local-catalog:local" in makefile
+    release_smoke = re.search(
+        r"(?ms)^docker-release-smoke:.*?(?=^[A-Za-z0-9_.-]+:|\Z)",
+        makefile,
+    )
+    assert release_smoke is not None
+    release_smoke_body = release_smoke.group(0)
+    assert '> "$(TEST_LOG_DIR)/docker-release-smoke.jsonl"' in release_smoke_body
+    assert 'grep -q \'"tools"\' "$(TEST_LOG_DIR)/docker-release-smoke.jsonl"' in release_smoke_body
+    assert '| grep -q \'"tools"\'' not in release_smoke_body
     assert "Docker MCP Toolkit custom catalog smoke uses file-based server metadata" in distribution
     assert "The Docker image itself is not treated as self-describing" in distribution
 

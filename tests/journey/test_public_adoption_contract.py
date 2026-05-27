@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests.support.makefiles import read_combined_makefiles
 
@@ -221,6 +222,7 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
 def test_docker_packaging_contract_is_public_safe() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     entrypoint = (ROOT / "docker" / "docker-entrypoint.sh").read_text(encoding="utf-8")
+    public_config = yaml.safe_load((ROOT / "config" / "broker.example.yaml").read_text(encoding="utf-8"))
     makefile = read_combined_makefiles(ROOT)
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
     allowlist = allowlist_path.read_text(encoding="utf-8") if allowlist_path.exists() else ""
@@ -235,6 +237,9 @@ def test_docker_packaging_contract_is_public_safe() -> None:
     assert "--init-if-missing" in entrypoint
     assert "MCP_BROKER_CONFIG" in entrypoint
     assert "MCP_BROKER_SOCKET" in entrypoint
+    assert "${MCP_BROKER_PROFILE:-docker}" in entrypoint
+    assert "docker" in public_config["profiles"]
+    assert public_config["profiles"]["docker"]["compact_tools_enabled"] is True
     assert "docker-build:" in makefile
     assert "docker-smoke:" in makefile
     if allowlist:
