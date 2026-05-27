@@ -290,6 +290,10 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "astral-sh/setup-uv" in workflow
     assert "actions/setup-node" in workflow
     assert "docker/setup-buildx-action" in workflow
+    assert "docker/setup-buildx-action@v4" in workflow
+    assert "docker/login-action@v4" in workflow
+    assert "docker/setup-buildx-action@v3" not in workflow
+    assert "docker/login-action@v3" not in workflow
     assert "docker/login-action" in workflow
     assert "uv publish" not in workflow
     assert "npm publish" not in workflow
