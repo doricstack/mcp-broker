@@ -10,10 +10,13 @@ Setuptools dynamic metadata.
 
 Current public package status:
 
-- PyPI: `mcp-broker 1.0.0` is published.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.0.0` is published and marked latest.
-- Homebrew: `mcp-broker 1.0.0` is published through the public tap.
-- Next distribution release: `1.1.0`. NPM and Docker publication are minor
+- PyPI: `mcp-broker 1.1.0` is published.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.1.0` is published and marked latest.
+- Homebrew: `mcp-broker 1.1.0` is published through the public tap.
+- NPM: `@navinagrawal/mcp-broker 1.1.0` is published.
+- Docker: `docker.io/navinagrawal/mcp-broker:1.1.0` and
+  `ghcr.io/navinagrawal/mcp-broker:1.1.0` are published.
+- Current distribution release: `1.1.0`. NPM and Docker publication are minor
   release additions, not patch-only changes.
 
 The package command surface is:
@@ -60,7 +63,7 @@ make public-stable-surface-smoke
 That stable gate verifies PyPI, `pipx`, `uvx`, GitHub release source archive,
 Homebrew, and MCP Registry for the currently published stable version.
 
-After `1.1.0` is published, the full release surface gate is:
+After each distribution release, the full release surface gate is:
 
 ```bash
 make public-release-surface-smoke
@@ -124,7 +127,7 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-The public tap points to the PyPI `1.0.0` source artifact. Retest the formula
+The public tap points to the PyPI `1.1.0` source artifact. Retest the formula
 against the PyPI source artifact before changing the Homebrew release status.
 
 ## NPM
@@ -182,7 +185,7 @@ mcp-publisher publish
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
-`1.0.0` is published after PyPI publication and the registry marks `1.0.0` as
+`1.1.0` is published after PyPI publication and the registry marks `1.1.0` as
 the latest entry.
 
 Reference docs:
@@ -279,9 +282,9 @@ Boundary:
 - Supported: explicit mounts for runtime state, config, logs, and secrets.
 - Unsupported by default: hidden edits to host `~/.codex`, `~/.claude.json`, or
   browser profiles.
-- Required before Docker MCP Catalog PR approval: public image publication and
-  a Docker-specific security review. Local Docker MCP Toolkit custom catalog
-  smoke is covered by `make docker-mcp-catalog-smoke`.
+- Completed before Docker MCP Catalog PR approval: public image publication and
+  Docker-specific security review. Local Docker MCP Toolkit custom catalog smoke
+  is covered by `make docker-mcp-catalog-smoke`.
 
 Docker MCP Catalog submission uses the Docker registry PR flow after the
 public repo contains the Dockerfile. The staged PR packet is

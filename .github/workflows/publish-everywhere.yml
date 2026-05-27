@@ -59,6 +59,4 @@ jobs:
           sudo install -m 0755 mcp-publisher /usr/local/bin/mcp-publisher
 
       - name: Publish everywhere
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1 RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"

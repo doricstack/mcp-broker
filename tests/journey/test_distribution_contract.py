@@ -13,7 +13,7 @@ from tests.support.makefiles import read_combined_makefiles
 pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLISHED_STABLE_VERSION = "1.0.0"
+PUBLISHED_STABLE_VERSION = "1.1.0"
 SOURCE_RELEASE_VERSION = "1.1.0"
 
 
@@ -104,7 +104,7 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert '"version": "0.0.1"' not in upstream_http
 
 
-def test_stable_release_public_status_is_aligned_to_1_0_0() -> None:
+def test_stable_release_public_status_is_aligned_to_source_release() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
@@ -213,7 +213,7 @@ def test_npm_and_docker_distribution_decisions_are_recorded() -> None:
     assert "does not reimplement the Python broker in Node" in npm_doc
     assert "NPM trusted publishing is the preferred auth path" in npm_doc
     assert "NPM is an optional bridge package" in distribution
-    assert "Next distribution release: `1.1.0`" in distribution
+    assert "Current distribution release: `1.1.0`" in distribution
     assert "docker.io/navinagrawal/mcp-broker" in distribution
     assert "ghcr.io/navinagrawal/mcp-broker" in distribution
     assert "Docker Hub is the primary image for Docker MCP Catalog work" in distribution
@@ -284,7 +284,9 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "packages: write" in workflow
     assert "DOCKERHUB_USERNAME" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
-    assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in workflow
+    assert "NODE_AUTH_TOKEN" not in workflow
+    assert "NPM_TOKEN" not in workflow
+    assert 'node-version: "24"' in workflow
     assert "astral-sh/setup-uv" in workflow
     assert "actions/setup-node" in workflow
     assert "docker/setup-buildx-action" in workflow
@@ -297,6 +299,9 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "push:" not in workflow
     assert ".github/workflows/publish-everywhere.yml" in npm_doc
     assert ".github/workflows/publish-npm.yml" not in npm_doc
+    assert "NPM_TOKEN" not in npm_doc
+    assert "NODE_AUTH_TOKEN" not in npm_doc
+    assert "first publish returned `E404`" not in npm_doc
     assert ".github/workflows/publish-pypi.yml" not in distribution
     assert ".github/workflows/publish-python.yml" not in distribution
     assert ".github/workflows/publish-mcp-registry.yml" not in distribution
@@ -401,6 +406,9 @@ def test_public_surface_smoke_downloads_real_public_artifacts() -> None:
     script = (ROOT / "scripts" / "public-surface-smoke.sh").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
 
+    assert "PYTHONPATH=\"\"" in script
+    assert "DOCKER_OUTPUT=" in script
+    assert "grep -q '\"tools\"' \"$DOCKER_OUTPUT\"" in script
     for term in [
         "mktemp -d",
         "pip install \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
@@ -434,20 +442,26 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
     plan = plan_path.read_text(encoding="utf-8") if plan_path.exists() else ""
 
     if todo:
-        assert "- [x] Validate `pipx` and `uvx` against the published `1.0.0` PyPI package." in todo
+        assert "- [x] Validate `pipx` and `uvx` against the published `1.1.0` PyPI package." in todo
     if maintainer_inputs:
-        assert "pipx validation date: 2026-05-26" in maintainer_inputs
-        assert "uv validation date: 2026-05-26" in maintainer_inputs
-        assert "Status: complete for `1.0.0`." in maintainer_inputs
-        assert "Status: source changes staged for `1.1.0`; publication pending." in maintainer_inputs
+        assert "pipx validation date: 2026-05-27" in maintainer_inputs
+        assert "uv validation date: 2026-05-27" in maintainer_inputs
+        assert "Status: complete for `1.1.0`." in maintainer_inputs
+        assert "publication pending" not in maintainer_inputs
+        assert "NPM_TOKEN" not in maintainer_inputs
+        assert "NODE_AUTH_TOKEN" not in maintainer_inputs
         assert "Status: pending for `1.0.0`." not in maintainer_inputs
         assert "Source changes pending" not in maintainer_inputs
         assert "8326 mutants" not in maintainer_inputs
         assert "`8332` mutants" in maintainer_inputs
     if plan:
         assert "## Progress" in plan
+        assert "- [x] Task 4: NPM publication completed through package bootstrap and trusted publishing." in plan
+        assert "- [x] Task 7: Docker images published to Docker Hub and GHCR." in plan
         assert "- [x] Task 8: Docker MCP Catalog custom catalog smoke." in plan
         assert "- [x] Task 9: Docker MCP Registry PR packet staged." in plan
+        assert "NPM_TOKEN" not in plan
+        assert "publication remains external" not in plan
 
 
 def test_release_version_checker_uses_logging_instead_of_print() -> None:

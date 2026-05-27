@@ -49,22 +49,16 @@ Required package settings for trusted publishing:
 - Trusted publisher: GitHub Actions
 - Repository: `NavinAgrawal/mcp-broker`
 - Workflow file: `.github/workflows/publish-everywhere.yml`
+- Permission: publish
 
-Use `NPM_TOKEN` only as a fallback if trusted publishing cannot be configured
-for the first publication. The GitHub workflow passes `NODE_AUTH_TOKEN` from
-that secret when it exists, while still allowing npm trusted publishing through
-OIDC.
-
-As of 2026-05-27, npm trusted publishing reached the publish step but the first
-publish returned `E404` for `@navinagrawal/mcp-broker@1.1.0`. PyPI, Docker Hub,
-GHCR, and MCP Registry completed in the same release run. The next retry needs
-an npm granular automation token with package publish permission stored as the
-GitHub Actions secret `NPM_TOKEN`, or an npm package bootstrap that lets trusted
-publishing attach to the package settings.
+As of 2026-05-27, `@navinagrawal/mcp-broker@1.1.0` is published and the package
+has a GitHub Actions trusted publisher for `publish-everywhere.yml`. The release
+workflow uses OIDC for future NPM publications and does not require a long-lived
+NPM registry token.
 
 ## Release Policy
 
-The next distribution release is `1.1.0`. That version adds NPM and Docker
+The current distribution release is `1.1.0`. That version adds NPM and Docker
 distribution paths, so it is a minor release, not a patch release.
 
 Do not publish an NPM package until all of these pass:

@@ -60,17 +60,17 @@ printf "public_surface_smoke_start version=%s work_dir=%s\n" "$PUBLIC_SURFACE_VE
 
 PYPI_VENV="$WORK_DIR/pypi-venv"
 python3 -m venv "$PYPI_VENV"
-"$PYPI_VENV/bin/python" -m pip install --upgrade pip >/dev/null
-"$PYPI_VENV/bin/python" -m pip install "mcp-broker==$PUBLIC_SURFACE_VERSION" >/dev/null
-"$PYPI_VENV/bin/mcp-broker" --help >/dev/null
-"$PYPI_VENV/bin/mcp-broker-client" --help >/dev/null
-"$PYPI_VENV/bin/mcp-broker-daemon" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/python" -m pip install --upgrade pip >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/python" -m pip install "mcp-broker==$PUBLIC_SURFACE_VERSION" >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker-client" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker-daemon" --help >/dev/null
 printf "public_surface_pypi=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 
 PIPX_HOME="$WORK_DIR/pipx-home" PIPX_BIN_DIR="$WORK_DIR/pipx-bin" \
-  pipx run --spec "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
+  PYTHONPATH="" pipx run --spec "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
 UV_TOOL_DIR="$WORK_DIR/uv-tools" UV_CACHE_DIR="$WORK_DIR/uv-cache" \
-  uvx --from "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
+  PYTHONPATH="" uvx --from "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
 printf "public_surface_tool_runners=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 
 SOURCE_TARBALL="$WORK_DIR/github-source.tar.gz"
@@ -132,8 +132,10 @@ fi
 if [[ "$PUBLIC_SURFACE_REQUIRE_DOCKER" == "1" ]]; then
   command -v docker >/dev/null 2>&1 || { printf "docker is required\n" >&2; exit 2; }
   docker buildx imagetools inspect "$DOCKER_RELEASE_IMAGE" >/dev/null
+  DOCKER_OUTPUT="$WORK_DIR/docker-tools-list.jsonl"
   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"public-surface-smoke","version":"0"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' |
-    docker run --rm -i "$DOCKER_RELEASE_IMAGE" | grep -q '"tools"'
+    docker run --rm -i "$DOCKER_RELEASE_IMAGE" >"$DOCKER_OUTPUT"
+  grep -q '"tools"' "$DOCKER_OUTPUT"
   printf "public_surface_docker=true image=%s\n" "$DOCKER_RELEASE_IMAGE"
 fi
 
