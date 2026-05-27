@@ -42,7 +42,7 @@ NPM trusted publishing is the preferred auth path. It uses GitHub Actions OIDC
 instead of a long-lived NPM token and publishes provenance for public packages
 from public repositories.
 
-Required package settings before first publish:
+Required package settings for trusted publishing:
 
 - Package name: `@navinagrawal/mcp-broker`
 - Visibility: public
@@ -51,7 +51,16 @@ Required package settings before first publish:
 - Workflow file: `.github/workflows/publish-everywhere.yml`
 
 Use `NPM_TOKEN` only as a fallback if trusted publishing cannot be configured
-for the first publication.
+for the first publication. The GitHub workflow passes `NODE_AUTH_TOKEN` from
+that secret when it exists, while still allowing npm trusted publishing through
+OIDC.
+
+As of 2026-05-27, npm trusted publishing reached the publish step but the first
+publish returned `E404` for `@navinagrawal/mcp-broker@1.1.0`. PyPI, Docker Hub,
+GHCR, and MCP Registry completed in the same release run. The next retry needs
+an npm granular automation token with package publish permission stored as the
+GitHub Actions secret `NPM_TOKEN`, or an npm package bootstrap that lets trusted
+publishing attach to the package settings.
 
 ## Release Policy
 

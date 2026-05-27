@@ -131,6 +131,8 @@ GHCR_MINOR_IMAGE ?= ghcr.io/$(DOCKER_NAMESPACE)/$(DOCKER_IMAGE_NAME):$(PACKAGE_M
 DOCKER_PUBLISH_IMAGES ?= $(DOCKER_RELEASE_IMAGE) $(DOCKER_MINOR_IMAGE) $(GHCR_IMAGE) $(GHCR_MINOR_IMAGE)
 DOCKER_MCP_CATALOG_FILE ?= $(ROOT)/docker/mcp-catalog/mcp-broker.yaml
 DOCKER_MCP_CATALOG_REF ?= mcp-broker-local-catalog:local
+MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker
+MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)
 PUBLISH_EVERYWHERE_APPLY ?= 0
 EXPECTED_PUBLISH_VERSION ?=
 MCPB_MANIFEST     ?= $(ROOT)/mcpb/manifest.json

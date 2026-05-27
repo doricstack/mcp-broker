@@ -266,6 +266,10 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert '"$(UVX)" --from "mcp-broker==$' in makefile
     assert "PUBLIC_SURFACE_REQUIRE_NPM=1" in makefile
     assert "PUBLIC_SURFACE_REQUIRE_DOCKER=1" in makefile
+    assert '$(NPM) view "$(NPM_PACKAGE_NAME)@$(PACKAGE_VERSION)" version' in makefile
+    assert "NPM package already exists" in makefile
+    assert "MCP_REGISTRY_SEARCH_URL" in makefile
+    assert "MCP Registry metadata already exists" in makefile
     assert "publish-version-check" in makefile
     assert '"$(UV)" publish --trusted-publishing always' in makefile
     assert "$(NPM) publish --access public --provenance" in makefile
@@ -278,6 +282,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "packages: write" in workflow
     assert "DOCKERHUB_USERNAME" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
+    assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in workflow
     assert "astral-sh/setup-uv" in workflow
     assert "actions/setup-node" in workflow
     assert "docker/setup-buildx-action" in workflow
@@ -324,6 +329,8 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
 
     assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
     assert "PUBLISH_EVERYWHERE_JOBS ?= 3" in makefile
+    assert "MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker" in makefile
+    assert "MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)" in makefile
     assert "publish-version-check" in check_section
     release_gate_index = check_section.index("release-gate")
     publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")

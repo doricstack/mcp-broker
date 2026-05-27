@@ -82,6 +82,11 @@ not publish; the GitHub Release publication is the single normal release event.
 There are no per-registry publish workflows. Recovery runs the same
 `publish-everywhere` workflow with the same Makefile orchestrator.
 
+The orchestrator is retry-aware for partially completed releases. It checks the
+NPM package version before publishing and checks MCP Registry metadata before
+submitting, so a rerun can recover after one registry fails without treating
+already-published surfaces as fatal.
+
 Before tagging a release, run:
 
 ```bash

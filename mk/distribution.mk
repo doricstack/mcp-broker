@@ -161,8 +161,12 @@ _publish-everywhere-pypi:
 	$(call log_success,"Published PyPI package: $(PACKAGE_VERSION)")
 
 _publish-everywhere-npm:
-	@cd "$(NPM_DIR)" && $(NPM) publish --access public --provenance
-	$(call log_success,"Published NPM package: $(NPM_PACKAGE_NAME)")
+	@if $(NPM) view "$(NPM_PACKAGE_NAME)@$(PACKAGE_VERSION)" version >/dev/null 2>&1; then \
+		printf "\033[1;32m[OK]\033[0m NPM package already exists: %s@%s\n" "$(NPM_PACKAGE_NAME)" "$(PACKAGE_VERSION)"; \
+	else \
+		cd "$(NPM_DIR)" && $(NPM) publish --access public --provenance; \
+	fi
+	$(call log_success,"NPM publish target completed: $(NPM_PACKAGE_NAME)")
 
 _publish-everywhere-docker:
 	@TAG_ARGS=(); \
@@ -181,8 +185,12 @@ _publish-everywhere-docker:
 	$(call timed_make,"publish child: docker-publish-check",docker-publish-check)
 
 _publish-everywhere-mcp-registry:
-	@command -v mcp-publisher >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m mcp-publisher is required for publish-everywhere\n" >&2; exit 2; }
-	@tmpdir="$$(mktemp -d)"; \
+	@if curl -fsS "$(MCP_REGISTRY_SEARCH_URL)" | "$(PYTHON)" -c 'import json, sys; version = "$(PACKAGE_VERSION)"; data = json.load(sys.stdin); sys.exit(0 if any(item.get("server", {}).get("version") == version for item in data.get("servers", [])) else 1)' >/dev/null 2>&1; then \
+		printf "\033[1;32m[OK]\033[0m MCP Registry metadata already exists: %s %s\n" "$(MCP_REGISTRY_NAME)" "$(PACKAGE_VERSION)"; \
+	else \
+		command -v mcp-publisher >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m mcp-publisher is required for publish-everywhere\n" >&2; exit 2; }; \
+		tmpdir="$$(mktemp -d)"; \
 		cp "$(ROOT)/registry/server.json" "$$tmpdir/server.json"; \
-		(cd "$$tmpdir" && mcp-publisher login github-oidc && mcp-publisher publish)
-	$(call log_success,"Published MCP Registry metadata")
+		(cd "$$tmpdir" && mcp-publisher login github-oidc && mcp-publisher publish); \
+	fi
+	$(call log_success,"MCP Registry publish target completed")
