@@ -327,7 +327,7 @@ The compact facade keeps chat-facing profiles small:
 | `broker_call_tool` | Call one upstream tool through broker routing. |
 | `broker_status` | Show profile-visible upstream state, passive auth probes, and last errors without starting tools. |
 
-Codex `/mcp` shows the single `mcp-broker` entry by design. Per-upstream visibility comes from `broker_status`.
+Codex `/mcp` shows the single `mcp-broker` entry by design. Per-upstream visibility, status, and socket path come from `broker_status`.
 
 ## Profiles and safety
 

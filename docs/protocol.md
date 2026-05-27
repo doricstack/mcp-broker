@@ -106,10 +106,11 @@ the broker facade and the local daemon health endpoint.
 
 The local status sources are `make broker-status` and the compact MCP tool
 `broker_status`. `make broker-status` calls `broker/health` and reports daemon
-state. `broker_status` reports the profile-scoped upstream view through MCP:
-enabled or disabled state, profile exposure, mode, transport, mutation flag,
-PID, restart count, session count, last error, `auth_probe`, auth state, and
-auth-repair counters. `auth_probe` is a passive credential-source check:
+state. `broker_status` reports the configured socket path, broker status, and
+profile-scoped upstream view through MCP: enabled or disabled state, profile
+exposure, mode, transport, mutation flag, PID, restart count, session count,
+last error, `auth_probe`, auth state, and auth-repair counters. `auth_probe` is
+a passive credential-source check:
 `credentials_missing`, `credentials_present`, `oauth_refresh_expired`,
 `auth_repair_configured`, or `none`. Auth state is passive: `unknown` unless the
 upstream health snapshot exposes an auth signal, the passive probe proves a

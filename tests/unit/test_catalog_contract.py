@@ -419,6 +419,9 @@ def test_status_reports_visible_disabled_and_allowed_mutating_upstreams(tmp_path
 
     payload = result["structuredContent"]
     assert visible_sets == [{"read-store", "write-store", "broken-store"}]
+    assert payload["profile"] == "default-llm"
+    assert payload["socket_path"] == str(config.runtime.socket_path)
+    assert payload["status"] == "degraded"
     assert set(payload["upstreams"]) == {
         "read-store",
         "write-store",
@@ -480,6 +483,8 @@ def test_status_reports_session_count_key_and_default_configured_states(tmp_path
     ).call_tool("broker.status", {})
 
     payload = result["structuredContent"]
+    assert payload["socket_path"] == str(config.runtime.socket_path)
+    assert payload["status"] == "ok"
     assert payload["upstreams"]["read-store"]["session_count"] == 7
     assert payload["upstreams"]["read-store"]["state"] == "configured"
     assert payload["upstreams"]["mode-disabled-store"]["enabled"] is True

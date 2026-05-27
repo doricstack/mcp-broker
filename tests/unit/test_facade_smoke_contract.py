@@ -1373,6 +1373,8 @@ def _status_health_snapshot(
 def _expected_status_payload() -> dict[str, object]:
     return {
         "profile": "llm-profile",
+        "socket_path": "/tmp/mcp-broker-test/sockets/broker.sock",
+        "status": "degraded",
         "upstreams": {
             "disabled": {
                 "enabled": False,

@@ -133,9 +133,8 @@ Use the same packet for:
 
 Current submission requirements checked on 2026-05-27:
 
-- mcpservers.org: submitted on 2026-05-27. It requires a contact email on
-  `https://mcpservers.org/submit`; public listing URL is pending directory
-  review.
+- mcpservers.org: approved at
+  `https://mcpservers.org/servers/navinagrawal/mcp-broker`.
 - mcp.so: submitted on 2026-05-27. It requires Sign In before accepting
   `https://mcp.so/submit`; public listing URL is pending directory review. Use
   this server config, not the page's generic GitHub Docker placeholder:

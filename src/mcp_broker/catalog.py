@@ -132,6 +132,8 @@ class BrokerCatalogFacade:
         return structured_tool_result(
             {
                 "profile": self._profile.name if self._profile is not None else None,
+                "socket_path": str(self._broker_config.runtime.socket_path),
+                "status": _broker_status(upstreams),
                 "upstreams": upstreams,
             }
         )
@@ -216,6 +218,15 @@ def _looks_like_auth_error(message: str) -> bool:
             "403",
         )
     )
+
+
+def _broker_status(upstreams: dict[str, dict[str, Any]]) -> str:
+    for upstream in upstreams.values():
+        if upstream.get("last_error"):
+            return "degraded"
+        if upstream.get("state") in {"exited", "failed", "backoff"}:
+            return "degraded"
+    return "ok"
 
 
 def profile_allows_upstream(
