@@ -7,6 +7,8 @@ name = "mcp-broker"
 description = "Local MCP broker for sharing upstream MCP servers across MCP clients"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Navin B Agrawal" }]
 dynamic = ["version"]
 dependencies = [
     "jsonschema>=4.25.1",

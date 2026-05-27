@@ -182,6 +182,8 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "twine==" in requirements
     assert "pytest==9.0.3" in requirements
     assert "pytest-xdist==3.8.0" in requirements
+    assert pyproject["project"]["license"] == "MIT"
+    assert pyproject["project"]["authors"] == [{"name": "Navin B Agrawal"}]
     for dependency in pyproject["project"]["dependencies"]:
         package_name = re.split(r"[<>=~!]", dependency, maxsplit=1)[0]
         assert any(line.startswith(package_name + "==") for line in normalized_requirements)
@@ -203,6 +205,8 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
         "org.opencontainers.image.licenses",
     ]:
         assert term in dockerfile
+    assert 'org.opencontainers.image.licenses="MIT"' in dockerfile
+    assert 'org.opencontainers.image.authors="Navin B Agrawal"' in dockerfile
 
     for term in [
         "docker-buildx:",

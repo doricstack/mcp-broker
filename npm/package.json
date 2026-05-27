@@ -2,6 +2,7 @@
   "name": "@navinagrawal/mcp-broker",
   "version": "1.1.0",
   "description": "Local MCP broker for sharing upstream MCP servers across MCP clients",
+  "author": "Navin B Agrawal",
   "license": "MIT",
   "bin": {
     "mcp-broker": "bin/mcp-broker.js"

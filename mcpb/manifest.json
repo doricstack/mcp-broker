@@ -6,7 +6,7 @@
   "description": "Local MCP broker that exposes many configured upstream MCP servers through one client entry.",
   "long_description": "mcp-broker runs a local broker process and a compact stdio facade so MCP clients can connect to one local server instead of loading every upstream tool directly.",
   "author": {
-    "name": "mcp-broker maintainers"
+    "name": "Navin B Agrawal"
   },
   "repository": {
     "type": "git",
@@ -64,7 +64,7 @@
     "gemini-cli",
     "ai-tools"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "compatibility": {
     "platforms": [
       "darwin",

@@ -255,6 +255,8 @@ def test_mcpb_manifest_contract_is_public_safe() -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["name"] == "mcp-broker"
+    assert manifest["license"] == "MIT"
+    assert manifest["author"]["name"] == "Navin B Agrawal"
     assert manifest["server"]["type"] == "uv"
     assert manifest["server"]["mcp_config"]["command"] == "uvx"
     assert manifest["server"]["mcp_config"]["args"][:2] == ["mcp-broker", "stdio"]

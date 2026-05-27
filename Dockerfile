@@ -12,7 +12,8 @@ LABEL org.opencontainers.image.title="mcp-broker" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
       org.opencontainers.image.documentation="${SOURCE_URL}#readme" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.authors="Navin B Agrawal" \
+      org.opencontainers.image.licenses="MIT"
 
 ENV MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker \
     MCP_BROKER_CONFIG=/etc/mcp-broker/broker.yaml \
