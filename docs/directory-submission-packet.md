@@ -106,9 +106,12 @@ Use the same packet for:
 
 Current submission requirements checked on 2026-05-27:
 
-- mcpservers.org requires a contact email on `https://mcpservers.org/submit`.
-- mcp.so requires Sign In before accepting `https://mcp.so/submit`. Use this
-  server config, not the page's generic GitHub Docker placeholder:
+- mcpservers.org: submitted on 2026-05-27. It requires a contact email on
+  `https://mcpservers.org/submit`; public listing URL is pending directory
+  review.
+- mcp.so: submitted on 2026-05-27. It requires Sign In before accepting
+  `https://mcp.so/submit`; public listing URL is pending directory review. Use
+  this server config, not the page's generic GitHub Docker placeholder:
 
 ```json
 {
@@ -124,10 +127,23 @@ Current submission requirements checked on 2026-05-27:
 
 - MCPCentral requires the publisher flow:
   `mcp-publisher login github --registry https://registry.mcpcentral.io`, then
-  `mcp-publisher publish`.
+  `mcp-publisher publish`. As of 2026-05-27,
+  `registry.mcpcentral.io` currently does not resolve, so publishing is blocked
+  before GitHub OAuth can start. The browser submit page at
+  `https://mcpcentral.io/submit-server` redirects to sign-in and Cloudflare
+  blocks non-browser automation, so complete this only after the registry host
+  resolves or a signed-in maintainer browser session exposes a working publish
+  path.
 - `wong2/awesome-mcp-servers` points new submissions to
   `https://mcpservers.org/submit`, so do not open a duplicate PR there unless
   the maintainer guidance changes.
+- `punkpeye/awesome-mcp-servers` PR:
+  `https://github.com/punkpeye/awesome-mcp-servers/pull/6993`.
+- `appcypher/awesome-mcp-servers` PR creation is blocked by GitHub
+  `CreatePullRequest` permissions even though the fork branch exists at
+  `https://github.com/NavinAgrawal/awesome-mcp-servers-1/tree/add-mcp-broker`.
+  If the browser UI allows it, try the compare URL:
+  `https://github.com/appcypher/awesome-mcp-servers/compare/main...NavinAgrawal:awesome-mcp-servers-1:add-mcp-broker`.
 
 Before submitting each one, verify the listing shows:
 
