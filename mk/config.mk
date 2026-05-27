@@ -138,6 +138,10 @@ MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers
 PUBLISH_EVERYWHERE_APPLY ?= 0
 EXPECTED_PUBLISH_VERSION ?=
 MCPB_MANIFEST     ?= $(ROOT)/mcpb/manifest.json
+MCPB_OUTPUT       ?= $(PACKAGE_DIST_DIR)/mcp-broker-$(PACKAGE_VERSION).mcpb
+MCPB_SMOKE_DIR    ?= $(TEST_LOG_DIR)/mcpb-smoke
+MCPB_SMOKE_OUTPUT ?= $(MCPB_SMOKE_DIR)/mcp-broker.mcpb
+MCPB_SMOKE_UNPACK_DIR ?= $(MCPB_SMOKE_DIR)/unpacked
 PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_XDIST_ARGS)
 PYTEST_TARGETED_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_TARGETED_XDIST_ARGS)
 PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT) $(PYTEST_XDIST_ARGS)

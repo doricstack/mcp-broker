@@ -104,6 +104,24 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert '"version": "0.0.1"' not in upstream_http
 
 
+def test_mcpb_distribution_targets_package_and_smoke_bundle() -> None:
+    makefile = read_combined_makefiles(ROOT)
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+
+    assert re.search(
+        r"^MCPB_OUTPUT\s+\?= \$\(PACKAGE_DIST_DIR\)/mcp-broker-\$\(PACKAGE_VERSION\)\.mcpb$",
+        makefile,
+        re.M,
+    )
+    assert "mcpb-pack:" in makefile
+    assert "mcpb-smoke:" in makefile
+    assert '@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_OUTPUT)"' in makefile
+    assert '@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)"' in makefile
+    assert '@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"' in makefile
+    assert "make mcpb-pack" in distribution
+    assert "make mcpb-smoke" in distribution
+
+
 def test_stable_release_public_status_is_aligned_to_source_release() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")

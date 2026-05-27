@@ -305,6 +305,8 @@ Validate it with:
 
 ```bash
 make mcpb-validate
+make mcpb-pack
+make mcpb-smoke
 ```
 
 Smithery has two possible paths:

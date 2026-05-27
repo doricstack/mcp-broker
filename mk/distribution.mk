@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -127,6 +127,24 @@ mcpb-validate: ## Validate MCPB manifest metadata
 	$(call log_step,"Validating MCPB manifest")
 	@npx -y @anthropic-ai/mcpb validate "$(MCPB_MANIFEST)"
 	$(call log_success,"MCPB manifest passed")
+
+mcpb-pack: mcpb-validate ## Build the MCPB bundle into dist/
+	$(call log_step,"Packing MCPB bundle")
+	@mkdir -p "$(dir $(MCPB_OUTPUT))"
+	@rm -f "$(MCPB_OUTPUT)"
+	@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_OUTPUT)"
+	$(call log_success,"MCPB bundle built: $(MCPB_OUTPUT)")
+
+mcpb-smoke: ## Pack, inspect, and unpack the MCPB bundle without installing it
+	$(call log_step,"Smoke testing MCPB bundle")
+	@rm -rf "$(MCPB_SMOKE_DIR)"
+	@mkdir -p "$(MCPB_SMOKE_DIR)"
+	@$(NPX) -y @anthropic-ai/mcpb validate "$(MCPB_MANIFEST)"
+	@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_SMOKE_OUTPUT)"
+	@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)" > "$(MCPB_SMOKE_DIR)/info.txt"
+	@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"
+	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["mcp_config"]["command"]=="uvx"; assert "broker.status" in {t["name"] for t in m["tools"]}'
+	$(call log_success,"MCPB smoke passed: $(MCPB_SMOKE_OUTPUT)")
 
 publish-version-check: ## Verify all release metadata versions match
 	@EXPECTED_PUBLISH_VERSION="$(EXPECTED_PUBLISH_VERSION)" GITHUB_REF_NAME="$${GITHUB_REF_NAME:-}" $(PYTHON) "$(ROOT)/scripts/check_release_versions.py"
