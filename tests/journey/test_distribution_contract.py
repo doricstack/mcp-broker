@@ -180,6 +180,7 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "$(PYTHON) -m twine check" in makefile
     assert "build==" in requirements
     assert "twine==" in requirements
+    assert "pytest==9.0.3" in requirements
     assert "pytest-xdist==3.8.0" in requirements
     for dependency in pyproject["project"]["dependencies"]:
         package_name = re.split(r"[<>=~!]", dependency, maxsplit=1)[0]
