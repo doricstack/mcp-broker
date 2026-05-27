@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mcp-broker",
   "display_name": "mcp-broker",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Local MCP broker that exposes many configured upstream MCP servers through one client entry.",
   "long_description": "mcp-broker runs a local broker process and a compact stdio facade so MCP clients can connect to one local server instead of loading every upstream tool directly.",
   "author": {
@@ -16,10 +16,10 @@
   "documentation": "https://github.com/NavinAgrawal/mcp-broker#readme",
   "support": "https://github.com/NavinAgrawal/mcp-broker/issues",
   "server": {
-    "type": "uv",
+    "type": "binary",
     "entry_point": "mcp-broker",
     "mcp_config": {
-      "command": "uvx",
+      "command": "${user_config.uvx_path}",
       "args": [
         "mcp-broker",
         "stdio",
@@ -76,6 +76,13 @@
     }
   },
   "user_config": {
+    "uvx_path": {
+      "type": "string",
+      "title": "UVX command path",
+      "description": "Command or absolute path for uvx. Use an absolute path if Claude Desktop cannot find uvx from its GUI environment.",
+      "required": true,
+      "default": "uvx"
+    },
     "runtime_root": {
       "type": "directory",
       "title": "Runtime directory",

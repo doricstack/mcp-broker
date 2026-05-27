@@ -618,6 +618,123 @@ def test_top_level_cli_stdio_passes_config_socket_profile_and_buffers(
     assert seen["broker_config"].profiles["generic-client"].max_tools == 200
 
 
+def test_top_level_cli_stdio_uses_existing_daemon_when_init_if_missing_sees_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import cli
+
+    config_path = _stdio_config(tmp_path)
+    socket_path = _stdio_socket(tmp_path)
+    seen: dict[str, object] = {}
+
+    class FakeDaemon:
+        def __init__(self, *, runtime_root: Path, socket_path: Path, broker_config: object) -> None:
+            seen["runtime_root"] = runtime_root
+            seen["daemon_socket_path"] = socket_path
+            seen["broker_config"] = broker_config
+
+        def start(self) -> None:
+            raise cli.BrokerDaemonError("broker daemon already running: pid 123")
+
+        def stop(self) -> None:
+            raise AssertionError("stdio must not stop a daemon it did not start")
+
+    class FakeClientShim:
+        def __init__(self, *, socket_path: Path, profile: str | None) -> None:
+            seen["client_socket_path"] = socket_path
+            seen["profile"] = profile
+
+        def run_stdio(self, stdin: object, stdout: object) -> None:
+            seen["stdin"] = stdin
+            seen["stdout"] = stdout
+
+    stdin = _BinaryConsole(b"")
+    stdout = _BinaryConsole()
+    monkeypatch.setattr(cli, "BrokerDaemon", FakeDaemon)
+    monkeypatch.setattr(cli, "ClientShim", FakeClientShim)
+    monkeypatch.setattr(cli, "_wait_for_socket", lambda socket_path, attempts: True)
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    assert (
+        cli.stdio_main(
+            [
+                "--runtime-root",
+                str(tmp_path / "runtime"),
+                "--socket-path",
+                str(socket_path),
+                "--config",
+                str(config_path),
+                "--profile",
+                "generic-client",
+                "--init-if-missing",
+            ]
+        )
+        == 0
+    )
+
+    assert seen["daemon_socket_path"] == socket_path
+    assert seen["client_socket_path"] == socket_path
+    assert seen["profile"] == "generic-client"
+    assert seen["stdin"] is stdin.buffer
+    assert seen["stdout"] is stdout.buffer
+
+
+def test_top_level_cli_stdio_reports_unexpected_daemon_start_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mcp_broker import cli
+
+    config_path = _stdio_config(tmp_path)
+    socket_path = _stdio_socket(tmp_path)
+
+    class FakeDaemon:
+        def __init__(self, *, runtime_root: Path, socket_path: Path, broker_config: object) -> None:
+            self.stop_called = False
+
+        def start(self) -> None:
+            raise cli.BrokerDaemonError("runtime lock is corrupt")
+
+        def stop(self) -> None:
+            raise AssertionError("stdio must not stop a daemon that failed to start")
+
+    class UnexpectedClientShim:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("client shim must not run when daemon start fails")
+
+    monkeypatch.setattr(cli, "BrokerDaemon", FakeDaemon)
+    monkeypatch.setattr(cli, "ClientShim", UnexpectedClientShim)
+    monkeypatch.setattr(
+        cli,
+        "_wait_for_socket",
+        lambda _socket_path, _attempts: (_ for _ in ()).throw(
+            AssertionError("socket wait must not run when daemon start fails")
+        ),
+    )
+
+    assert (
+        cli.stdio_main(
+            [
+                "--runtime-root",
+                str(tmp_path / "runtime"),
+                "--socket-path",
+                str(socket_path),
+                "--config",
+                str(config_path),
+                "--profile",
+                "generic-client",
+                "--init-if-missing",
+            ]
+        )
+        == 1
+    )
+
+    assert capsys.readouterr().err == "runtime lock is corrupt\n"
+
+
 def test_top_level_cli_stdio_init_error_stops_before_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

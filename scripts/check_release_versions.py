@@ -34,6 +34,10 @@ def main() -> int:
         "npm": _load_json("npm/package.json")["version"],
         "mcp_registry": _load_json("registry/server.json")["version"],
         "mcp_registry_package": _load_json("registry/server.json")["packages"][0]["version"],
+        "mcp_registry_template": _load_json("registry/server.template.json")["version"],
+        "mcp_registry_template_package": _load_json("registry/server.template.json")[
+            "packages"
+        ][0]["version"],
         "mcpb": _load_json("mcpb/manifest.json")["version"],
         "server_card_package": _load_json(".well-known/mcp/server-card.json")["packages"][0][
             "version"

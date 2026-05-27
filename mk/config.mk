@@ -145,6 +145,9 @@ MCPB_OUTPUT       ?= $(PACKAGE_DIST_DIR)/mcp-broker-$(PACKAGE_VERSION).mcpb
 MCPB_SMOKE_DIR    ?= $(TEST_LOG_DIR)/mcpb-smoke
 MCPB_SMOKE_OUTPUT ?= $(MCPB_SMOKE_DIR)/mcp-broker.mcpb
 MCPB_SMOKE_UNPACK_DIR ?= $(MCPB_SMOKE_DIR)/unpacked
+MCPB_STDIO_COMMAND ?= $(VENV_DIR)/bin/mcp-broker
+SMITHERY_QUALIFIED_NAME ?= navinagrawal/mcp-broker
+SMITHERY_PAYLOAD_OUTPUT ?= $(TEST_LOG_DIR)/smithery-payload.json
 PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_XDIST_ARGS)
 PYTEST_TARGETED_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_TARGETED_XDIST_ARGS)
 PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT) $(PYTEST_XDIST_ARGS)

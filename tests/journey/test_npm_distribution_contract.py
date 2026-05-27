@@ -20,7 +20,7 @@ def test_npm_package_is_scoped_and_delegates_to_python_runtime() -> None:
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
 
     assert package["name"] == "@navinagrawal/mcp-broker"
-    assert package["version"] == "1.1.0"
+    assert package["version"] == "1.1.1"
     assert package["author"] == "Navin B Agrawal"
     assert package["license"] == "MIT"
     assert package["bin"] == {"mcp-broker": "bin/mcp-broker.js"}

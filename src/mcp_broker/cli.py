@@ -13,7 +13,7 @@ from typing import Callable, Sequence
 from mcp_broker.client import ClientShim, ClientShimError
 from mcp_broker.config import BrokerConfig
 from mcp_broker.config_render import main as config_render_main
-from mcp_broker.daemon import BrokerDaemon, main as daemon_main
+from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -208,14 +208,7 @@ def handle_stdio(args: argparse.Namespace) -> int:
 
 
 def stdio_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run mcp-broker as a one-process stdio server")
-    parser.add_argument("--runtime-root", required=True)
-    parser.add_argument("--socket-path", required=True)
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--profile")
-    parser.add_argument("--init-if-missing", action="store_true")
-    parser.add_argument("--ready-attempts", type=int, default=50)
-    args = parser.parse_args(argv)
+    args = _stdio_parser().parse_args(argv)
 
     runtime_root = Path(os.path.expandvars(args.runtime_root)).expanduser()
     socket_path = Path(os.path.expandvars(args.socket_path)).expanduser()
@@ -239,8 +232,11 @@ def stdio_main(argv: Sequence[str] | None = None) -> int:
         socket_path=socket_path,
         broker_config=BrokerConfig.from_file(config_path),
     )
+    daemon_to_stop, daemon_error = _start_stdio_daemon(daemon)
+    if daemon_error is not None:
+        sys.stderr.write(f"{daemon_error}\n")
+        return 1
     try:
-        daemon.start()
         if not _wait_for_socket(socket_path, attempts=args.ready_attempts):
             sys.stderr.write(f"broker socket did not become ready: {socket_path}\n")
             return 1
@@ -252,8 +248,31 @@ def stdio_main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write(f"{exc}\n")
         return 1
     finally:
-        daemon.stop()
+        if daemon_to_stop is not None:
+            daemon_to_stop.stop()
     return 0
+
+
+def _stdio_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run mcp-broker as a one-process stdio server")
+    parser.add_argument("--runtime-root", required=True)
+    parser.add_argument("--socket-path", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--profile")
+    parser.add_argument("--init-if-missing", action="store_true")
+    parser.add_argument("--ready-attempts", type=int, default=50)
+    return parser
+
+
+def _start_stdio_daemon(daemon: BrokerDaemon) -> tuple[BrokerDaemon | None, str | None]:
+    try:
+        daemon.start()
+    except BrokerDaemonError as exc:
+        message = str(exc)
+        if "broker daemon already running" in message:
+            return None, None
+        return None, message
+    return daemon, None
 
 
 def _wait_for_socket(

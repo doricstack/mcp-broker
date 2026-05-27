@@ -25,7 +25,7 @@ npx @navinagrawal/mcp-broker --help
 The NPM package is a thin Node wrapper. It delegates to the Python package:
 
 ```text
-mcp-broker==1.1.0
+mcp-broker==1.1.1
 ```
 
 The wrapper does not reimplement the Python broker in Node. The Python package
@@ -58,8 +58,9 @@ NPM registry token.
 
 ## Release Policy
 
-The current distribution release is `1.1.0`. That version adds NPM and Docker
-distribution paths, so it is a minor release, not a patch release.
+The current source release is `1.1.1`. It is a patch release for the Claude
+Desktop MCPB stdio startup path and Smithery MCPB adapter. The NPM and Docker
+distribution paths were introduced in `1.1.0`.
 
 Do not publish an NPM package until all of these pass:
 

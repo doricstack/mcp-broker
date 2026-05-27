@@ -249,6 +249,7 @@ def test_docker_packaging_contract_is_public_safe() -> None:
         assert "Dockerfile" in allowlist
         assert ".dockerignore" in allowlist
         assert "docker/docker-entrypoint.sh" in allowlist
+        assert "scripts/mcpb_stdio_smoke.py" in allowlist
     assert "/Users/" not in dockerfile
     assert "/Users/" not in entrypoint
 
@@ -260,9 +261,11 @@ def test_mcpb_manifest_contract_is_public_safe() -> None:
     assert manifest["name"] == "mcp-broker"
     assert manifest["license"] == "MIT"
     assert manifest["author"]["name"] == "Navin B Agrawal"
-    assert manifest["server"]["type"] == "uv"
-    assert manifest["server"]["mcp_config"]["command"] == "uvx"
+    assert manifest["server"]["type"] == "binary"
+    assert manifest["server"]["mcp_config"]["command"] == "${user_config.uvx_path}"
     assert manifest["server"]["mcp_config"]["args"][:2] == ["mcp-broker", "stdio"]
+    assert manifest["user_config"]["uvx_path"]["default"] == "uvx"
+    assert manifest["user_config"]["uvx_path"]["required"] is True
     assert "broker.call_tool" in {tool["name"] for tool in manifest["tools"]}
     assert "broker.status" in {tool["name"] for tool in manifest["tools"]}
 
@@ -309,7 +312,8 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
     assert "MCPCentral" in packet
     assert '"mcpServers": {' in packet
     assert '"mcp-broker": {' in packet
-    assert '"command": "uvx"' in packet
+    assert '"command": "${user_config.uvx_path}"' in packet
+    assert "UVX command path" in packet
     assert '"mcp-broker", "stdio", "--init-if-missing"' in packet
     assert "609 to 43" in launch
     assert "276,989 to 45,281" in launch
@@ -354,7 +358,11 @@ def test_directory_submission_check_is_make_backed() -> None:
         "Server tab",
         "Connector tab",
         "Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension",
-        "smithery mcp publish",
+        "make smithery-payload-check",
+        "make smithery-publish",
+        "make mcpb-stdio-smoke",
+        "scripts/mcpb_stdio_smoke.py",
+        "scripts/smithery_release.py",
         "server.mcpb",
     ]:
         assert term in packet

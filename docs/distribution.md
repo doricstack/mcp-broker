@@ -4,7 +4,7 @@ This page tracks public distribution paths for `mcp-broker`.
 
 ## Python Package
 
-Package metadata is release-aligned for `1.1.0`. The version is sourced from
+Package metadata is release-aligned for `1.1.1`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
@@ -16,8 +16,10 @@ Current public package status:
 - NPM: `@navinagrawal/mcp-broker 1.1.0` is published.
 - Docker: `docker.io/navinagrawal/mcp-broker:1.1.0` and
   `ghcr.io/navinagrawal/mcp-broker:1.1.0` are published.
-- Current distribution release: `1.1.0`. NPM and Docker publication are minor
-  release additions, not patch-only changes.
+- Current source release: `1.1.1`. This is a patch release for the Claude
+  Desktop MCPB stdio startup path and Smithery MCPB publication adapter; the
+  published public surfaces stay at `1.1.0` until the release workflow publishes
+  `1.1.1`.
 
 The package command surface is:
 
@@ -229,10 +231,10 @@ GHCR is a mirror:
 ghcr.io/navinagrawal/mcp-broker
 ```
 
-Recommended first published tags:
+Recommended release tags for `1.1.1`:
 
 ```text
-1.1.0
+1.1.1
 1.1
 ```
 
@@ -307,14 +309,18 @@ Validate it with:
 make mcpb-validate
 make mcpb-pack
 make mcpb-smoke
+make mcpb-stdio-smoke
+make smithery-payload-check
 make directory-submission-check
 ```
 
-Smithery has two possible paths:
-
-- Hosted or remote mode: publish a streamable HTTP URL.
-- Local mode: publish an MCPB bundle from `mcpb/manifest.json` only if install,
-  config, upgrade, and uninstall behavior are visible to the user.
+Smithery uses the local MCPB path for this release. The hosted or remote path
+waits until `mcp-broker` has a real streamable HTTP broker mode. The MCPB
+manifest stays valid for Claude Desktop, and `make smithery-publish` sends a
+Smithery-specific server-card payload with default object schemas for the four
+broker facade tools. The first accepted Smithery release returned deployment
+`aae18669-9500-4a5d-9870-8f9b3bfd404d` and MCP URL
+`https://mcp-broker--navinagrawal.run.tools`; public search indexing may lag.
 
 Glama lists the public repo at
 `https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface at `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker`. Check that tool names, schemas,

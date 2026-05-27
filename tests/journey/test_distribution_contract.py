@@ -14,7 +14,7 @@ pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLISHED_STABLE_VERSION = "1.1.0"
-SOURCE_RELEASE_VERSION = "1.1.0"
+SOURCE_RELEASE_VERSION = "1.1.1"
 
 
 def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
@@ -115,11 +115,17 @@ def test_mcpb_distribution_targets_package_and_smoke_bundle() -> None:
     )
     assert "mcpb-pack:" in makefile
     assert "mcpb-smoke:" in makefile
+    assert "mcpb-stdio-smoke:" in makefile
+    assert "smithery-payload-check:" in makefile
+    assert "smithery-publish:" in makefile
+    assert "scripts/smithery_release.py" in makefile
+    assert "scripts/mcpb_stdio_smoke.py" in makefile
     assert '@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_OUTPUT)"' in makefile
     assert '@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)"' in makefile
     assert '@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"' in makefile
     assert "make mcpb-pack" in distribution
     assert "make mcpb-smoke" in distribution
+    assert "make mcpb-stdio-smoke" in distribution
 
 
 def test_stable_release_public_status_is_aligned_to_source_release() -> None:
@@ -236,7 +242,7 @@ def test_npm_and_docker_distribution_decisions_are_recorded() -> None:
     assert "does not reimplement the Python broker in Node" in npm_doc
     assert "NPM trusted publishing is the preferred auth path" in npm_doc
     assert "NPM is an optional bridge package" in distribution
-    assert "Current distribution release: `1.1.0`" in distribution
+    assert "Current source release: `1.1.1`" in distribution
     assert "docker.io/navinagrawal/mcp-broker" in distribution
     assert "ghcr.io/navinagrawal/mcp-broker" in distribution
     assert "Docker Hub is the primary image for Docker MCP Catalog work" in distribution
@@ -510,6 +516,9 @@ def test_release_version_checker_uses_logging_instead_of_print() -> None:
 
     assert "import logging" in script
     assert "LOGGER = logging.getLogger" in script
+    assert '"registry/server.template.json"' in script
+    assert '"mcp_registry_template"' in script
+    assert '"mcp_registry_template_package"' in script
     assert "print(" not in script
 
 

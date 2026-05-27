@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke directory-submission-check publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -143,8 +143,34 @@ mcpb-smoke: ## Pack, inspect, and unpack the MCPB bundle without installing it
 	@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_SMOKE_OUTPUT)"
 	@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)" > "$(MCPB_SMOKE_DIR)/info.txt"
 	@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"
-	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["mcp_config"]["command"]=="uvx"; assert "broker.status" in {t["name"] for t in m["tools"]}'
+	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["type"]=="binary"; assert m["server"]["mcp_config"]["command"]=="$${user_config.uvx_path}"; assert m["user_config"]["uvx_path"]["required"] is True; assert "broker.status" in {t["name"] for t in m["tools"]}'
 	$(call log_success,"MCPB smoke passed: $(MCPB_SMOKE_OUTPUT)")
+
+mcpb-stdio-smoke: mcpb-pack broker-status ## Run the MCPB stdio command shape against an already-running broker
+	$(call log_step,"Smoke testing MCPB stdio command")
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/mcpb_stdio_smoke.py" \
+		--manifest "$(MCPB_MANIFEST)" \
+		--command "$(MCPB_STDIO_COMMAND)" \
+		--runtime-root "$(RUNTIME_ROOT)" \
+		--socket-path "$(SOCKET_PATH)" \
+		--config "$(CONFIG_PATH)" \
+		--profile "claude"
+	$(call log_success,"MCPB stdio smoke passed")
+
+smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload from the MCPB bundle
+	$(call log_step,"Checking Smithery release payload")
+	@$(PYTHON_BIN) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
+		--name "$(SMITHERY_QUALIFIED_NAME)" \
+		--dry-run \
+		--payload-output "$(SMITHERY_PAYLOAD_OUTPUT)"
+	@$(PYTHON_BIN) -c 'import json, pathlib; p=json.loads(pathlib.Path("$(SMITHERY_PAYLOAD_OUTPUT)").read_text()); assert p["type"]=="stdio"; assert p["runtime"]=="binary"; assert "configSchema" in p; tools=p["serverCard"]["tools"]; assert all(t.get("inputSchema",{}).get("type")=="object" for t in tools); assert {t["name"] for t in tools}>={"broker.search_tools","broker.describe_tool","broker.call_tool","broker.status"}'
+	$(call log_success,"Smithery payload check passed: $(SMITHERY_PAYLOAD_OUTPUT)")
+
+smithery-publish: smithery-payload-check ## Publish the MCPB bundle to Smithery using the repo payload adapter
+	$(call log_step,"Publishing Smithery MCPB bundle")
+	@$(PYTHON_BIN) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
+		--name "$(SMITHERY_QUALIFIED_NAME)"
+	$(call log_success,"Smithery publish target completed: $(SMITHERY_QUALIFIED_NAME)")
 
 directory-submission-check: mcpb-validate ## Validate directory submission packet, server card, registry metadata, and MCPB manifest
 	$(call log_step,"Checking directory submission metadata")

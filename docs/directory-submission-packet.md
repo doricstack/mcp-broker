@@ -69,19 +69,46 @@ Submit in this order after the package works from a clean machine:
   ingestion. Verify the rendered `server.json` name, provider, GitHub link, and
   description after each public metadata refresh. If the entry disappears,
   submit the public GitHub repository at `https://www.pulsemcp.com/submit`.
-- Smithery: use the local stdio/MCPB path only after package install, config,
-  upgrade, and uninstall smoke passes.
+- Smithery: published via the local stdio/MCPB path. Release
+  `aae18669-9500-4a5d-9870-8f9b3bfd404d` returned `SUCCESS`; MCP URL:
+  `https://mcp-broker--navinagrawal.run.tools`.
 - Docker MCP Catalog: submit after Dockerfile and custom catalog smoke pass.
 
 Smithery MCPB command after account or namespace auth is ready:
 
 ```bash
-make mcpb-pack
-smithery mcp publish dist/mcp-broker-1.1.0.mcpb -n <smithery-namespace>/mcp-broker
+make smithery-payload-check
+smithery auth login
+smithery namespace use navinagrawal
+make smithery-publish
 ```
 
 Smithery publishes the MCPB bundle as `server.mcpb`; keep the source manifest
-at `mcpb/manifest.json` and rerun `make mcpb-smoke` before upload.
+at `mcpb/manifest.json` and rerun `make mcpb-smoke` before upload. The MCPB
+manifest declares a `binary` runtime for Smithery compatibility and exposes
+`UVX command path` so Claude Desktop users can provide an absolute `uvx` path
+when the GUI environment cannot find `uvx`. `make smithery-publish` uses the
+repo adapter because Smithery CLI 1.1.1 converts valid MCPB tool entries into a
+server card without `inputSchema`, which the Smithery API rejects. The adapter
+lives at `scripts/smithery_release.py`.
+The local stdio startup smoke helper lives at `scripts/mcpb_stdio_smoke.py`.
+
+Before a Claude Desktop or Smithery update, run:
+
+```bash
+make mcpb-smoke
+make mcpb-stdio-smoke
+make smithery-payload-check
+```
+
+MCPB runtime command:
+
+```json
+{
+  "command": "${user_config.uvx_path}",
+  "args": ["mcp-broker", "stdio", "--init-if-missing"]
+}
+```
 
 Claude Desktop local MCPB smoke uses the desktop extension path, not the remote
 custom connector URL path:
@@ -90,7 +117,7 @@ custom connector URL path:
 Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension...
 ```
 
-Install `dist/mcp-broker-1.1.0.mcpb`, confirm `mcp-broker` appears, confirm
+Install `dist/mcp-broker-1.1.1.mcpb`, confirm `mcp-broker` appears, confirm
 `broker.search_tools`, `broker.describe_tool`, `broker.call_tool`, and
 `broker.status`, run one safe status or search call, reinstall once, then
 uninstall.

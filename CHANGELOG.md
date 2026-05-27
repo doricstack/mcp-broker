@@ -2,6 +2,15 @@
 
 All notable public changes will be recorded here.
 
+## 1.1.1 - 2026-05-27
+
+- Fix MCPB and Claude Desktop stdio startup when the broker daemon is already
+  running.
+- Add a Smithery MCPB release adapter that preserves the valid Claude Desktop
+  manifest while publishing Smithery server-card tool schemas.
+- Add a configurable MCPB `UVX command path` for GUI environments that cannot
+  find `uvx` from shell PATH.
+
 ## 1.1.0 - 2026-05-26
 
 - Add the one-shot `make publish-everywhere` CI release path for PyPI, NPM,
