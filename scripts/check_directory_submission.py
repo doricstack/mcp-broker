@@ -36,7 +36,7 @@ REQUIRED_PACKET_TERMS = [
 ]
 
 PRIVATE_MARKERS = [
-    "/Users/",
+    "/" "Users/",
     "CloudStorage",
     "config/broker.private.yaml",
     "HANDOFF",

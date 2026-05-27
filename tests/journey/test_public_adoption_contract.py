@@ -314,11 +314,13 @@ def test_directory_submission_check_is_make_backed() -> None:
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     packet = (ROOT / "docs" / "directory-submission-packet.md").read_text(encoding="utf-8")
     script = ROOT / "scripts" / "check_directory_submission.py"
+    script_text = script.read_text(encoding="utf-8") if script.exists() else ""
 
     assert script.is_file()
     assert "directory-submission-check:" in makefile
     assert "$(PYTHON_BIN) \"$(ROOT)/scripts/check_directory_submission.py\"" in makefile
     assert "make directory-submission-check" in distribution
+    assert "/Users/" not in script_text
     for term in [
         "broker.search_tools",
         "broker.describe_tool",
