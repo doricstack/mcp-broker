@@ -64,9 +64,10 @@ Submit in this order after the package works from a clean machine:
   score after each public metadata refresh. Use Glama's Server tab for future
   reindex or correction requests. Do not use the Connector tab unless a future
   release exposes a hosted HTTPS MCP URL.
-- PulseMCP: PulseMCP has already appeared through registry ingestion. Capture
-  the exact listing URL and verify the rendered `server.json` name, provider,
-  GitHub link, and description before marking complete. If the entry disappears,
+- PulseMCP: listed at
+  `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker` through registry
+  ingestion. Verify the rendered `server.json` name, provider, GitHub link, and
+  description after each public metadata refresh. If the entry disappears,
   submit the public GitHub repository at `https://www.pulsemcp.com/submit`.
 - Smithery: use the local stdio/MCPB path only after package install, config,
   upgrade, and uninstall smoke passes.
@@ -102,6 +103,31 @@ Use the same packet for:
 - `mcp.so`
 - `MCPCentral`
 - Active awesome-MCP-server lists that accept pull requests
+
+Current submission requirements checked on 2026-05-27:
+
+- mcpservers.org requires a contact email on `https://mcpservers.org/submit`.
+- mcp.so requires Sign In before accepting `https://mcp.so/submit`. Use this
+  server config, not the page's generic GitHub Docker placeholder:
+
+```json
+{
+  "mcpServers": {
+    "mcp-broker": {
+      "command": "uvx",
+      "args": ["mcp-broker", "stdio", "--init-if-missing"],
+      "env": {}
+    }
+  }
+}
+```
+
+- MCPCentral requires the publisher flow:
+  `mcp-publisher login github --registry https://registry.mcpcentral.io`, then
+  `mcp-publisher publish`.
+- `wong2/awesome-mcp-servers` points new submissions to
+  `https://mcpservers.org/submit`, so do not open a duplicate PR there unless
+  the maintainer guidance changes.
 
 Before submitting each one, verify the listing shows:
 

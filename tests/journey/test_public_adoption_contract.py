@@ -195,6 +195,7 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
         "https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker",
         "PulseMCP",
         "PulseMCP has also appeared from the registry/server.json surface",
+        "https://www.pulsemcp.com/servers/navinagrawal-mcp-broker",
         "Homebrew",
         "make release-gate",
         "var/quality/mutation_stats.json",
@@ -306,6 +307,10 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
     assert "mcpservers.org" in packet
     assert "mcp.so" in packet
     assert "MCPCentral" in packet
+    assert '"mcpServers": {' in packet
+    assert '"mcp-broker": {' in packet
+    assert '"command": "uvx"' in packet
+    assert '"mcp-broker", "stdio", "--init-if-missing"' in packet
     assert "609 to 43" in launch
     assert "276,989 to 45,281" in launch
     assert "/Users/" not in json.dumps(server)
@@ -335,7 +340,11 @@ def test_directory_submission_check_is_make_backed() -> None:
         "https://glama.ai/",
         "https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker",
         "https://www.pulsemcp.com/submit",
-        "PulseMCP has already appeared through registry ingestion",
+        "https://www.pulsemcp.com/servers/navinagrawal-mcp-broker",
+        "PulseMCP: listed at",
+        "mcpservers.org requires a contact email",
+        "mcp.so requires Sign In",
+        "mcp-publisher login github --registry https://registry.mcpcentral.io",
         "Server tab",
         "Connector tab",
         "Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension",

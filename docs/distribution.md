@@ -317,7 +317,7 @@ Smithery has two possible paths:
   config, upgrade, and uninstall behavior are visible to the user.
 
 Glama lists the public repo at
-`https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface. Check that tool names, schemas,
+`https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface at `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker`. Check that tool names, schemas,
 install instructions, safety notes, license, GitHub links, and score output
 render correctly before adding secondary directories.
 
