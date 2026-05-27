@@ -6,6 +6,7 @@ import pytest
 
 from scripts.update_homebrew_formula import (
     FormulaUpdate,
+    fetch_pypi_release,
     find_sdist_release,
     render_formula_update,
 )
@@ -81,3 +82,52 @@ def test_homebrew_formula_script_uses_logging_not_print() -> None:
 
     assert "import logging" in script
     assert "print(" not in script
+
+
+def test_fetch_pypi_release_retries_until_json_is_available() -> None:
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"urls": []}'
+
+    calls = 0
+    sleeps: list[float] = []
+
+    def opener(_url: str, timeout: int) -> Response:
+        nonlocal calls
+        calls += 1
+        assert timeout == 30
+        if calls < 3:
+            raise OSError("not propagated")
+        return Response()
+
+    assert fetch_pypi_release(
+        "mcp-broker",
+        "1.1.1",
+        attempts=4,
+        retry_delay_seconds=0.25,
+        opener=opener,
+        sleeper=sleeps.append,
+    ) == {"urls": []}
+    assert calls == 3
+    assert sleeps == [0.25, 0.25]
+
+
+def test_fetch_pypi_release_fails_after_retry_budget() -> None:
+    def opener(_url: str, timeout: int) -> object:
+        raise OSError("still missing")
+
+    with pytest.raises(ValueError, match="PyPI release payload unavailable"):
+        fetch_pypi_release(
+            "mcp-broker",
+            "1.1.1",
+            attempts=2,
+            retry_delay_seconds=0,
+            opener=opener,
+            sleeper=lambda _seconds: None,
+        )

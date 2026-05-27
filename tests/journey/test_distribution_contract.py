@@ -305,7 +305,10 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "MCP Registry metadata already exists" in makefile
     assert "HOMEBREW_TAP_TOKEN" in makefile
     assert "Homebrew formula already current" in makefile
-    assert 'git -C "$$tmpdir/tap" -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \\' in makefile
+    assert "--pypi-attempts \"$(HOMEBREW_PYPI_ATTEMPTS)\"" in makefile
+    assert "GIT_ASKPASS=\"$$tmpdir/git-askpass.sh\"" in makefile
+    assert "extraheader=\"AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}\"" not in makefile
+    assert "x-access-token:$${HOMEBREW_TAP_TOKEN}" not in makefile
     assert "publish-version-check" in makefile
     assert '"$(UV)" publish --trusted-publishing always' in makefile
     assert "$(NPM) publish --access public --provenance" in makefile

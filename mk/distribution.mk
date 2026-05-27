@@ -200,7 +200,7 @@ _publish-check-docker-smoke:
 _publish-check-docker-buildx:
 	$(call timed_make,"publish check child: docker-buildx",docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)")
 
-publish-everywhere: ## CI-only one-shot publication to PyPI, NPM, Docker Hub, GHCR, and MCP Registry
+publish-everywhere: ## CI-only one-shot publication to PyPI, NPM, Docker Hub, GHCR, MCP Registry, and Homebrew
 	$(call timed_make,"publish-everywhere: total",_publish-everywhere-impl)
 
 _publish-everywhere-impl:
@@ -263,13 +263,23 @@ _publish-everywhere-homebrew:
 	@test -n "$${HOMEBREW_TAP_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m HOMEBREW_TAP_TOKEN is required to update $(HOMEBREW_TAP_REPO)\n" >&2; exit 2; }
 	@tmpdir="$$(mktemp -d)"; \
 		trap 'rm -rf "$$tmpdir"' EXIT; \
-		git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \
-			clone --depth 1 --branch "$(HOMEBREW_TAP_BRANCH)" \
+		printf '%s\n' \
+			'#!/usr/bin/env bash' \
+			'case "$$1" in' \
+			'  *Username*) printf "%s\n" x-access-token ;;' \
+			'  *Password*) printf "%s\n" "$${HOMEBREW_TAP_TOKEN}" ;;' \
+			'  *) printf "\n" ;;' \
+			'esac' > "$$tmpdir/git-askpass.sh"; \
+		chmod 700 "$$tmpdir/git-askpass.sh"; \
+		GIT_ASKPASS="$$tmpdir/git-askpass.sh" GIT_TERMINAL_PROMPT=0 \
+			git clone --depth 1 --branch "$(HOMEBREW_TAP_BRANCH)" \
 			"https://github.com/$(HOMEBREW_TAP_REPO).git" "$$tmpdir/tap"; \
 		"$(PYTHON)" "$(ROOT)/scripts/update_homebrew_formula.py" \
 			--formula "$$tmpdir/tap/$(HOMEBREW_FORMULA_PATH)" \
 			--project "$(PYPI_PROJECT_NAME)" \
-			--version "$(PACKAGE_VERSION)"; \
+			--version "$(PACKAGE_VERSION)" \
+			--pypi-attempts "$(HOMEBREW_PYPI_ATTEMPTS)" \
+			--pypi-retry-delay-seconds "$(HOMEBREW_PYPI_RETRY_DELAY_SECONDS)"; \
 		if git -C "$$tmpdir/tap" diff --quiet -- "$(HOMEBREW_FORMULA_PATH)"; then \
 			printf "\033[1;32m[OK]\033[0m Homebrew formula already current: %s %s\n" "$(HOMEBREW_TAP_REPO)" "$(PACKAGE_VERSION)"; \
 		else \
@@ -277,7 +287,7 @@ _publish-everywhere-homebrew:
 			git -C "$$tmpdir/tap" config user.email "$(HOMEBREW_GIT_AUTHOR_EMAIL)"; \
 			git -C "$$tmpdir/tap" add "$(HOMEBREW_FORMULA_PATH)"; \
 			git -C "$$tmpdir/tap" commit -m "Update mcp-broker formula to $(PACKAGE_VERSION)"; \
-			git -C "$$tmpdir/tap" -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \
+			GIT_ASKPASS="$$tmpdir/git-askpass.sh" GIT_TERMINAL_PROMPT=0 git -C "$$tmpdir/tap" \
 				push origin "HEAD:$(HOMEBREW_TAP_BRANCH)"; \
 		fi
 	$(call log_success,"Homebrew publish target completed: $(HOMEBREW_TAP_REPO)")

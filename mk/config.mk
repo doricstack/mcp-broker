@@ -141,6 +141,8 @@ HOMEBREW_TAP_BRANCH ?= main
 HOMEBREW_FORMULA_PATH ?= Formula/mcp-broker.rb
 HOMEBREW_GIT_AUTHOR_NAME ?= mcp-broker release automation
 HOMEBREW_GIT_AUTHOR_EMAIL ?= actions@github.com
+HOMEBREW_PYPI_ATTEMPTS ?= 12
+HOMEBREW_PYPI_RETRY_DELAY_SECONDS ?= 10
 MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker
 MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)
 PUBLISH_EVERYWHERE_APPLY ?= 0
