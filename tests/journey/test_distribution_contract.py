@@ -428,7 +428,10 @@ def test_docker_mcp_registry_submission_packet_is_staged() -> None:
         "make docker-smoke",
         "make docker-mcp-catalog-smoke",
         "No hidden host client config writes",
-        "Submit after public image proof",
+        "PR submitted and pending external Docker review",
+        "https://github.com/docker/mcp-registry/pull/3819",
+        "blocked by",
+        "required review",
     ]:
         assert term in submission
 

@@ -1,7 +1,12 @@
 # Docker MCP Registry Submission
 
-Status: staged for maintainer review. Submit after public image proof, Docker
-MCP custom catalog smoke, and Docker-specific security review pass.
+Status: PR submitted and pending external Docker review.
+
+PR: `https://github.com/docker/mcp-registry/pull/3819`
+
+Current PR state checked on 2026-05-27: open, not draft, mergeable, blocked by
+required review, and not mergeable by this maintainer token because
+`docker/mcp-registry` grants only read permission.
 
 ## Package
 
@@ -39,7 +44,6 @@ make docker-release-smoke DOCKER_RELEASE_IMAGE=docker.io/navinagrawal/mcp-broker
 
 ## Submission Path
 
-Submit after public image proof. Preferred path is Docker's `docker/mcp-registry`
-PR process. If Docker requires a Docker-built image under the `mcp/` namespace,
-use this packet as the source description and point the registry entry to the
-public GitHub repository.
+Preferred path is Docker's `docker/mcp-registry` PR process. If Docker requires
+a Docker-built image under the `mcp/` namespace, use this packet as the source
+description and point the registry entry to the public GitHub repository.
