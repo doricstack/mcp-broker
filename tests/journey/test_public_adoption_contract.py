@@ -307,3 +307,24 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
     assert "/Users/" not in json.dumps(server)
     assert "/Users/" not in json.dumps(card)
     assert "CloudStorage" not in packet
+
+
+def test_directory_submission_check_is_make_backed() -> None:
+    makefile = read_combined_makefiles(ROOT)
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    packet = (ROOT / "docs" / "directory-submission-packet.md").read_text(encoding="utf-8")
+    script = ROOT / "scripts" / "check_directory_submission.py"
+
+    assert script.is_file()
+    assert "directory-submission-check:" in makefile
+    assert "$(PYTHON_BIN) \"$(ROOT)/scripts/check_directory_submission.py\"" in makefile
+    assert "make directory-submission-check" in distribution
+    for term in [
+        "broker.search_tools",
+        "broker.describe_tool",
+        "broker.call_tool",
+        "broker.status",
+        "https://github.com/NavinAgrawal/mcp-broker",
+        "docs/context-reduction-measurement.md",
+    ]:
+        assert term in packet

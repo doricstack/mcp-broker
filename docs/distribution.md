@@ -307,6 +307,7 @@ Validate it with:
 make mcpb-validate
 make mcpb-pack
 make mcpb-smoke
+make directory-submission-check
 ```
 
 Smithery has two possible paths:
@@ -324,6 +325,11 @@ Directory copy lives in:
 ```text
 docs/directory-submission-packet.md
 ```
+
+Before any directory submission, run `make directory-submission-check`. It
+validates the packet, `/.well-known/mcp/server-card.json`, `registry/server.json`,
+and the MCPB manifest together so directory pages cannot drift from the package
+metadata.
 
 The public launch page lives in:
 

@@ -42,6 +42,18 @@ Safety notes:
 Runtime state stays outside the repository. Local upstreams are configured in user-owned YAML. Mutating tools require profile allowlists. Secrets should be referenced by environment variable name or runtime secret file, not committed to config.
 ```
 
+Context-reduction evidence:
+
+```text
+https://github.com/NavinAgrawal/mcp-broker/blob/main/docs/context-reduction-measurement.md
+```
+
+Validation before submission:
+
+```bash
+make directory-submission-check
+```
+
 ## Primary Directories
 
 Submit in this order after the package works from a clean machine:

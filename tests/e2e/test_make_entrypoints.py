@@ -63,6 +63,7 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "docker-smoke",
         "docker-buildx",
         "docker-mcp-catalog-smoke",
+        "directory-submission-check",
         "mcpb-pack",
         "mcpb-smoke",
         "mcpb-validate",

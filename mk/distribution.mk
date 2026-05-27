@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke directory-submission-check publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -145,6 +145,15 @@ mcpb-smoke: ## Pack, inspect, and unpack the MCPB bundle without installing it
 	@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"
 	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["mcp_config"]["command"]=="uvx"; assert "broker.status" in {t["name"] for t in m["tools"]}'
 	$(call log_success,"MCPB smoke passed: $(MCPB_SMOKE_OUTPUT)")
+
+directory-submission-check: mcpb-validate ## Validate directory submission packet, server card, registry metadata, and MCPB manifest
+	$(call log_step,"Checking directory submission metadata")
+	@DIRECTORY_SUBMISSION_PACKET="$(DIRECTORY_SUBMISSION_PACKET)" \
+		SERVER_CARD_PATH="$(SERVER_CARD_PATH)" \
+		REGISTRY_METADATA_PATH="$(REGISTRY_METADATA_PATH)" \
+		MCPB_MANIFEST="$(MCPB_MANIFEST)" \
+		$(PYTHON_BIN) "$(ROOT)/scripts/check_directory_submission.py"
+	$(call log_success,"Directory submission check passed")
 
 publish-version-check: ## Verify all release metadata versions match
 	@EXPECTED_PUBLISH_VERSION="$(EXPECTED_PUBLISH_VERSION)" GITHUB_REF_NAME="$${GITHUB_REF_NAME:-}" $(PYTHON) "$(ROOT)/scripts/check_release_versions.py"
