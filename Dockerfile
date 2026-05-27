@@ -28,8 +28,8 @@ COPY src /app/src
 COPY config/broker.example.yaml /app/config/broker.example.yaml
 COPY docker/docker-entrypoint.sh /usr/local/bin/mcp-broker-docker
 
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir /app \
+RUN PIP_ROOT_USER_ACTION=ignore python -m pip install --no-cache-dir --upgrade pip \
+    && PIP_ROOT_USER_ACTION=ignore python -m pip install --no-cache-dir /app \
     && chmod +x /usr/local/bin/mcp-broker-docker \
     && groupadd --system mcp-broker \
     && useradd --system --gid mcp-broker --home-dir /var/lib/mcp-broker mcp-broker \

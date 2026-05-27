@@ -359,6 +359,8 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert pypi_index < fanout_index
     assert 'docker buildx build \\' in makefile
     assert '$(call timed_make,"publish child: docker-publish-check",docker-publish-check)' in makefile
+    assert "\n\t+@label=\"$(call strip_quotes,$(1))\"" in makefile
+    assert "\n\t@label=\"$(call strip_quotes,$(1))\"" not in makefile
 
 
 def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:

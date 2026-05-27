@@ -230,6 +230,7 @@ def test_docker_packaging_contract_is_public_safe() -> None:
     assert "COPY config/broker.example.yaml /app/config/broker.example.yaml" in dockerfile
     assert "ENTRYPOINT [\"/usr/local/bin/mcp-broker-docker\"]" in dockerfile
     assert "MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker" in dockerfile
+    assert "PIP_ROOT_USER_ACTION=ignore python -m pip install" in dockerfile
     assert "mcp-broker stdio" in entrypoint
     assert "--init-if-missing" in entrypoint
     assert "MCP_BROKER_CONFIG" in entrypoint

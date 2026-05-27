@@ -17,7 +17,7 @@ define log_step
 endef
 
 define timed_make
-	@label="$(call strip_quotes,$(1))"; \
+	+@label="$(call strip_quotes,$(1))"; \
 	log="$(call strip_quotes,$(3))"; \
 	start_epoch=$$(date +%s); \
 	start_time=$$(date +"%Y-%m-%d %H:%M:%S %Z"); \
