@@ -12,9 +12,9 @@ make broker-status
 If either command reports stale resources, a failed upstream, or a missing command, fix that condition before retrying client wiring.
 
 When a client uses compact broker tools, `/mcp` shows only the single broker
-entry. Call `broker.status` from the client, or run
+entry. Call `broker_status` from the client, or run
 `make profile-validation PROFILE=<profile>`, to inspect and validate which
-upstreams the selected profile can see. `broker.status` includes auth state,
+upstreams the selected profile can see. `broker_status` includes auth state,
 passive auth probe state, session count, last error, and auth-repair counters
 without starting auth flows. The validation target uses the `smoke` probes
 configured in YAML and fails if any enabled profile-visible upstream lacks one.
@@ -86,7 +86,7 @@ Fix the upstream record in `config/broker.private.yaml`. Do not patch source cod
 ## Auth Failures
 
 Symptoms:
-- `broker.search_tools` returns a `skipped_upstreams` entry for one upstream.
+- `broker_search_tools` returns a `skipped_upstreams` entry for one upstream.
 - `make broker-smoke` fails with an auth or token error.
 - A LaunchAgent-backed upstream works in an interactive shell but fails when the daemon owns it.
 - An upstream returns a tool-level auth error naming an env var, for example `NLMCP_AUTH_TOKEN`.
@@ -105,7 +105,7 @@ Expected result: LaunchAgent-managed secrets are file-backed under the runtime s
 
 Keep secret values out of `config/broker.private.yaml`. Use `env` for host environment variable names or `env_files` for broker-owned runtime secret files. If the upstream requires per-call MCP metadata, map the secret through `request_meta`. If the upstream exposes browser setup auth, configure `auth_repair` so the broker can run that setup tool after a matching auth error and retry the original call.
 
-Use `broker.status` after an auth failure. `auth_state` reports
+Use `broker_status` after an auth failure. `auth_state` reports
 `unauthenticated` for auth-shaped failures and `unknown` when the broker has no
 passive signal. `auth_probe` reports `credentials_missing` when configured env
 or secret-file sources are absent, `credentials_present` when those sources

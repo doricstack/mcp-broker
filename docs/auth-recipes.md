@@ -178,7 +178,7 @@ tools.
 
 ## Status Checks
 
-Use `broker.status` through the broker facade after an auth failure. It reports
+Use `broker_status` through the broker facade after an auth failure. It reports
 the broker-owned view of each upstream:
 
 - `auth_probe`

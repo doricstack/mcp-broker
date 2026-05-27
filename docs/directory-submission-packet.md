@@ -118,8 +118,8 @@ Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Ex
 ```
 
 Install `dist/mcp-broker-1.1.1.mcpb`, confirm `mcp-broker` appears, confirm
-`broker.search_tools`, `broker.describe_tool`, `broker.call_tool`, and
-`broker.status`, run one safe status or search call, reinstall once, then
+`broker_search_tools`, `broker_describe_tool`, `broker_call_tool`, and
+`broker_status`, run one safe status or search call, reinstall once, then
 uninstall.
 
 ## Secondary Directories
@@ -174,10 +174,10 @@ Current submission requirements checked on 2026-05-27:
 
 Before submitting each one, verify the listing shows:
 
-- `broker.search_tools`
-- `broker.describe_tool`
-- `broker.call_tool`
-- `broker.status`
+- `broker_search_tools`
+- `broker_describe_tool`
+- `broker_call_tool`
+- `broker_status`
 - install command
 - config location
 - safety notes

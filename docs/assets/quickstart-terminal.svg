@@ -14,9 +14,9 @@
   <text x="32" y="230" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make broker-status</text>
   <text x="32" y="262" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#d1d5db">{"status":"ok","socket":"~/mcp/mcp-broker/sockets/broker.sock"}</text>
   <text x="32" y="302" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#93c5fd">$ make codex-facade-smoke</text>
-  <text x="32" y="334" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">[OK] broker.search_tools, broker.describe_tool, broker.call_tool, broker.status</text>
+  <text x="32" y="334" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">[OK] broker_search_tools, broker_describe_tool, broker_call_tool, broker_status</text>
   <rect x="32" y="370" width="856" height="106" rx="10" fill="#0f172a" stroke="#334155"/>
   <text x="56" y="406" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="17" fill="#e5e7eb">/mcp</text>
   <text x="56" y="438" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#86efac">mcp-broker - connected - 4 tools</text>
-  <text x="56" y="464" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#9ca3af">Upstreams stay behind broker.status instead of loading hundreds of tools.</text>
+  <text x="56" y="464" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#9ca3af">Upstreams stay behind broker_status instead of loading hundreds of tools.</text>
 </svg>

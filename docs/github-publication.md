@@ -52,7 +52,7 @@ The demo should show:
 - starting from the public example config
 - running `mcp-broker init`
 - rendering one MCP client entry
-- using `broker.search_tools`, `broker.describe_tool`, `broker.call_tool`, and `broker.status`
+- using `broker_search_tools`, `broker_describe_tool`, `broker_call_tool`, and `broker_status`
 - comparing 609 to 43 advertised tool definitions and 276,989 to 45,281 serialized `o200k_base` tool tokens
 ```
 

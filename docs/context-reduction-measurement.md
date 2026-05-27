@@ -41,10 +41,10 @@ Before this broker setup, Codex was configured with 11 direct MCP server entries
 
 The broker then exposes four compact facade tools:
 
-- `broker.search_tools`
-- `broker.describe_tool`
-- `broker.call_tool`
-- `broker.status`
+- `broker_search_tools`
+- `broker_describe_tool`
+- `broker_call_tool`
+- `broker_status`
 
 The upstream MCPs are still reachable. They are no longer all placed in the model's first tool view.
 
@@ -75,10 +75,10 @@ Result:
   "total_tools": 4,
   "upstream_counts": {"broker": 4},
   "tools": [
-    "broker.call_tool",
-    "broker.describe_tool",
-    "broker.search_tools",
-    "broker.status"
+    "broker_call_tool",
+    "broker_describe_tool",
+    "broker_search_tools",
+    "broker_status"
   ]
 }
 ```

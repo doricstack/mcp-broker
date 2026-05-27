@@ -13,10 +13,10 @@ mcp-broker
 The broker exposes the compact broker facade:
 
 ```text
-broker.search_tools
-broker.describe_tool
-broker.call_tool
-broker.status
+broker_search_tools
+broker_describe_tool
+broker_call_tool
+broker_status
 ```
 
 Raw upstream tools stay behind the broker until a task needs them.
@@ -106,7 +106,7 @@ Use `per_session` for browser automation, filesystem roots, databases, cloud dep
 
 Codex and Claude `/mcp` views show the broker entry, not every hidden upstream. That is expected.
 
-Use `broker.status` for upstream state and auth visibility. Use `broker.search_tools` to confirm discovery, then `broker.describe_tool` and a configured safe `broker.call_tool` smoke probe before trusting an upstream in normal work.
+Use `broker_status` for upstream state and auth visibility. Use `broker_search_tools` to confirm discovery, then `broker_describe_tool` and a configured safe `broker_call_tool` smoke probe before trusting an upstream in normal work.
 
 ## Rollback
 

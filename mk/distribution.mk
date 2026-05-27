@@ -143,7 +143,7 @@ mcpb-smoke: ## Pack, inspect, and unpack the MCPB bundle without installing it
 	@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_SMOKE_OUTPUT)"
 	@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)" > "$(MCPB_SMOKE_DIR)/info.txt"
 	@$(NPX) -y @anthropic-ai/mcpb unpack "$(MCPB_SMOKE_OUTPUT)" "$(MCPB_SMOKE_UNPACK_DIR)"
-	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["type"]=="binary"; assert m["server"]["mcp_config"]["command"]=="$${user_config.uvx_path}"; assert m["user_config"]["uvx_path"]["required"] is True; assert "broker.status" in {t["name"] for t in m["tools"]}'
+	@$(PYTHON_BIN) -c 'import json, pathlib; p=pathlib.Path("$(MCPB_SMOKE_UNPACK_DIR)/manifest.json"); m=json.loads(p.read_text()); assert m["name"]=="mcp-broker"; assert m["server"]["type"]=="binary"; assert m["server"]["mcp_config"]["command"]=="$${user_config.uvx_path}"; assert m["user_config"]["uvx_path"]["required"] is True; assert "broker_status" in {t["name"] for t in m["tools"]}'
 	$(call log_success,"MCPB smoke passed: $(MCPB_SMOKE_OUTPUT)")
 
 mcpb-stdio-smoke: mcpb-pack broker-status ## Run the MCPB stdio command shape against an already-running broker
@@ -163,7 +163,7 @@ smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload
 		--name "$(SMITHERY_QUALIFIED_NAME)" \
 		--dry-run \
 		--payload-output "$(SMITHERY_PAYLOAD_OUTPUT)"
-	@$(PYTHON_BIN) -c 'import json, pathlib; p=json.loads(pathlib.Path("$(SMITHERY_PAYLOAD_OUTPUT)").read_text()); assert p["type"]=="stdio"; assert p["runtime"]=="binary"; assert "configSchema" in p; tools=p["serverCard"]["tools"]; assert all(t.get("inputSchema",{}).get("type")=="object" for t in tools); assert {t["name"] for t in tools}>={"broker.search_tools","broker.describe_tool","broker.call_tool","broker.status"}'
+	@$(PYTHON_BIN) -c 'import json, pathlib; p=json.loads(pathlib.Path("$(SMITHERY_PAYLOAD_OUTPUT)").read_text()); assert p["type"]=="stdio"; assert p["runtime"]=="binary"; assert "configSchema" in p; tools=p["serverCard"]["tools"]; assert all(t.get("inputSchema",{}).get("type")=="object" for t in tools); assert {t["name"] for t in tools}>={"broker_search_tools","broker_describe_tool","broker_call_tool","broker_status"}'
 	$(call log_success,"Smithery payload check passed: $(SMITHERY_PAYLOAD_OUTPUT)")
 
 smithery-publish: smithery-payload-check ## Publish the MCPB bundle to Smithery using the repo payload adapter

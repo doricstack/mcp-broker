@@ -6,10 +6,10 @@ context cost of every configured upstream before the task needs those tools.
 The public release centers on a small broker facade:
 
 ```text
-broker.search_tools
-broker.describe_tool
-broker.call_tool
-broker.status
+broker_search_tools
+broker_describe_tool
+broker_call_tool
+broker_status
 ```
 
 The broker keeps the upstream MCP servers available, but it exposes them through

@@ -286,7 +286,7 @@ then restart Gemini and rerun the list command.
 
 `make codex-claude-discovery-parity` compares Codex and Claude compact profile
 discovery through the client shim without writing Claude config. It checks
-compact `tools/list`, `broker.status`, search, describe, and one configured safe
+compact `tools/list`, `broker_status`, search, describe, and one configured safe
 broker-mediated call.
 
 `make profile-validation PROFILE=<profile>` is the config-driven upstream gate.
@@ -323,7 +323,7 @@ Manual `/mcp` acceptance checklist:
 - Codex shows one `mcp-broker` entry.
 - Codex shows broker tools, not raw upstream tool lists.
 - `codex_apps` excludes connectors disabled by the configured app policy.
-- A direct client call to `broker.status` returns the profile-visible upstreams.
+- A direct client call to `broker_status` returns the profile-visible upstreams.
 - `make codex-profile-validation` passes against the same config.
 
 Use the same checklist for Claude only after the user approves Claude wiring.

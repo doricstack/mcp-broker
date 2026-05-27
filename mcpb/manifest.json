@@ -38,19 +38,19 @@
   },
   "tools": [
     {
-      "name": "broker.search_tools",
+      "name": "broker_search_tools",
       "description": "Search configured upstream MCP tools without loading every upstream tool into the client session."
     },
     {
-      "name": "broker.describe_tool",
+      "name": "broker_describe_tool",
       "description": "Describe one configured upstream MCP tool."
     },
     {
-      "name": "broker.call_tool",
+      "name": "broker_call_tool",
       "description": "Call one configured upstream MCP tool through the broker."
     },
     {
-      "name": "broker.status",
+      "name": "broker_status",
       "description": "Report broker and upstream health for the selected profile."
     }
   ],

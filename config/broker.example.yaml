@@ -47,9 +47,11 @@ profiles:
   codex:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
   claude:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
   gemini:
     max_tools: 80
     compact_tools_enabled: true
@@ -57,6 +59,7 @@ profiles:
   docker:
     max_tools: 80
     compact_tools_enabled: true
+    broker_tool_name_style: snake
   manual-test:
     max_tools: 200
     compact_tools_enabled: false
@@ -266,7 +269,7 @@ upstreams:
   # Use this when an upstream can open a browser and persist auth into its own
   # broker-owned state or secret path before retrying the original call.
   # auth_probe can inspect broker-owned OAuth token JSON passively. It reports
-  # expired refresh tokens through broker.status without logging token values or
+  # expired refresh tokens through broker_status without logging token values or
   # opening a browser.
   example-request-meta-auth:
     enabled: false

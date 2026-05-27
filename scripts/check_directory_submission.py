@@ -11,10 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
 
 REQUIRED_TOOLS = {
-    "broker.search_tools",
-    "broker.describe_tool",
-    "broker.call_tool",
-    "broker.status",
+    "broker_search_tools",
+    "broker_describe_tool",
+    "broker_call_tool",
+    "broker_status",
 }
 
 REQUIRED_PACKET_TERMS = [
@@ -26,10 +26,10 @@ REQUIRED_PACKET_TERMS = [
     "Runtime state stays outside the repository",
     "Mutating tools require profile allowlists",
     "docs/context-reduction-measurement.md",
-    "broker.search_tools",
-    "broker.describe_tool",
-    "broker.call_tool",
-    "broker.status",
+    "broker_search_tools",
+    "broker_describe_tool",
+    "broker_call_tool",
+    "broker_status",
     "mcpservers.org",
     "mcp.so",
     "MCPCentral",

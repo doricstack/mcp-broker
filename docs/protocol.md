@@ -105,8 +105,8 @@ while Codex is wired to one compact `mcp-broker` entry. That detail lives behind
 the broker facade and the local daemon health endpoint.
 
 The local status sources are `make broker-status` and the compact MCP tool
-`broker.status`. `make broker-status` calls `broker/health` and reports daemon
-state. `broker.status` reports the profile-scoped upstream view through MCP:
+`broker_status`. `make broker-status` calls `broker/health` and reports daemon
+state. `broker_status` reports the profile-scoped upstream view through MCP:
 enabled or disabled state, profile exposure, mode, transport, mutation flag,
 PID, restart count, session count, last error, `auth_probe`, auth state, and
 auth-repair counters. `auth_probe` is a passive credential-source check:

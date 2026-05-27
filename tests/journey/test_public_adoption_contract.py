@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 import pytest
 import yaml
@@ -48,6 +49,34 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
     missing = [path for path in required_paths if not (ROOT / path).is_file()]
 
     assert missing == []
+
+
+def test_mcpb_manifest_tool_names_are_client_safe() -> None:
+    manifest = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+    tool_names = [tool["name"] for tool in manifest["tools"]]
+    client_safe_pattern = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+    assert tool_names == [
+        "broker_search_tools",
+        "broker_describe_tool",
+        "broker_call_tool",
+        "broker_status",
+    ]
+    assert [name for name in tool_names if not client_safe_pattern.fullmatch(name)] == []
+
+
+def test_packaged_chat_profiles_use_client_safe_broker_tool_names() -> None:
+    config = yaml.safe_load((ROOT / "config" / "broker.example.yaml").read_text(encoding="utf-8"))
+
+    assert {
+        profile_name: config["profiles"][profile_name]["broker_tool_name_style"]
+        for profile_name in ("codex", "claude", "gemini", "docker")
+    } == {
+        "codex": "snake",
+        "claude": "snake",
+        "gemini": "snake",
+        "docker": "snake",
+    }
 
 
 def test_readme_public_first_screen_has_adoption_content() -> None:
@@ -266,8 +295,8 @@ def test_mcpb_manifest_contract_is_public_safe() -> None:
     assert manifest["server"]["mcp_config"]["args"][:2] == ["mcp-broker", "stdio"]
     assert manifest["user_config"]["uvx_path"]["default"] == "uvx"
     assert manifest["user_config"]["uvx_path"]["required"] is True
-    assert "broker.call_tool" in {tool["name"] for tool in manifest["tools"]}
-    assert "broker.status" in {tool["name"] for tool in manifest["tools"]}
+    assert "broker_call_tool" in {tool["name"] for tool in manifest["tools"]}
+    assert "broker_status" in {tool["name"] for tool in manifest["tools"]}
 
     serialized = json.dumps(manifest, sort_keys=True)
     assert "/Users/" not in serialized
@@ -335,10 +364,10 @@ def test_directory_submission_check_is_make_backed() -> None:
     assert "make directory-submission-check" in distribution
     assert "/Users/" not in script_text
     for term in [
-        "broker.search_tools",
-        "broker.describe_tool",
-        "broker.call_tool",
-        "broker.status",
+        "broker_search_tools",
+        "broker_describe_tool",
+        "broker_call_tool",
+        "broker_status",
         "https://github.com/NavinAgrawal/mcp-broker",
         "docs/context-reduction-measurement.md",
         "https://glama.ai/",

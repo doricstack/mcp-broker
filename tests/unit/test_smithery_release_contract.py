@@ -18,9 +18,9 @@ def test_smithery_payload_adds_tool_input_schemas_without_changing_mcpb_manifest
         "version": "1.1.0",
         "server": {"type": "binary", "mcp_config": {"command": "uvx"}},
         "tools": [
-            {"name": "broker.status", "description": "Report broker health."},
+            {"name": "broker_status", "description": "Report broker health."},
             {
-                "name": "broker.call_tool",
+                "name": "broker_call_tool",
                 "description": "Call one upstream tool.",
                 "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}},
             },
@@ -35,17 +35,17 @@ def test_smithery_payload_adds_tool_input_schemas_without_changing_mcpb_manifest
     loaded = load_mcpb_manifest(bundle_path)
     payload = build_payload_from_manifest(loaded)
 
-    assert loaded["tools"][0] == {"name": "broker.status", "description": "Report broker health."}
+    assert loaded["tools"][0] == {"name": "broker_status", "description": "Report broker health."}
     assert payload["type"] == "stdio"
     assert payload["runtime"] == "binary"
     assert payload["serverCard"]["tools"] == [
         {
-            "name": "broker.status",
+            "name": "broker_status",
             "description": "Report broker health.",
             "inputSchema": {"type": "object", "properties": {}},
         },
         {
-            "name": "broker.call_tool",
+            "name": "broker_call_tool",
             "description": "Call one upstream tool.",
             "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}},
         },

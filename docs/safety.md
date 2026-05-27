@@ -78,7 +78,7 @@ Use these defaults:
 
 ## Status And Auditing
 
-Use `broker.status` to inspect exposed upstreams without starting them. The status response should show enabled state, exposure state, mode, transport, mutation flag, passive auth state, runtime state, PID when running, restart count, and last error.
+Use `broker_status` to inspect exposed upstreams without starting them. The status response should show enabled state, exposure state, mode, transport, mutation flag, passive auth state, runtime state, PID when running, restart count, and last error.
 
 Runtime logs belong under:
 
