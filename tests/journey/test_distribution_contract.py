@@ -266,6 +266,8 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert '"$(UVX)" --from "mcp-broker==$' in makefile
     assert "PUBLIC_SURFACE_REQUIRE_NPM=1" in makefile
     assert "PUBLIC_SURFACE_REQUIRE_DOCKER=1" in makefile
+    assert "PYPI_VERSION_URL" in makefile
+    assert "PyPI package already exists" in makefile
     assert '$(NPM) view "$(NPM_PACKAGE_NAME)@$(PACKAGE_VERSION)" version' in makefile
     assert "NPM package already exists" in makefile
     assert "MCP_REGISTRY_SEARCH_URL" in makefile
@@ -329,6 +331,8 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
 
     assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
     assert "PUBLISH_EVERYWHERE_JOBS ?= 3" in makefile
+    assert "PYPI_PROJECT_NAME ?= mcp-broker" in makefile
+    assert "PYPI_VERSION_URL ?= https://pypi.org/pypi/$(PYPI_PROJECT_NAME)/$(PACKAGE_VERSION)/json" in makefile
     assert "MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker" in makefile
     assert "MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)" in makefile
     assert "publish-version-check" in check_section

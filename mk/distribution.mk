@@ -156,9 +156,17 @@ _publish-everywhere-impl:
 	$(call log_success,"Publish-everywhere completed")
 
 _publish-everywhere-pypi:
-	@command -v "$(UV)" >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m uv is required for publish-everywhere\n" >&2; exit 2; }
-	@"$(UV)" publish --trusted-publishing always --check-url "https://pypi.org/simple/mcp-broker/" "$(PACKAGE_DIST_DIR)"/*
-	$(call log_success,"Published PyPI package: $(PACKAGE_VERSION)")
+	@status="$$(curl -fsS -o /dev/null -w '%{http_code}' "$(PYPI_VERSION_URL)" || true)"; \
+	if [ "$$status" = "200" ]; then \
+		printf "\033[1;32m[OK]\033[0m PyPI package already exists: %s==%s\n" "$(PYPI_PROJECT_NAME)" "$(PACKAGE_VERSION)"; \
+	elif [ "$$status" = "404" ]; then \
+		command -v "$(UV)" >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m uv is required for publish-everywhere\n" >&2; exit 2; }; \
+		"$(UV)" publish --trusted-publishing always --check-url "https://pypi.org/simple/mcp-broker/" "$(PACKAGE_DIST_DIR)"/*; \
+	else \
+		printf "\033[1;31m[ERROR]\033[0m PyPI version check failed for %s (HTTP %s)\n" "$(PYPI_VERSION_URL)" "$$status" >&2; \
+		exit 2; \
+	fi
+	$(call log_success,"PyPI publish target completed: $(PACKAGE_VERSION)")
 
 _publish-everywhere-npm:
 	@if $(NPM) view "$(NPM_PACKAGE_NAME)@$(PACKAGE_VERSION)" version >/dev/null 2>&1; then \
