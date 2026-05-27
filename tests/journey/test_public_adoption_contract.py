@@ -330,6 +330,9 @@ def test_directory_submission_check_is_make_backed() -> None:
         "docs/context-reduction-measurement.md",
         "https://glama.ai/",
         "https://www.pulsemcp.com/submit",
+        "Server tab",
+        "Connector tab",
+        "Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension",
         "smithery mcp publish",
         "server.mcpb",
     ]:

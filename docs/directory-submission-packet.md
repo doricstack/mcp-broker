@@ -61,6 +61,8 @@ Submit in this order after the package works from a clean machine:
 - Official MCP Registry: use `registry/server.json` and `mcp-publisher`.
 - Glama: submit the public GitHub repository from `https://glama.ai/` and
   verify rendered tool schemas, safety annotations, install docs, and score.
+  Use Glama's Server tab for the open-source GitHub repository path. Do not
+  use the Connector tab unless a future release exposes a hosted HTTPS MCP URL.
 - PulseMCP: submit the public GitHub repository at
   `https://www.pulsemcp.com/submit`, or rely on Official MCP Registry
   ingestion if the listing appears after the registry processing window.
@@ -77,6 +79,18 @@ smithery mcp publish dist/mcp-broker-1.1.0.mcpb -n <smithery-namespace>/mcp-brok
 
 Smithery publishes the MCPB bundle as `server.mcpb`; keep the source manifest
 at `mcpb/manifest.json` and rerun `make mcpb-smoke` before upload.
+
+Claude Desktop local MCPB smoke uses the desktop extension path, not the remote
+custom connector URL path:
+
+```text
+Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension...
+```
+
+Install `dist/mcp-broker-1.1.0.mcpb`, confirm `mcp-broker` appears, confirm
+`broker.search_tools`, `broker.describe_tool`, `broker.call_tool`, and
+`broker.status`, run one safe status or search call, reinstall once, then
+uninstall.
 
 ## Secondary Directories
 
