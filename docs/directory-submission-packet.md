@@ -59,13 +59,15 @@ make directory-submission-check
 Submit in this order after the package works from a clean machine:
 
 - Official MCP Registry: use `registry/server.json` and `mcp-publisher`.
-- Glama: submit the public GitHub repository from `https://glama.ai/` and
-  verify rendered tool schemas, safety annotations, install docs, and score.
-  Use Glama's Server tab for the open-source GitHub repository path. Do not
-  use the Connector tab unless a future release exposes a hosted HTTPS MCP URL.
-- PulseMCP: submit the public GitHub repository at
-  `https://www.pulsemcp.com/submit`, or rely on Official MCP Registry
-  ingestion if the listing appears after the registry processing window.
+- Glama: listed at `https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`.
+  Verify rendered tool schemas, safety annotations, install docs, license, and
+  score after each public metadata refresh. Use Glama's Server tab for future
+  reindex or correction requests. Do not use the Connector tab unless a future
+  release exposes a hosted HTTPS MCP URL.
+- PulseMCP: PulseMCP has already appeared through registry ingestion. Capture
+  the exact listing URL and verify the rendered `server.json` name, provider,
+  GitHub link, and description before marking complete. If the entry disappears,
+  submit the public GitHub repository at `https://www.pulsemcp.com/submit`.
 - Smithery: use the local stdio/MCPB path only after package install, config,
   upgrade, and uninstall smoke passes.
 - Docker MCP Catalog: submit after Dockerfile and custom catalog smoke pass.

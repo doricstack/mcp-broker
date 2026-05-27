@@ -316,8 +316,9 @@ Smithery has two possible paths:
 - Local mode: publish an MCPB bundle from `mcpb/manifest.json` only if install,
   config, upgrade, and uninstall behavior are visible to the user.
 
-Glama and PulseMCP should index the public repo after the first release. Check
-that tool names, schemas, install instructions, safety notes, and score output
+Glama lists the public repo at
+`https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface. Check that tool names, schemas,
+install instructions, safety notes, license, GitHub links, and score output
 render correctly before adding secondary directories.
 
 Directory copy lives in:
