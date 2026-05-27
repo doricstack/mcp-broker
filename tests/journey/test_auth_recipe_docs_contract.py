@@ -26,7 +26,7 @@ def test_auth_recipes_cover_supported_public_auth_patterns() -> None:
         "request_meta:",
         "auth_repair:",
         "make secret-import-env SECRET_NAME=<name>",
-        "broker.status",
+        "broker_status",
         "auth_probe",
         "oauth_token_file",
         "oauth_refresh_expired",

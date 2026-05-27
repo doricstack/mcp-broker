@@ -39,10 +39,10 @@ Client profile
 The client sees a small set of broker tools:
 
 ```text
-broker.search_tools
-broker.describe_tool
-broker.call_tool
-broker.status
+broker_search_tools
+broker_describe_tool
+broker_call_tool
+broker_status
 ```
 
 The upstream MCPs still exist. They are discovered and called through the broker when a task needs them.
@@ -173,7 +173,7 @@ make broker-status
 make codex-facade-smoke
 ```
 
-In an MCP client, `/mcp` should show one `mcp-broker` entry. Use `broker.status`
+In an MCP client, `/mcp` should show one `mcp-broker` entry. Use `broker_status`
 to inspect profile-visible upstream state.
 
 ## Quickstart
@@ -322,12 +322,12 @@ The compact facade keeps chat-facing profiles small:
 
 | Tool | Purpose |
 |---|---|
-| `broker.search_tools` | Search configured upstream tools by query. |
-| `broker.describe_tool` | Return schema and metadata for one upstream tool. |
-| `broker.call_tool` | Call one upstream tool through broker routing. |
-| `broker.status` | Show profile-visible upstream state, passive auth probes, and last errors without starting tools. |
+| `broker_search_tools` | Search configured upstream tools by query. |
+| `broker_describe_tool` | Return schema and metadata for one upstream tool. |
+| `broker_call_tool` | Call one upstream tool through broker routing. |
+| `broker_status` | Show profile-visible upstream state, passive auth probes, and last errors without starting tools. |
 
-Codex `/mcp` shows the single `mcp-broker` entry by design. Per-upstream visibility comes from `broker.status`.
+Codex `/mcp` shows the single `mcp-broker` entry by design. Per-upstream visibility comes from `broker_status`.
 
 ## Profiles and safety
 
@@ -379,7 +379,7 @@ smoke:
   call: true
 ```
 
-`make profile-validation PROFILE=<profile>` validates every enabled upstream visible to that profile through `broker.status`, `broker.search_tools`, `broker.describe_tool`, and the configured safe `broker.call_tool`.
+`make profile-validation PROFILE=<profile>` validates every enabled upstream visible to that profile through `broker_status`, `broker_search_tools`, `broker_describe_tool`, and the configured safe `broker_call_tool`.
 
 ## Codex operator acceptance
 
