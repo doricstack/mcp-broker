@@ -24,13 +24,15 @@ make release-gate
 Required result:
 - Package metadata validates.
 - Release smoke passes.
-- Mutation runs last. On macOS, the release gate uses the Linux container
+- Coverage, package checks, release smoke, and mutation run after the dependency
+  foundation is current. On macOS, the release gate uses the Linux container
   mutation target.
 - `var/quality/mutation_stats.json` exists.
 - Mutation score is 100 and no mutants are `survived`, `no_tests`, `skipped`,
   `suspicious`, `timeout`, `check_was_interrupted_by_user`, `segfault`, or
   `not_checked`.
-- PyPI publication workflow runs `make release-gate` before publishing.
+- The one-shot publication workflow runs `make publish-everywhere-check` before
+  publishing.
 
 Run the Linux release parity gate before triggering PyPI:
 

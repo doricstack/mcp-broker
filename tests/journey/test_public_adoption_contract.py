@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.makefiles import read_combined_makefiles
+
 
 pytestmark = pytest.mark.journey
 
@@ -219,7 +221,7 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
 def test_docker_packaging_contract_is_public_safe() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     entrypoint = (ROOT / "docker" / "docker-entrypoint.sh").read_text(encoding="utf-8")
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
     allowlist = allowlist_path.read_text(encoding="utf-8") if allowlist_path.exists() else ""
 

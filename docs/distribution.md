@@ -4,7 +4,7 @@ This page tracks public distribution paths for `mcp-broker`.
 
 ## Python Package
 
-Package metadata is release-aligned for `1.0.0`. The version is sourced from
+Package metadata is release-aligned for `1.1.0`. The version is sourced from
 `src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
 Setuptools dynamic metadata.
 
@@ -13,6 +13,8 @@ Current public package status:
 - PyPI: `mcp-broker 1.0.0` is published.
 - MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.0.0` is published and marked latest.
 - Homebrew: `mcp-broker 1.0.0` is published through the public tap.
+- Next distribution release: `1.1.0`. NPM and Docker publication are minor
+  release additions, not patch-only changes.
 
 The package command surface is:
 
@@ -48,17 +50,37 @@ Repository-owned package checks:
 make package-check
 ```
 
-Publishing is automated by `.github/workflows/publish-pypi.yml`. The workflow
-runs `make release-gate` before the PyPI publish step. It runs for published
-GitHub releases, manual dispatches, and the `publish-pypi` repository-dispatch
-event. Tag pushes do not publish to PyPI; the GitHub Release publication is the
-single normal release event. The publish step uses `skip-existing: true` as a
-secondary guard against manual reruns for the same package files.
+The public artifact gate downloads into a temporary directory and verifies the
+same package surfaces a user receives:
 
-`.github/workflows/publish-python.yml` is a workflow-ID recovery fallback for
-cases where GitHub Actions stops dispatching the primary workflow record. PyPI
-Trusted Publishing must trust the fallback workflow filename before it can
-publish with OIDC.
+```bash
+make public-stable-surface-smoke
+```
+
+That stable gate verifies PyPI, `pipx`, `uvx`, GitHub release source archive,
+Homebrew, and MCP Registry for the currently published stable version.
+
+After `1.1.0` is published, the full release surface gate is:
+
+```bash
+make public-release-surface-smoke
+```
+
+That release gate adds NPM and Docker checks and must pass before any directory
+submission claims those surfaces are live.
+
+Publishing is orchestrated by `.github/workflows/publish-everywhere.yml`. The
+workflow calls:
+
+```bash
+make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1
+```
+
+That one target runs the release gates, publishes PyPI first, and then fans out
+NPM, Docker Hub, GHCR, and MCP Registry metadata in one CI run. Tag pushes do
+not publish; the GitHub Release publication is the single normal release event.
+There are no per-registry publish workflows. Recovery runs the same
+`publish-everywhere` workflow with the same Makefile orchestrator.
 
 Before tagging a release, run:
 
@@ -66,7 +88,8 @@ Before tagging a release, run:
 make release-gate
 ```
 
-That target keeps mutation last and writes mutation evidence under
+That target refreshes dependencies once, then runs coverage, package checks,
+release smoke, and mutation in parallel. Mutation evidence is written under
 `var/quality/mutation_stats.json`.
 
 Before publishing from GitHub Actions, run the Linux parity gate when Docker is
@@ -99,6 +122,26 @@ $HOME/mcp/mcp-broker/
 The public tap points to the PyPI `1.0.0` source artifact. Retest the formula
 against the PyPI source artifact before changing the Homebrew release status.
 
+## NPM
+
+NPM is an optional bridge package. It is for users who expect an `npx` command,
+but the Python package remains the runtime source of truth.
+
+The NPM package name is:
+
+```text
+@navinagrawal/mcp-broker
+```
+
+Do not publish the unscoped `mcp-broker` package name on NPM. That name already
+belongs to a different project.
+
+NPM trusted publishing is the preferred auth path. The publish workflow should
+use GitHub Actions OIDC from the public repo and should publish only on GitHub
+release `published`, manual dispatch, or repository dispatch events.
+
+Details live in `docs/npm-distribution.md`.
+
 ## MCP Registry
 
 The official MCP Registry uses `server.json` metadata and `mcp-publisher`.
@@ -119,7 +162,9 @@ Before publishing from GitHub Actions:
 - Confirm the PyPI package README contains `mcp-name: io.github.NavinAgrawal/mcp-broker`.
 - Confirm `registry/server.json` and the PyPI package version match.
 - Confirm the public GitHub repo has OIDC access to the MCP Registry namespace.
-- Run `.github/workflows/publish-mcp-registry.yml`.
+- Run `.github/workflows/publish-everywhere.yml`. Do not publish the MCP
+  Registry through a workflow-run chain after PyPI; the one-shot workflow owns
+  the release.
 
 GitHub OIDC is the preferred auth path. The workflow runs:
 
@@ -159,16 +204,55 @@ Build a release image with OCI labels, SBOM, and provenance:
 
 ```bash
 make docker-buildx \
-  DOCKER_IMAGE=ghcr.io/<owner>/mcp-broker:1.0.0 \
+  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:1.1.0 \
   DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
   DOCKER_PUSH=1
 ```
+
+Docker Hub is the primary image for Docker MCP Catalog work:
+
+```text
+docker.io/navinagrawal/mcp-broker
+```
+
+GHCR is a mirror:
+
+```text
+ghcr.io/navinagrawal/mcp-broker
+```
+
+Recommended first published tags:
+
+```text
+1.1.0
+1.1
+```
+
+Do not publish `latest` until the maintainer confirms the tag should track the
+newest stable release.
 
 For a local one-platform buildx check without pushing:
 
 ```bash
 make docker-buildx DOCKER_PLATFORMS=linux/arm64
 ```
+
+Docker MCP Toolkit custom catalog smoke uses file-based server metadata:
+
+```bash
+make docker-mcp-catalog-smoke
+```
+
+The metadata file lives at:
+
+```text
+docker/mcp-catalog/mcp-broker.yaml
+```
+
+The Docker image itself is not treated as self-describing for Docker MCP
+Toolkit. Docker's file-based catalog metadata path is the local validation path
+until the official Docker registry review decides whether Docker builds the
+catalog image or accepts the self-provided Docker Hub image.
 
 Run manually:
 
@@ -190,12 +274,13 @@ Boundary:
 - Supported: explicit mounts for runtime state, config, logs, and secrets.
 - Unsupported by default: hidden edits to host `~/.codex`, `~/.claude.json`, or
   browser profiles.
-- Required before Docker MCP Catalog PR approval: Docker MCP Toolkit custom
-  catalog smoke, public image publication, and a Docker-specific security
-  review.
+- Required before Docker MCP Catalog PR approval: public image publication and
+  a Docker-specific security review. Local Docker MCP Toolkit custom catalog
+  smoke is covered by `make docker-mcp-catalog-smoke`.
 
 Docker MCP Catalog submission uses the Docker registry PR flow after the
-public repo contains the Dockerfile.
+public repo contains the Dockerfile. The staged PR packet is
+`docs/docker-mcp-registry-submission.md`.
 
 ## MCPB, Smithery, Glama, PulseMCP, And Directories
 

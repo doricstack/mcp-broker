@@ -2,17 +2,28 @@
 
 Mutation testing is a release gate, not a quick local loop.
 
-Run it after the public release gates pass:
+Run the public release gate before publishing:
 
 ```bash
 make release-gate
 ```
 
-`release-gate` runs repo-local quality checks, package checks, release smoke,
-and then mutation testing as the final step.
+`release-gate` refreshes dependencies once, then runs repo-local quality checks,
+package checks, release smoke, and mutation testing in parallel.
+
+Local parallelism is capped by default:
+
+```bash
+LOCAL_CPU_BUDGET=4
+```
+
+That budget feeds pytest workers, release-gate fanout workers, and mutmut
+children. Raise it in CI or on a spare machine, for example
+`make release-gate LOCAL_CPU_BUDGET=8`; lower it when you need the workstation
+to stay responsive.
 
 The private source repo also has `make maintainer-release-gate`, which runs the
-public export dry run before the same final mutation gate.
+public export dry run alongside the public release checks.
 
 For mutation only:
 

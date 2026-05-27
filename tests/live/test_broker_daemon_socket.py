@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import subprocess
 import sys
 import time
 import uuid
@@ -201,7 +202,7 @@ def test_broker_daemon_stop_verifies_upstream_process_group_shutdown(tmp_path: P
 
         stop_response = _request(socket_path, {"method": "broker/stop", "id": "stop-verified"})
         daemon.join(timeout=2)
-        child_running_after_stop = _process_exists(child_pid)
+        child_running_after_stop = _wait_for_process_active(child_pid)
     finally:
         if child_pid is not None and _process_exists(child_pid):
             os.kill(child_pid, signal.SIGKILL)
@@ -622,4 +623,29 @@ def _process_exists(pid: int) -> bool:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
+    state = _process_state(pid)
+    if state is not None and state.startswith("Z"):
+        return False
     return True
+
+
+def _wait_for_process_active(pid: int, timeout_seconds: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _process_exists(pid):
+            return False
+        time.sleep(0.01)
+    return _process_exists(pid)
+
+
+def _process_state(pid: int) -> str | None:
+    result = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    state = result.stdout.strip()
+    if result.returncode != 0 or not state:
+        return None
+    return state

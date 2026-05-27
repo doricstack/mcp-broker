@@ -7,11 +7,14 @@ import tomllib
 
 import pytest
 
+from tests.support.makefiles import read_combined_makefiles
+
 
 pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
-STABLE_RELEASE_VERSION = "1.0.0"
+PUBLISHED_STABLE_VERSION = "1.0.0"
+SOURCE_RELEASE_VERSION = "1.1.0"
 
 
 def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
@@ -79,7 +82,7 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert pyproject["project"]["dynamic"] == ["version"]
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
-    assert package_version == STABLE_RELEASE_VERSION
+    assert package_version == SOURCE_RELEASE_VERSION
     assert package_version == latest_changelog_match.group(1)
     repository_match = re.fullmatch(
         r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
@@ -107,15 +110,18 @@ def test_stable_release_public_status_is_aligned_to_1_0_0() -> None:
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
     normalized_distribution = " ".join(distribution.split())
 
-    assert f"Stable release `{STABLE_RELEASE_VERSION}` is published" in readme
-    assert f"Package metadata is release-aligned for `{STABLE_RELEASE_VERSION}`." in distribution
-    assert f"PyPI: `mcp-broker {STABLE_RELEASE_VERSION}` is published." in distribution
+    assert f"Stable release `{PUBLISHED_STABLE_VERSION}` is published" in readme
+    assert f"Package metadata is release-aligned for `{SOURCE_RELEASE_VERSION}`." in distribution
+    assert f"PyPI: `mcp-broker {PUBLISHED_STABLE_VERSION}` is published." in distribution
     assert (
-        f"MCP Registry: `io.github.NavinAgrawal/mcp-broker {STABLE_RELEASE_VERSION}` "
+        f"MCP Registry: `io.github.NavinAgrawal/mcp-broker {PUBLISHED_STABLE_VERSION}` "
         "is published and marked latest."
     ) in normalized_distribution
-    assert f"Homebrew: `mcp-broker {STABLE_RELEASE_VERSION}` is published through the public tap." in distribution
-    assert f"mcp-broker {STABLE_RELEASE_VERSION}" in github_publication
+    assert (
+        f"Homebrew: `mcp-broker {PUBLISHED_STABLE_VERSION}` is published through the public tap."
+        in distribution
+    )
+    assert f"mcp-broker {PUBLISHED_STABLE_VERSION}" in github_publication
 
 
 def test_public_release_workflows_cover_ci_package_and_registry_publish() -> None:
@@ -124,41 +130,31 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
         for path in sorted((ROOT / ".github" / "workflows").glob("*.yml"))
     }
 
-    assert set(workflows) >= {
-        "ci.yml",
-        "publish-python.yml",
-        "publish-pypi.yml",
-        "publish-mcp-registry.yml",
-    }
+    assert set(workflows) == {"ci.yml", "publish-everywhere.yml"}
     assert "make precommit" in workflows["ci.yml"]
     assert "make release-smoke" in workflows["ci.yml"]
-    assert "make release-gate" in workflows["publish-pypi.yml"]
-    assert "make precommit RUNTIME_ROOT" not in workflows["publish-pypi.yml"]
-    assert "pypa/gh-action-pypi-publish" in workflows["publish-pypi.yml"]
-    assert "skip-existing: true" in workflows["publish-pypi.yml"]
-    assert "id-token: write" in workflows["publish-pypi.yml"]
-    assert "release:" in workflows["publish-pypi.yml"]
-    assert "published" in workflows["publish-pypi.yml"]
-    assert "push:" not in workflows["publish-pypi.yml"]
-    assert "tags:" not in workflows["publish-pypi.yml"]
-    assert '"v*"' not in workflows["publish-pypi.yml"]
-    assert "repository_dispatch:" in workflows["publish-pypi.yml"]
-    assert "publish-pypi" in workflows["publish-pypi.yml"]
-    assert "make release-gate" in workflows["publish-python.yml"]
-    assert "pypa/gh-action-pypi-publish" in workflows["publish-python.yml"]
-    assert "id-token: write" in workflows["publish-python.yml"]
-    assert "publish-python" in workflows["publish-python.yml"]
-    assert "./venv-mcp-broker/bin/python - <<'PY'" in workflows["publish-mcp-registry.yml"]
-    assert "cp registry/server.json server.json" in workflows["publish-mcp-registry.yml"]
-    assert "mcp-publisher login github-oidc" in workflows["publish-mcp-registry.yml"]
-    assert "mcp-publisher publish\n" in workflows["publish-mcp-registry.yml"]
-    assert "mcp-publisher publish --file" not in workflows["publish-mcp-registry.yml"]
-    assert "id-token: write" in workflows["publish-mcp-registry.yml"]
+    assert "make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1" in workflows["publish-everywhere.yml"]
+    assert "make publish-version-check" in workflows["ci.yml"]
+    assert "make npm-package-check" in workflows["ci.yml"]
+    assert "make npm-smoke" in workflows["ci.yml"]
+    assert "release:" in workflows["publish-everywhere.yml"]
+    assert "published" in workflows["publish-everywhere.yml"]
+    assert "id-token: write" in workflows["publish-everywhere.yml"]
+    assert "packages: write" in workflows["publish-everywhere.yml"]
+    assert "publish-pypi.yml" not in workflows
+    assert "publish-python.yml" not in workflows
+    assert "publish-mcp-registry.yml" not in workflows
 
 
 def test_package_build_targets_are_available_through_make() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    normalized_requirements = {
+        line.strip()
+        for line in requirements.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
 
     assert "package-build:" in makefile
     assert "package-check:" in makefile
@@ -166,11 +162,15 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "$(PYTHON) -m twine check" in makefile
     assert "build==" in requirements
     assert "twine==" in requirements
+    assert "pytest-xdist==3.8.0" in requirements
+    for dependency in pyproject["project"]["dependencies"]:
+        package_name = re.split(r"[<>=~!]", dependency, maxsplit=1)[0]
+        assert any(line.startswith(package_name + "==") for line in normalized_requirements)
 
 
 def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
 
     for term in [
@@ -194,16 +194,284 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
     ]:
         assert term in makefile
 
+    assert 'SBOM_ARG="false"' in makefile
+    assert 'PROVENANCE_ARG="false"' in makefile
+
     assert "SBOM" in distribution
     assert "provenance" in distribution
     assert "linux/amd64,linux/arm64" in distribution
+
+
+def test_npm_and_docker_distribution_decisions_are_recorded() -> None:
+    npm_doc = (ROOT / "docs" / "npm-distribution.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    maintainer_inputs_path = ROOT / "docs" / "p16-maintainer-inputs.md"
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+
+    assert "`mcp-broker` on NPM is a different project" in npm_doc
+    assert "`@navinagrawal/mcp-broker`" in npm_doc
+    assert "does not reimplement the Python broker in Node" in npm_doc
+    assert "NPM trusted publishing is the preferred auth path" in npm_doc
+    assert "NPM is an optional bridge package" in distribution
+    assert "Next distribution release: `1.1.0`" in distribution
+    assert "docker.io/navinagrawal/mcp-broker" in distribution
+    assert "ghcr.io/navinagrawal/mcp-broker" in distribution
+    assert "Docker Hub is the primary image for Docker MCP Catalog work" in distribution
+    if maintainer_inputs_path.exists():
+        maintainer_inputs = maintainer_inputs_path.read_text(encoding="utf-8")
+        assert "Do not publish unscoped `mcp-broker` to NPM" in maintainer_inputs
+    if allowlist_path.exists():
+        assert "docs/npm-distribution.md" in allowlist_path.read_text(encoding="utf-8")
+
+
+def test_publish_everywhere_is_single_release_orchestrator() -> None:
+    makefile = read_combined_makefiles(ROOT)
+    npm_doc = (ROOT / "docs" / "npm-distribution.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    distribution_plan_path = (
+        ROOT / "docs" / "plans" / "2026-05-26-npm-docker-distribution.md"
+    )
+    workflow = (ROOT / ".github" / "workflows" / "publish-everywhere.yml").read_text(
+        encoding="utf-8"
+    )
+
+    for target in [
+        "package-install-smoke:",
+        "public-stable-surface-smoke:",
+        "public-release-surface-smoke:",
+        "publish-everywhere-check:",
+        "publish-everywhere:",
+        "_publish-everywhere-pypi:",
+        "_publish-everywhere-npm:",
+        "_publish-everywhere-docker:",
+        "_publish-everywhere-mcp-registry:",
+        "docker-mcp-catalog-smoke:",
+        "docker-publish-check:",
+        "docker-release-smoke:",
+        "publish-version-check:",
+    ]:
+        assert target in makefile
+
+    for target in [
+        "publish-pypi:",
+        "publish-npm:",
+        "publish-docker-images:",
+        "publish-mcp-registry:",
+    ]:
+        assert target not in makefile
+
+    assert "scripts/check_release_versions.py" in makefile
+    assert "scripts/public-surface-smoke.sh" in makefile
+    assert "pipx run --spec \"mcp-broker==$" in makefile
+    assert '"$(UVX)" --from "mcp-broker==$' in makefile
+    assert "PUBLIC_SURFACE_REQUIRE_NPM=1" in makefile
+    assert "PUBLIC_SURFACE_REQUIRE_DOCKER=1" in makefile
+    assert "publish-version-check" in makefile
+    assert '"$(UV)" publish --trusted-publishing always' in makefile
+    assert "$(NPM) publish --access public --provenance" in makefile
+    assert "--push" in makefile
+    assert "mcp-publisher login github-oidc" in makefile
+    assert "make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1" in workflow
+    assert "release:" in workflow
+    assert "published" in workflow
+    assert "id-token: write" in workflow
+    assert "packages: write" in workflow
+    assert "DOCKERHUB_USERNAME" in workflow
+    assert "DOCKERHUB_TOKEN" in workflow
+    assert "astral-sh/setup-uv" in workflow
+    assert "actions/setup-node" in workflow
+    assert "docker/setup-buildx-action" in workflow
+    assert "docker/login-action" in workflow
+    assert "uv publish" not in workflow
+    assert "npm publish" not in workflow
+    assert "docker buildx build" not in workflow
+    assert "mcp-publisher publish" not in workflow
+    assert "workflow_run:" not in workflow
+    assert "push:" not in workflow
+    assert ".github/workflows/publish-everywhere.yml" in npm_doc
+    assert ".github/workflows/publish-npm.yml" not in npm_doc
+    assert ".github/workflows/publish-pypi.yml" not in distribution
+    assert ".github/workflows/publish-python.yml" not in distribution
+    assert ".github/workflows/publish-mcp-registry.yml" not in distribution
+    assert "Manual per-registry workflows remain" not in distribution
+    if distribution_plan_path.exists():
+        distribution_plan = distribution_plan_path.read_text(encoding="utf-8")
+        assert ".github/workflows/publish-docker.yml" not in distribution_plan
+        assert 'assert "npm publish" in workflow' not in distribution_plan
+        assert 'assert "make docker-publish-check" in workflow' not in distribution_plan
+        assert "Manual per-registry workflows remain" not in distribution_plan
+        assert "publish-pypi" not in distribution_plan
+        assert "publish-npm" not in distribution_plan
+        assert "publish-docker-images" not in distribution_plan
+        assert "publish-mcp-registry" not in distribution_plan
+        assert "fallbacks only" not in distribution_plan
+        assert "Push `1.0.0` and semver aliases" not in distribution_plan
+
+
+def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
+    makefile = read_combined_makefiles(ROOT)
+
+    check_section = makefile.split("publish-everywhere-check:", maxsplit=1)[1].split(
+        "publish-everywhere:",
+        maxsplit=1,
+    )[0]
+    publish_section = makefile.split("publish-everywhere:", maxsplit=1)[1].split(
+        "_publish-everywhere-pypi:",
+        maxsplit=1,
+    )[0]
+    pypi_index = publish_section.index("_publish-everywhere-pypi")
+    fanout_index = publish_section.index("_publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry")
+
+    assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
+    assert "PUBLISH_EVERYWHERE_JOBS ?= 3" in makefile
+    assert "publish-version-check" in check_section
+    release_gate_index = check_section.index("release-gate")
+    publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")
+    assert "_publish-check-docker-smoke:" in makefile
+    assert "_publish-check-docker-buildx:" in makefile
+    assert '$(call timed_make,"publish-everywhere-check: release gate",release-gate)' in check_section
+    assert '$(call timed_make,"publish-everywhere-check: package smoke children",-j $(PUBLISH_CHECK_JOBS) npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx)' in check_section
+    assert release_gate_index < publish_check_fanout_index
+    assert 'docker-smoke DOCKER_IMAGE="mcp-broker:publish-check"' in makefile
+    assert 'docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)"' in makefile
+    assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry)' in publish_section
+    assert pypi_index < fanout_index
+    assert 'docker buildx build \\' in makefile
+    assert '$(call timed_make,"publish child: docker-publish-check",docker-publish-check)' in makefile
+
+
+def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
+    makefile = read_combined_makefiles(ROOT)
+    catalog_file = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
+    catalog_text = catalog_file.read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+
+    for term in [
+        "name: mcp-broker",
+        "title: mcp-broker",
+        "type: server",
+        "image: docker.io/navinagrawal/mcp-broker:1.1.0",
+        "description: Local MCP broker",
+    ]:
+        assert term in catalog_text
+
+    assert "docker-mcp-catalog-smoke:" in makefile
+    assert "docker mcp catalog create" in makefile
+    assert "--server \"file://$(DOCKER_MCP_CATALOG_FILE)\"" in makefile
+    assert "docker mcp catalog server ls" in makefile
+    assert "docker mcp catalog remove" in makefile
+    assert "DOCKER_MCP_CATALOG_FILE ?= $(ROOT)/docker/mcp-catalog/mcp-broker.yaml" in makefile
+    assert "DOCKER_MCP_CATALOG_REF ?= mcp-broker-local-catalog:local" in makefile
+    assert "Docker MCP Toolkit custom catalog smoke uses file-based server metadata" in distribution
+    assert "The Docker image itself is not treated as self-describing" in distribution
+
+
+def test_docker_mcp_registry_submission_packet_is_staged() -> None:
+    submission = (ROOT / "docs" / "docker-mcp-registry-submission.md").read_text(
+        encoding="utf-8"
+    )
+    catalog = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
+
+    for term in [
+        "docker.io/navinagrawal/mcp-broker:1.1.0",
+        "ghcr.io/navinagrawal/mcp-broker:1.1.0",
+        "make docker-smoke",
+        "make docker-mcp-catalog-smoke",
+        "No hidden host client config writes",
+        "Submit after public image proof",
+    ]:
+        assert term in submission
+
+    assert catalog.is_file()
+
+
+def test_public_surface_smoke_downloads_real_public_artifacts() -> None:
+    script = (ROOT / "scripts" / "public-surface-smoke.sh").read_text(encoding="utf-8")
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+
+    for term in [
+        "mktemp -d",
+        "pip install \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
+        "pipx run --spec \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
+        "uvx --from \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
+        "github.com/NavinAgrawal/mcp-broker/archive/refs/tags/v$PUBLIC_SURFACE_VERSION.tar.gz",
+        "HOMEBREW_CACHE=\"$WORK_DIR/homebrew-cache\"",
+        "brew fetch --formula NavinAgrawal/tap/mcp-broker",
+        "brew test NavinAgrawal/tap/mcp-broker",
+        "registry.modelcontextprotocol.io/v0.1/servers?search=",
+        "npm view \"$NPM_PACKAGE_NAME@$PUBLIC_SURFACE_VERSION\"",
+        "docker buildx imagetools inspect \"$DOCKER_RELEASE_IMAGE\"",
+    ]:
+        assert term in script
+
+    assert "public-stable-surface-smoke" in distribution
+    assert "public-release-surface-smoke" in distribution
+    assert "downloads into a temporary directory" in distribution
+
+
+def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
+    todo_path = ROOT / "TODO.md"
+    todo = todo_path.read_text(encoding="utf-8") if todo_path.exists() else ""
+    maintainer_inputs_path = ROOT / "docs" / "p16-maintainer-inputs.md"
+    maintainer_inputs = (
+        maintainer_inputs_path.read_text(encoding="utf-8")
+        if maintainer_inputs_path.exists()
+        else ""
+    )
+    plan_path = ROOT / "docs" / "plans" / "2026-05-26-npm-docker-distribution.md"
+    plan = plan_path.read_text(encoding="utf-8") if plan_path.exists() else ""
+
+    if todo:
+        assert "- [x] Validate `pipx` and `uvx` against the published `1.0.0` PyPI package." in todo
+    if maintainer_inputs:
+        assert "pipx validation date: 2026-05-26" in maintainer_inputs
+        assert "uv validation date: 2026-05-26" in maintainer_inputs
+        assert "Status: complete for `1.0.0`." in maintainer_inputs
+        assert "Status: source changes staged for `1.1.0`; publication pending." in maintainer_inputs
+        assert "Status: pending for `1.0.0`." not in maintainer_inputs
+        assert "Source changes pending" not in maintainer_inputs
+        assert "8326 mutants" not in maintainer_inputs
+        assert "`8332` mutants" in maintainer_inputs
+    if plan:
+        assert "## Progress" in plan
+        assert "- [x] Task 8: Docker MCP Catalog custom catalog smoke." in plan
+        assert "- [x] Task 9: Docker MCP Registry PR packet staged." in plan
+
+
+def test_release_version_checker_uses_logging_instead_of_print() -> None:
+    script = (ROOT / "scripts" / "check_release_versions.py").read_text(encoding="utf-8")
+
+    assert "import logging" in script
+    assert "LOGGER = logging.getLogger" in script
+    assert "print(" not in script
+
+
+def test_public_runtime_and_release_docs_do_not_use_python_print() -> None:
+    scanned_roots = [
+        ROOT / "src",
+        ROOT / "scripts",
+        ROOT / "npm",
+        ROOT / "docs",
+        ROOT / ".github" / "workflows",
+    ]
+    scanned_suffixes = {".md", ".py", ".js", ".json", ".sh", ".toml", ".yml", ".yaml"}
+    offenders: list[str] = []
+
+    for root in scanned_roots:
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and path.suffix in scanned_suffixes:
+                if "print(" in path.read_text(encoding="utf-8"):
+                    offenders.append(str(path.relative_to(ROOT)))
+
+    assert offenders == []
 
 
 def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     script = ROOT / "scripts" / "release-smoke.sh"
     linux_script = ROOT / "scripts" / "linux-container-smoke.sh"
     linux_release_gate_script = ROOT / "scripts" / "linux-release-gate.sh"
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     text = script.read_text(encoding="utf-8")
     linux_text = linux_script.read_text(encoding="utf-8")
     linux_release_gate_text = linux_release_gate_script.read_text(encoding="utf-8")

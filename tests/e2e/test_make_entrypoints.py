@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.makefiles import read_combined_makefiles
 from tests.support.repo_paths import make_command
 
 pytestmark = pytest.mark.e2e
@@ -57,9 +58,11 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "linux-release-gate",
         "windows-powershell-smoke",
         "release-smoke",
+        "package-install-smoke",
         "docker-build",
         "docker-smoke",
         "docker-buildx",
+        "docker-mcp-catalog-smoke",
         "mcpb-validate",
         "config-init",
         "config-backup",
@@ -91,6 +94,41 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         assert maintainer_only_target not in result.stdout
 
 
+def test_makefile_is_split_by_command_family() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    expected_includes = [
+        "include $(ROOT)/mk/config.mk",
+        "include $(ROOT)/mk/logging.mk",
+        "include $(ROOT)/mk/bootstrap.mk",
+        "include $(ROOT)/mk/tests.mk",
+        "include $(ROOT)/mk/runtime.mk",
+        "include $(ROOT)/mk/distribution.mk",
+        "include $(ROOT)/mk/maintainer.mk",
+        "include $(ROOT)/mk/release.mk",
+    ]
+
+    for include in expected_includes:
+        assert include in makefile
+
+    include_positions = [makefile.index(include) for include in expected_includes]
+    assert include_positions == sorted(include_positions)
+    assert "-include $(ROOT)/local.mk" in makefile
+    assert makefile.index("include $(ROOT)/mk/release.mk") < makefile.index("-include $(ROOT)/local.mk")
+    assert len(makefile.splitlines()) < 80
+
+    for path in [
+        ROOT / "mk" / "config.mk",
+        ROOT / "mk" / "logging.mk",
+        ROOT / "mk" / "bootstrap.mk",
+        ROOT / "mk" / "tests.mk",
+        ROOT / "mk" / "runtime.mk",
+        ROOT / "mk" / "distribution.mk",
+        ROOT / "mk" / "maintainer.mk",
+        ROOT / "mk" / "release.mk",
+    ]:
+        assert path.exists()
+
+
 def test_make_profile_snippet_keeps_home_placeholder_public_safe() -> None:
     result = subprocess.run(
         make_command(
@@ -113,10 +151,10 @@ def test_make_profile_snippet_keeps_home_placeholder_public_safe() -> None:
 
 
 def test_mutation_target_uses_venv_console_script() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     setup_cfg = (ROOT / "setup.cfg").read_text(encoding="utf-8")
 
-    mutation_section = makefile.split("mutation: deps", maxsplit=1)[1].split(
+    mutation_section = makefile.split("mutation: $(VENV_DIR)/.deps.stamp", maxsplit=1)[1].split(
         "release-gate:",
         maxsplit=1,
     )[0]
@@ -126,6 +164,9 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert 'PYTHONPATH="$(PYTHONPATH)"' not in mutation_section
     assert "scripts/check_mutation_stats.py" in mutation_section
     assert '$(if $(MUTATION_ARGS),--include-mutants $(MUTATION_ARGS),)' in mutation_section
+    assert "CPU_COUNT ?=" in makefile
+    assert "LOCAL_CPU_BUDGET ?= 4" in makefile
+    assert "MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)" in makefile
     assert "mutation-linux:" in makefile
     assert "scripts/linux-mutation.sh" in makefile
     assert "MUTATION_LOG ?= $(QUALITY_DIR)/mutation-linux.log" in makefile
@@ -138,14 +179,28 @@ def test_mutation_target_uses_venv_console_script() -> None:
         "MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout "
         "check_was_interrupted_by_user segfault not_checked"
     ) in makefile
-    assert "release-gate: quality-gate package-check release-smoke $(RELEASE_MUTATION_TARGET)" in makefile
+    assert "release-gate: ## Run release gates with mutation parallelized with non-mutating checks" in makefile
+    assert '$(call timed_make,"release-gate: deps",deps)' in makefile
+    assert "doctor: deps runtime-layout broker-reap ## Verify runtime directories and report broker-owned leftovers" in makefile
+    assert "broker-reap: deps runtime-layout ## Reap stale broker-owned pidfiles, sockets, and orphaned process groups" in makefile
+    assert '$(call timed_make,"release-gate: parallel children",-j $(RELEASE_GATE_JOBS) _release-gate-quality _release-gate-package _release-gate-smoke _release-gate-mutation)' in makefile
+    assert '$(call timed_make,"release-gate: mutation",_release-gate-mutation)' not in makefile
+    assert "RELEASE_GATE_LOG_DIR ?= $(QUALITY_DIR)/release-gate" in makefile
+    assert '"$(RELEASE_GATE_LOG_DIR)/quality-gate.log"' in makefile
+    assert '"$(RELEASE_GATE_LOG_DIR)/package-check.log"' in makefile
+    assert '"$(RELEASE_GATE_LOG_DIR)/release-smoke.log"' in makefile
+    assert '"$(RELEASE_GATE_LOG_DIR)/$(RELEASE_MUTATION_TARGET).log"' in makefile
+    assert 'tail -n 80 "$$log" >&2' in makefile
     assert "paths_to_mutate=src/mcp_broker" in setup_cfg
     assert (
         "also_copy=\n"
         "    config\n"
         "    docs\n"
         "    docker\n"
+        "    mk\n"
         "    mcpb\n"
+        "    npm\n"
+        "    public-export\n"
         "    registry\n"
         "    scripts\n"
         "    .github\n"
@@ -170,8 +225,112 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert "mutate_only_covered_lines=true" in setup_cfg
 
 
+def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
+    makefile = read_combined_makefiles(ROOT)
+
+    assert "CPU_COUNT ?=" in makefile
+    assert "LOCAL_CPU_BUDGET ?= 4" in makefile
+    assert "PYTEST_WORKERS ?= $(LOCAL_CPU_BUDGET)" in makefile
+    assert "PYTEST_TARGETED_WORKERS ?= 0" in makefile
+    assert "PYTEST_FANOUT_WORKERS ?=" in makefile
+    assert "PYTEST_PRECOMMIT_WORKERS ?=" in makefile
+    assert "PYTEST_RELEASE_WORKERS ?=" in makefile
+    assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(TEST_JOBS)")' in makefile
+    assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(PRECOMMIT_JOBS)")' in makefile
+    assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in makefile
+    assert "PYTEST_XDIST_DIST ?= loadfile" in makefile
+    assert (
+        "PYTEST_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_WORKERS)),"
+        ",-n $(PYTEST_WORKERS) --dist $(PYTEST_XDIST_DIST))"
+    ) in makefile
+    assert (
+        "PYTEST_TARGETED_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_TARGETED_WORKERS)),"
+        ",-n $(PYTEST_TARGETED_WORKERS) --dist $(PYTEST_XDIST_DIST))"
+    ) in makefile
+    assert "$(PYTEST_XDIST_ARGS)" in makefile
+    assert "$(PYTEST_TARGETED_XDIST_ARGS)" in makefile
+    assert "PYTEST_TARGETED_COMMON ?=" in makefile
+    assert "TEST_JOBS ?= 4" in makefile
+    assert "PRECOMMIT_JOBS ?= 2" in makefile
+    assert "RELEASE_GATE_JOBS ?= 2" in makefile
+    assert "MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)" in makefile
+    assert "XDIST_BENCHMARK_TARGETS ?= $(PY_UNIT_DIR) $(PY_JOURNEY_DIR)" in makefile
+    assert "xdist-benchmark:" in makefile
+    assert "PYTEST_XDIST_DIST=load" in makefile
+    assert "PYTEST_XDIST_DIST=loadfile" in makefile
+    assert "TEST_RUNTIME_ROOT ?= $(ROOT)/var/test-runtime" in makefile
+
+    test_section = makefile.split("test: ## Run all test tiers in parallel", maxsplit=1)[1].split(
+        "_test-targeted:",
+        maxsplit=1,
+    )[0]
+    precommit_section = makefile.split("precommit: ## Public commit gate", maxsplit=1)[1].split(
+        "quality-gate:",
+        maxsplit=1,
+    )[0]
+
+    assert 'ifneq ($(strip $(PYTEST_ARGS)),)' in test_section
+    assert '$(call timed_make,"test: targeted tests",_test-targeted)' in test_section
+    assert '$(call timed_make,"test: all tiers",-j $(TEST_JOBS) _test-unit-fanout _test-journey-fanout _test-live-fanout _test-e2e-fanout)' in test_section
+    assert 'RUNTIME_ROOT="$(TEST_RUNTIME_ROOT)/unit"' in makefile
+    assert 'RUNTIME_ROOT="$(TEST_RUNTIME_ROOT)/journey"' in makefile
+    assert 'RUNTIME_ROOT="$(TEST_RUNTIME_ROOT)/live"' in makefile
+    assert 'RUNTIME_ROOT="$(TEST_RUNTIME_ROOT)/e2e"' in makefile
+    assert '$(call timed_make,"precommit: unit and journey",-j $(PRECOMMIT_JOBS) _precommit-unit-fanout _precommit-journey-fanout)' in precommit_section
+    assert '$(call timed_make,"precommit: targeted tests",_test-targeted)' in precommit_section
+    assert 'PYTEST_WORKERS="$(PYTEST_PRECOMMIT_WORKERS)"' in precommit_section
+
+
+def test_make_parallel_gates_report_child_and_total_elapsed_time() -> None:
+    makefile = read_combined_makefiles(ROOT)
+
+    assert "define timed_make" in makefile
+    assert "date +\"%Y-%m-%d %H:%M:%S %Z\"" in makefile
+    assert "[TIME]" in makefile
+    assert "start %s at %s" in makefile
+    assert "elapsed_human=$$(printf" in makefile
+    assert "end %s at %s elapsed=%s elapsed_seconds=%s status=%s" in makefile
+
+    for label in [
+        "test: total",
+        "test: targeted tests",
+        "test: all tiers",
+        "test child: unit",
+        "test child: journey",
+        "test child: live",
+        "test child: e2e",
+        "precommit: total",
+        "precommit: targeted tests",
+        "precommit: unit and journey",
+        "precommit child: unit",
+        "precommit child: journey",
+        "mutation: total",
+        "mutation-linux: total",
+        "release-gate: total",
+        "release-gate: deps",
+        "release-gate: parallel children",
+        "publish-everywhere-check: total",
+        "publish-everywhere-check: version check",
+        "publish-everywhere-check: release gate",
+        "publish-everywhere-check: package smoke children",
+        "publish-everywhere: total",
+        "publish-everywhere: preflight checks",
+        "publish-everywhere: pypi",
+        "publish-everywhere: parallel registries",
+    ]:
+        assert f'$(call timed_make,"{label}",' in makefile
+
+    assert '$(call timed_make,"release-gate child: quality-gate",' in makefile
+    assert '$(call timed_make,"release-gate child: package-check",' in makefile
+    assert '$(call timed_make,"release-gate child: release-smoke",' in makefile
+    assert '$(call timed_make,"release-gate child: $(RELEASE_MUTATION_TARGET)",' in makefile
+    assert '$(call timed_make,"publish check child: docker-smoke",' in makefile
+    assert '$(call timed_make,"publish check child: docker-buildx",' in makefile
+    assert '$(call timed_make,"publish child: docker-publish-check",' in makefile
+
+
 def test_hidden_maintainer_violations_target_is_public_safe() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
 
     assert "maintainer-violations:" in makefile
     assert "maintainer-grade-quality:" in makefile
@@ -190,7 +349,7 @@ def test_hidden_maintainer_violations_target_is_public_safe() -> None:
 
 
 def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
     live_section = makefile.split("test-live:", maxsplit=1)[1].split(
         "test-e2e:",
         maxsplit=1,
@@ -218,11 +377,14 @@ def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> 
 
 
 def test_deps_installs_public_example_for_editable_cli() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = read_combined_makefiles(ROOT)
 
-    deps_section = makefile.split("deps: $(VENV_DIR)/bin/python", maxsplit=1)[1].split(
+    deps_section = makefile.split("$(VENV_DIR)/.deps.stamp: $(VENV_DIR)/bin/python $(REQUIREMENTS) pyproject.toml", maxsplit=1)[1].split(
         "config-init:",
         maxsplit=1,
     )[0]
+    assert "deps: $(VENV_DIR)/.deps.stamp" in makefile
+    assert "package-build: $(VENV_DIR)/.deps.stamp" in makefile
+    assert "mutation: $(VENV_DIR)/.deps.stamp" in makefile
     assert "$(VENV_DIR)/share/mcp-broker/config" in deps_section
     assert 'cp "$(CONFIG_TEMPLATE_PATH)" "$(VENV_DIR)/share/mcp-broker/config/broker.example.yaml"' in deps_section

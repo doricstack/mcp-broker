@@ -190,19 +190,31 @@ class StdioUpstreamProcess:
             return ()
         process_group_id = _process_group_id(process.pid)
         if process.poll() is None:
-            _signal_process_group(process.pid, signal.SIGTERM)
+            _signal_process_group(process_group_id, signal.SIGTERM)
             try:
                 process.wait(timeout=STOP_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
                 self._emit_event("upstream.kill", signal="SIGKILL", reason="stop_timeout")
-                _signal_process_group(process.pid, signal.SIGKILL)
+                _signal_process_group(process_group_id, signal.SIGKILL)
                 try:
                     process.wait(timeout=max(STOP_TIMEOUT_SECONDS, KILL_WAIT_SECONDS))
                 except subprocess.TimeoutExpired:
                     self._last_error = f"upstream did not exit after SIGKILL: {self.upstream.name}"
         self._emit_event("upstream.kill", signal="SIGKILL", reason="final_cleanup")
-        _signal_process_group(process.pid, signal.SIGKILL)
+        _signal_process_group(process_group_id, signal.SIGKILL)
         remaining_processes = _wait_for_process_group_stop(process_group_id)
+        if process.poll() is None:
+            try:
+                process.wait(timeout=KILL_WAIT_SECONDS)
+            except subprocess.TimeoutExpired:
+                self._last_error = f"upstream did not exit after final SIGKILL: {self.upstream.name}"
+                try:
+                    process.kill()
+                    process.wait(timeout=KILL_WAIT_SECONDS)
+                except (OSError, subprocess.TimeoutExpired):
+                    self._last_error = (
+                        f"upstream did not exit after direct SIGKILL: {self.upstream.name}"
+                    )
         _close_process_pipes(process, include_stderr=False)
         self._process = None
         self._remove_process_metadata()
@@ -503,9 +515,11 @@ def _read_stderr_chunk(stream: BinaryIO | None) -> bytes:
         return b""
 
 
-def _signal_process_group(pid: int, sig: signal.Signals) -> None:
+def _signal_process_group(process_group_id: int | None, sig: signal.Signals) -> None:
+    if process_group_id is None:
+        return
     try:
-        os.killpg(pid, sig)
+        os.killpg(process_group_id, sig)
     except (PermissionError, ProcessLookupError):
         return
 

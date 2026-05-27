@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.makefiles import read_combined_makefiles
 from tests.support.repo_paths import repo_root
 
 
@@ -18,7 +19,7 @@ LLM_PROFILES = ("codex", "claude", "gemini")
 
 
 def test_makefile_defaults_to_private_config_not_public_example() -> None:
-    makefile_text = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile_text = read_combined_makefiles(ROOT)
 
     assert "CONFIG_PRIVATE_PATH ?= $(ROOT)/config/broker.private.yaml" in makefile_text
     assert "CONFIG_PATH       ?= $(CONFIG_PRIVATE_PATH)" in makefile_text

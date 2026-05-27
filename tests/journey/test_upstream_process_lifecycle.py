@@ -11,6 +11,32 @@ import pytest
 pytestmark = pytest.mark.journey
 
 
+def _wait_for_file_text(path: Path, expected: str, *, timeout_seconds: float = 2.0) -> str:
+    deadline = time.monotonic() + timeout_seconds
+    last_text = ""
+    while time.monotonic() < deadline:
+        if path.exists():
+            last_text = path.read_text(encoding="utf-8")
+            if last_text == expected:
+                return last_text
+        time.sleep(0.01)
+    return last_text
+
+
+def _wait_for_file_int(path: Path, *, timeout_seconds: float = 2.0) -> int:
+    deadline = time.monotonic() + timeout_seconds
+    last_text = ""
+    while time.monotonic() < deadline:
+        if path.exists():
+            last_text = path.read_text(encoding="utf-8")
+            try:
+                return int(last_text)
+            except ValueError:
+                pass
+        time.sleep(0.01)
+    raise AssertionError(f"{path} did not contain an integer before timeout: {last_text!r}")
+
+
 def test_upstream_process_lifecycle_starts_stops_and_restarts_real_process(
     tmp_path: Path,
 ) -> None:
@@ -54,15 +80,11 @@ while True:
         supervisor.start()
         first_pid = supervisor.pid
 
-        deadline = time.monotonic() + 2
-        while not ready_file.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-
         assert supervisor.status == "running"
         assert supervisor.state == UpstreamState.RUNNING
         assert UpstreamState.STARTING in supervisor.state_history
         assert first_pid is not None
-        assert ready_file.read_text(encoding="utf-8") == "ready"
+        assert _wait_for_file_text(ready_file, "ready") == "ready"
         assert supervisor.state_dir == runtime_state_dir / "upstreams" / "sleepy"
         assert supervisor.state_dir.is_dir()
 
@@ -316,11 +338,8 @@ while True:
 
     try:
         supervisor.start()
-        deadline = time.monotonic() + 2
-        while not output.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
 
-        assert output.read_text(encoding="utf-8") == "from-host-env"
+        assert _wait_for_file_text(output, "from-host-env") == "from-host-env"
     finally:
         supervisor.stop()
 
@@ -392,12 +411,9 @@ while True:
     try:
         supervisor.start()
         first_pid = supervisor.pid
-        deadline = time.monotonic() + 2
-        while not ready_file.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
+        assert _wait_for_file_text(ready_file, "ready") == "ready"
         supervisor.start()
 
-        assert ready_file.read_text(encoding="utf-8") == "ready"
         assert supervisor.pid == first_pid
         assert supervisor.status == "running"
 
@@ -449,9 +465,7 @@ while True:
 
     try:
         supervisor.start()
-        deadline = time.monotonic() + 2
-        while not ready_file.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
+        assert _wait_for_file_text(ready_file, "ready") == "ready"
 
         with monkeypatch.context() as patch:
             patch.setattr(upstream_process, "KILL_WAIT_SECONDS", 0.0)
@@ -512,10 +526,8 @@ while True:
 
     try:
         supervisor.start()
-        deadline = time.monotonic() + 2
-        while not ready_file.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+        assert _wait_for_file_text(ready_file, "ready") == "ready"
+        child_pid = _wait_for_file_int(child_pid_file)
         assert supervisor.pid is not None
         process_group_id = os.getpgid(supervisor.pid)
 

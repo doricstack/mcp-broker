@@ -148,6 +148,152 @@ for line in sys.stdin:
     }
 
 
+def test_stdio_stop_waits_after_final_process_group_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import mcp_broker.upstream_stdio as upstream_stdio_module
+
+    class SlowProcess:
+        pid = 12345
+
+        def __init__(self) -> None:
+            self.wait_timeouts: list[float] = []
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            if len(self.wait_timeouts) < 3:
+                raise subprocess.TimeoutExpired(["fake"], timeout)
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+    process = SlowProcess()
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._process = cast(Any, process)
+    monkeypatch.setattr(upstream_stdio_module, "_process_group_id", lambda _pid: 12345)
+    monkeypatch.setattr(upstream_stdio_module, "_wait_for_process_group_stop", lambda _pgid: ())
+    monkeypatch.setattr(upstream_stdio_module, "_signal_process_group", lambda _pid, _sig: None)
+    monkeypatch.setattr(upstream_stdio_module, "_close_process_pipes", lambda _process, include_stderr: None)
+
+    assert client.stop() == ()
+    assert process.returncode == -signal.SIGKILL
+    assert process.wait_timeouts == [
+        STOP_TIMEOUT_SECONDS,
+        max(STOP_TIMEOUT_SECONDS, KILL_WAIT_SECONDS),
+        KILL_WAIT_SECONDS,
+    ]
+    assert client.health_snapshot()["last_error"] == "upstream did not exit after SIGKILL: fake"
+
+
+def test_stdio_stop_directly_kills_parent_after_group_cleanup_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import mcp_broker.upstream_stdio as upstream_stdio_module
+
+    class GroupKillMissesParentProcess:
+        pid = 12345
+
+        def __init__(self) -> None:
+            self.kill_calls = 0
+            self.returncode: int | None = None
+            self.wait_timeouts: list[float] = []
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            if len(self.wait_timeouts) < 4:
+                raise subprocess.TimeoutExpired(["fake"], timeout)
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+    process = GroupKillMissesParentProcess()
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    client._process = cast(Any, process)
+    monkeypatch.setattr(upstream_stdio_module, "_process_group_id", lambda _pid: 12345)
+    monkeypatch.setattr(upstream_stdio_module, "_wait_for_process_group_stop", lambda _pgid: ())
+    monkeypatch.setattr(upstream_stdio_module, "_signal_process_group", lambda _pid, _sig: None)
+    monkeypatch.setattr(upstream_stdio_module, "_close_process_pipes", lambda _process, include_stderr: None)
+
+    assert client.stop() == ()
+    assert process.kill_calls == 1
+    assert process.returncode == -signal.SIGKILL
+    assert process.wait_timeouts == [
+        STOP_TIMEOUT_SECONDS,
+        max(STOP_TIMEOUT_SECONDS, KILL_WAIT_SECONDS),
+        KILL_WAIT_SECONDS,
+        KILL_WAIT_SECONDS,
+    ]
+    assert client.health_snapshot()["last_error"] == (
+        "upstream did not exit after final SIGKILL: fake"
+    )
+
+
+def test_stdio_stop_final_cleanup_uses_cached_process_group_after_parent_exits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import mcp_broker.upstream_stdio as upstream_stdio_module
+
+    class ParentExitsAfterSigtermProcess:
+        pid = 12345
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+        stderr = io.BytesIO()
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, *, timeout: float) -> int:
+            self.returncode = -signal.SIGTERM
+            return self.returncode
+
+    process = ParentExitsAfterSigtermProcess()
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    process_group_ids = iter([4321, 4321, None])
+    killpg_calls: list[tuple[int, signal.Signals]] = []
+    client._process = cast(Any, process)
+    monkeypatch.setattr(
+        upstream_stdio_module,
+        "_process_group_id",
+        lambda _pid: next(process_group_ids),
+    )
+    monkeypatch.setattr(
+        upstream_stdio_module.os,
+        "killpg",
+        lambda pgid, sig: killpg_calls.append((pgid, sig)),
+    )
+    monkeypatch.setattr(upstream_stdio_module, "_wait_for_process_group_stop", lambda _pgid: ())
+    monkeypatch.setattr(upstream_stdio_module, "_close_process_pipes", lambda _process, include_stderr: None)
+
+    assert client.stop() == ()
+    assert killpg_calls == [
+        (4321, upstream_stdio_module.signal.SIGTERM),
+        (4321, upstream_stdio_module.signal.SIGKILL),
+    ]
+
+
 def test_stdio_upstream_sends_exact_tool_call_payload(tmp_path: Path) -> None:
     requests_path = tmp_path / "call-requests.jsonl"
     script = _script(
@@ -2237,6 +2383,7 @@ def test_stdio_upstream_stop_handles_missing_and_stubborn_process(
     client.stop()
     process = StubbornProcess()
     signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(upstream_stdio, "_process_group_id", lambda _pid: process.pid)
     monkeypatch.setattr(upstream_stdio.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
     client._process = cast(Any, process)
 
@@ -2332,6 +2479,7 @@ def test_stdio_upstream_stop_handles_process_group_signal_errors(
         attempts += 1
         raise PermissionError
 
+    monkeypatch.setattr(upstream_stdio, "_process_group_id", lambda _pid: process.pid)
     monkeypatch.setattr(upstream_stdio.os, "killpg", fail_signal)
     client._process = cast(Any, process)
 
@@ -2468,8 +2616,14 @@ def test_stdio_upstream_stop_handles_parent_that_survives_sigkill(
 
     assert client.stop() == ()
 
-    assert process.waits == 2
-    assert client.health_snapshot()["last_error"] == "upstream did not exit after SIGKILL: fake"
+    assert process.waits == 4
+    assert process.wait_timeouts == [
+        STOP_TIMEOUT_SECONDS,
+        max(STOP_TIMEOUT_SECONDS, KILL_WAIT_SECONDS),
+        KILL_WAIT_SECONDS,
+        KILL_WAIT_SECONDS,
+    ]
+    assert client.health_snapshot()["last_error"] == "upstream did not exit after direct SIGKILL: fake"
     assert client._process is None
 
 
@@ -2729,18 +2883,19 @@ class StubbornProcess:
 
     def __init__(self) -> None:
         self.waits = 0
+        self.returncode: int | None = None
+        self.wait_timeouts: list[float] = []
 
-    def poll(self) -> None:
-        return None
+    def poll(self) -> int | None:
+        return self.returncode
 
     def wait(self, *, timeout: float) -> int:
         self.waits += 1
-        if not hasattr(self, "wait_timeouts"):
-            self.wait_timeouts = []
         self.wait_timeouts.append(timeout)
         if self.waits == 1:
             raise subprocess.TimeoutExpired("fake", timeout)
-        return 0
+        self.returncode = 0
+        return self.returncode
 
 
 class NeverExitsProcess:
@@ -2751,13 +2906,18 @@ class NeverExitsProcess:
 
     def __init__(self) -> None:
         self.waits = 0
+        self.wait_timeouts: list[float] = []
 
     def poll(self) -> None:
         return None
 
     def wait(self, *, timeout: float) -> int:
         self.waits += 1
+        self.wait_timeouts.append(timeout)
         raise subprocess.TimeoutExpired("fake", timeout)
+
+    def kill(self) -> None:
+        return None
 
 
 class RecordingDrainer:

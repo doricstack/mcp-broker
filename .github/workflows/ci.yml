@@ -24,6 +24,15 @@ jobs:
       - name: Run public precommit gate
         run: make precommit RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
 
+      - name: Check release version metadata
+        run: make publish-version-check
+
+      - name: Check NPM package wrapper
+        run: make npm-package-check
+
+      - name: Run NPM wrapper smoke
+        run: make npm-smoke
+
       - name: Run release smoke
         run: make release-smoke
 

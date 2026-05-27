@@ -2,6 +2,14 @@
 
 All notable public changes will be recorded here.
 
+## 1.1.0 - 2026-05-26
+
+- Add the one-shot `make publish-everywhere` CI release path for PyPI, NPM,
+  Docker Hub, GHCR, and MCP Registry publication.
+- Add the scoped NPM bridge package at `@navinagrawal/mcp-broker`.
+- Add Docker Hub primary and GHCR mirror publication contracts for the Docker
+  image release path.
+
 ## 1.0.0 - 2026-05-26
 
 - Promote the public release line from pre-1.0 packages to the first stable

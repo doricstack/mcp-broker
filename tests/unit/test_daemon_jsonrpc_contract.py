@@ -681,6 +681,10 @@ def test_daemon_main_queries_status_and_stop(
 ) -> None:
     import mcp_broker.daemon as daemon_module
 
+    class ExplodingDaemon:
+        def __init__(self, **_kwargs: object) -> None:
+            raise AssertionError("status and stop must not construct daemon")
+
     requests: list[tuple[Path, str]] = []
 
     def client_request(socket_path: Path, method: str) -> dict[str, object]:
@@ -688,6 +692,7 @@ def test_daemon_main_queries_status_and_stop(
         return {"id": method, "result": {"status": "ok"}}
 
     monkeypatch.setattr(daemon_module, "_client_request", client_request)
+    monkeypatch.setattr(daemon_module, "BrokerDaemon", ExplodingDaemon)
 
     assert (
         daemon_module.main(
