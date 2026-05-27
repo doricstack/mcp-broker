@@ -10,16 +10,13 @@ Setuptools dynamic metadata.
 
 Current public package status:
 
-- PyPI: `mcp-broker 1.1.0` is published.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.1.0` is published and marked latest.
-- Homebrew: `mcp-broker 1.1.0` is published through the public tap.
-- NPM: `@navinagrawal/mcp-broker 1.1.0` is published.
-- Docker: `docker.io/navinagrawal/mcp-broker:1.1.0` and
-  `ghcr.io/navinagrawal/mcp-broker:1.1.0` are published.
-- Current source release: `1.1.1`. This is a patch release for the Claude
-  Desktop MCPB stdio startup path and Smithery MCPB publication adapter; the
-  published public surfaces stay at `1.1.0` until the release workflow publishes
-  `1.1.1`.
+- PyPI: `mcp-broker 1.1.1` is published.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.1.1` is published and marked latest.
+- Homebrew: `mcp-broker 1.1.1` is published through the public tap.
+- NPM: `@navinagrawal/mcp-broker 1.1.1` is published.
+- Docker: `docker.io/navinagrawal/mcp-broker:1.1.1` and
+  `ghcr.io/navinagrawal/mcp-broker:1.1.1` are published.
+- Current source release: `1.1.1`.
 
 The package command surface is:
 
@@ -82,15 +79,16 @@ make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1
 ```
 
 That one target runs the release gates, publishes PyPI first, and then fans out
-NPM, Docker Hub, GHCR, and MCP Registry metadata in one CI run. Tag pushes do
-not publish; the GitHub Release publication is the single normal release event.
-There are no per-registry publish workflows. Recovery runs the same
-`publish-everywhere` workflow with the same Makefile orchestrator.
+NPM, Docker Hub, GHCR, MCP Registry metadata, and the Homebrew tap formula in
+one CI run. Tag pushes do not publish; the GitHub Release publication is the
+single normal release event. There are no per-registry publish workflows.
+Recovery runs the same `publish-everywhere` workflow with the same Makefile
+orchestrator.
 
 The orchestrator is retry-aware for partially completed releases. It checks the
-PyPI package version, NPM package version, and MCP Registry metadata before
-submitting, so a rerun can recover after one registry fails without treating
-already-published surfaces as fatal.
+PyPI package version, NPM package version, MCP Registry metadata, and Homebrew
+formula state before submitting, so a rerun can recover after one registry
+fails without treating already-published surfaces as fatal.
 
 Before tagging a release, run:
 
@@ -129,8 +127,9 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-The public tap points to the PyPI `1.1.0` source artifact. Retest the formula
-against the PyPI source artifact before changing the Homebrew release status.
+The public tap points to the PyPI `1.1.1` source artifact. Future releases
+update the formula through `make publish-everywhere` with the
+`HOMEBREW_TAP_TOKEN` GitHub Actions secret.
 
 ## NPM
 
@@ -187,7 +186,7 @@ mcp-publisher publish
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
-`1.1.0` is published after PyPI publication and the registry marks `1.1.0` as
+`1.1.1` is published after PyPI publication and the registry marks `1.1.1` as
 the latest entry.
 
 Reference docs:
@@ -214,7 +213,7 @@ Build a release image with OCI labels, SBOM, and provenance:
 
 ```bash
 make docker-buildx \
-  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:1.1.0 \
+  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:1.1.1 \
   DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
   DOCKER_PUSH=1
 ```

@@ -61,7 +61,7 @@ The demo should show:
 Release title:
 
 ```text
-mcp-broker 1.1.0
+mcp-broker 1.1.1
 ```
 
 Use these release notes as the starting body:
@@ -69,7 +69,7 @@ Use these release notes as the starting body:
 release notes:
 
 ```text
-mcp-broker 1.1.0 is the current stable public release.
+mcp-broker 1.1.1 is the current stable public release.
 
 Highlights:
 - one compact MCP facade for many upstream MCP servers

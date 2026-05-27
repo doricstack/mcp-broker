@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -29,7 +29,7 @@ public-stable-surface-smoke: ## Download and verify public stable artifacts from
 		PUBLIC_SURFACE_REQUIRE_DOCKER=0 \
 		"$(ROOT)/scripts/public-surface-smoke.sh"
 
-public-release-surface-smoke: ## Download and verify every public release surface after 1.1.0 publication
+public-release-surface-smoke: ## Download and verify every public release surface after publication
 	@PUBLIC_SURFACE_VERSION="$(PACKAGE_VERSION)" \
 		PUBLIC_SURFACE_REQUIRE_NPM=1 \
 		PUBLIC_SURFACE_REQUIRE_DOCKER=1 \
@@ -208,7 +208,7 @@ _publish-everywhere-impl:
 	@test "$(PUBLISH_EVERYWHERE_APPLY)" = "1" || { printf "\033[1;31m[ERROR]\033[0m Set PUBLISH_EVERYWHERE_APPLY=1 to publish\n" >&2; exit 2; }
 	$(call timed_make,"publish-everywhere: preflight checks",publish-everywhere-check)
 	$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)
-	$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry)
+	$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)
 	$(call log_success,"Publish-everywhere completed")
 
 _publish-everywhere-pypi:
@@ -258,3 +258,26 @@ _publish-everywhere-mcp-registry:
 		(cd "$$tmpdir" && mcp-publisher login github-oidc && mcp-publisher publish); \
 	fi
 	$(call log_success,"MCP Registry publish target completed")
+
+_publish-everywhere-homebrew:
+	@test -n "$${HOMEBREW_TAP_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m HOMEBREW_TAP_TOKEN is required to update $(HOMEBREW_TAP_REPO)\n" >&2; exit 2; }
+	@tmpdir="$$(mktemp -d)"; \
+		trap 'rm -rf "$$tmpdir"' EXIT; \
+		git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \
+			clone --depth 1 --branch "$(HOMEBREW_TAP_BRANCH)" \
+			"https://github.com/$(HOMEBREW_TAP_REPO).git" "$$tmpdir/tap"; \
+		"$(PYTHON)" "$(ROOT)/scripts/update_homebrew_formula.py" \
+			--formula "$$tmpdir/tap/$(HOMEBREW_FORMULA_PATH)" \
+			--project "$(PYPI_PROJECT_NAME)" \
+			--version "$(PACKAGE_VERSION)"; \
+		if git -C "$$tmpdir/tap" diff --quiet -- "$(HOMEBREW_FORMULA_PATH)"; then \
+			printf "\033[1;32m[OK]\033[0m Homebrew formula already current: %s %s\n" "$(HOMEBREW_TAP_REPO)" "$(PACKAGE_VERSION)"; \
+		else \
+			git -C "$$tmpdir/tap" config user.name "$(HOMEBREW_GIT_AUTHOR_NAME)"; \
+			git -C "$$tmpdir/tap" config user.email "$(HOMEBREW_GIT_AUTHOR_EMAIL)"; \
+			git -C "$$tmpdir/tap" add "$(HOMEBREW_FORMULA_PATH)"; \
+			git -C "$$tmpdir/tap" commit -m "Update mcp-broker formula to $(PACKAGE_VERSION)"; \
+			git -C "$$tmpdir/tap" -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \
+				push origin "HEAD:$(HOMEBREW_TAP_BRANCH)"; \
+		fi
+	$(call log_success,"Homebrew publish target completed: $(HOMEBREW_TAP_REPO)")

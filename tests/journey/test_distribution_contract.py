@@ -13,7 +13,7 @@ from tests.support.makefiles import read_combined_makefiles
 pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLISHED_STABLE_VERSION = "1.1.0"
+PUBLISHED_STABLE_VERSION = "1.1.1"
 SOURCE_RELEASE_VERSION = "1.1.1"
 
 
@@ -274,6 +274,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         "_publish-everywhere-npm:",
         "_publish-everywhere-docker:",
         "_publish-everywhere-mcp-registry:",
+        "_publish-everywhere-homebrew:",
         "docker-mcp-catalog-smoke:",
         "docker-publish-check:",
         "docker-release-smoke:",
@@ -290,6 +291,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         assert target not in makefile
 
     assert "scripts/check_release_versions.py" in makefile
+    assert "scripts/update_homebrew_formula.py" in makefile
     assert "scripts/public-surface-smoke.sh" in makefile
     assert "pipx run --spec \"mcp-broker==$" in makefile
     assert '"$(UVX)" --from "mcp-broker==$' in makefile
@@ -301,6 +303,9 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "NPM package already exists" in makefile
     assert "MCP_REGISTRY_SEARCH_URL" in makefile
     assert "MCP Registry metadata already exists" in makefile
+    assert "HOMEBREW_TAP_TOKEN" in makefile
+    assert "Homebrew formula already current" in makefile
+    assert 'git -C "$$tmpdir/tap" -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $${HOMEBREW_TAP_TOKEN}" \\' in makefile
     assert "publish-version-check" in makefile
     assert '"$(UV)" publish --trusted-publishing always' in makefile
     assert "$(NPM) publish --access public --provenance" in makefile
@@ -368,7 +373,7 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     fanout_index = publish_section.index("_publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry")
 
     assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
-    assert "PUBLISH_EVERYWHERE_JOBS ?= 3" in makefile
+    assert "PUBLISH_EVERYWHERE_JOBS ?= 4" in makefile
     assert "PYPI_PROJECT_NAME ?= mcp-broker" in makefile
     assert "PYPI_VERSION_URL ?= https://pypi.org/pypi/$(PYPI_PROJECT_NAME)/$(PACKAGE_VERSION)/json" in makefile
     assert "MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker" in makefile
@@ -384,7 +389,7 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert 'docker-smoke DOCKER_IMAGE="mcp-broker:publish-check"' in makefile
     assert 'docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)"' in makefile
     assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
-    assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)' in publish_section
     assert pypi_index < fanout_index
     assert 'docker buildx build \\' in makefile
     assert '$(call timed_make,"publish child: docker-publish-check",docker-publish-check)' in makefile
@@ -402,7 +407,7 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
         "name: mcp-broker",
         "title: mcp-broker",
         "type: server",
-        "image: docker.io/navinagrawal/mcp-broker:1.1.0",
+        "image: docker.io/navinagrawal/mcp-broker:1.1.1",
         "description: Local MCP broker",
     ]:
         assert term in catalog_text
@@ -434,8 +439,8 @@ def test_docker_mcp_registry_submission_packet_is_staged() -> None:
     catalog = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
 
     for term in [
-        "docker.io/navinagrawal/mcp-broker:1.1.0",
-        "ghcr.io/navinagrawal/mcp-broker:1.1.0",
+        "docker.io/navinagrawal/mcp-broker:1.1.1",
+        "ghcr.io/navinagrawal/mcp-broker:1.1.1",
         "make docker-smoke",
         "make docker-mcp-catalog-smoke",
         "No hidden host client config writes",
@@ -489,11 +494,11 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
     plan = plan_path.read_text(encoding="utf-8") if plan_path.exists() else ""
 
     if todo:
-        assert "- [x] Validate `pipx` and `uvx` against the published `1.1.0` PyPI package." in todo
+        assert "- [x] Validate `pipx` and `uvx` against the published `1.1.1` PyPI package." in todo
     if maintainer_inputs:
         assert "pipx validation date: 2026-05-27" in maintainer_inputs
         assert "uv validation date: 2026-05-27" in maintainer_inputs
-        assert "Status: complete for `1.1.0`." in maintainer_inputs
+        assert "Status: complete for `1.1.1`." in maintainer_inputs
         assert "publication pending" not in maintainer_inputs
         assert "NPM_TOKEN" not in maintainer_inputs
         assert "NODE_AUTH_TOKEN" not in maintainer_inputs

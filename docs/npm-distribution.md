@@ -51,7 +51,7 @@ Required package settings for trusted publishing:
 - Workflow file: `.github/workflows/publish-everywhere.yml`
 - Permission: publish
 
-As of 2026-05-27, `@navinagrawal/mcp-broker@1.1.0` is published and the package
+As of 2026-05-27, `@navinagrawal/mcp-broker@1.1.1` is published and the package
 has a GitHub Actions trusted publisher for `publish-everywhere.yml`. The release
 workflow uses OIDC for future NPM publications and does not require a long-lived
 NPM registry token.
