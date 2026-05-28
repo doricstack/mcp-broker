@@ -85,6 +85,19 @@ def test_profile_tool_exposure_enforces_budget_and_can_return_compact_broker_too
     ]
 
 
+def test_snake_profile_exposes_broker_tools_with_client_safe_names() -> None:
+    from mcp_broker.profiles import ToolExposureProfile
+
+    profile = ToolExposureProfile(
+        name="safe-client",
+        max_tools=10,
+        broker_tool_name_style="snake",
+    )
+
+    assert profile.exposed_broker_tool_name("broker.status") == "broker_status"
+    assert profile.canonical_broker_tool_name("broker_status") == "broker.status"
+
+
 def test_compact_broker_tools_include_directory_quality_metadata() -> None:
     from mcp_broker.config import BrokerSettings
     from mcp_broker.profiles import ToolExposureProfile
