@@ -324,7 +324,9 @@ broker facade tools. The first accepted Smithery release returned deployment
 Glama lists the public repo at
 `https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface at `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker`. Check that tool names, schemas,
 install instructions, safety notes, license, GitHub links, and score output
-render correctly before adding secondary directories.
+render correctly before adding secondary directories. The root `glama.json`
+keeps Glama claim metadata public and points maintainer ownership to
+`NavinAgrawal`.
 
 Directory copy lives in:
 
@@ -333,9 +335,9 @@ docs/directory-submission-packet.md
 ```
 
 Before any directory submission, run `make directory-submission-check`. It
-validates the packet, `/.well-known/mcp/server-card.json`, `registry/server.json`,
-and the MCPB manifest together so directory pages cannot drift from the package
-metadata.
+validates the packet, `/.well-known/mcp/server-card.json`,
+`registry/server.json`, `glama.json`, and the MCPB manifest together so
+directory pages cannot drift from the package metadata.
 
 The public launch page lives in:
 

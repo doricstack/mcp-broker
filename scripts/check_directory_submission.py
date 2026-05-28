@@ -33,6 +33,7 @@ REQUIRED_PACKET_TERMS = [
     "mcpservers.org",
     "mcp.so",
     "MCPCentral",
+    "glama.json",
 ]
 
 PRIVATE_MARKERS = [
@@ -50,6 +51,7 @@ def _submission_paths() -> dict[str, Path]:
         "server_card": _repo_path("SERVER_CARD_PATH", ".well-known/mcp/server-card.json"),
         "registry": _repo_path("REGISTRY_METADATA_PATH", "registry/server.json"),
         "mcpb_manifest": _repo_path("MCPB_MANIFEST", "mcpb/manifest.json"),
+        "glama_claim": _repo_path("GLAMA_CLAIM_PATH", "glama.json"),
         "launch": _repo_path("LAUNCH_DOC_PATH", "docs/launch.md"),
     }
 
@@ -155,6 +157,14 @@ def _append_mcpb_errors(mcpb_manifest: dict[str, Any], errors: list[str]) -> Non
         errors.append(f"mcpb manifest missing broker tool: {tool}")
 
 
+def _append_glama_claim_errors(glama_claim: dict[str, Any], errors: list[str]) -> None:
+    if glama_claim.get("$schema") != "https://glama.ai/mcp/schemas/server.json":
+        errors.append("glama.json schema is not the Glama server schema")
+
+    if glama_claim.get("maintainers") != ["NavinAgrawal"]:
+        errors.append('glama.json maintainers must be ["NavinAgrawal"]')
+
+
 def _append_document_errors(packet_text: str, launch_text: str, errors: list[str]) -> None:
     _append_missing_terms("directory submission packet", packet_text, REQUIRED_PACKET_TERMS, errors)
     _append_missing_terms(
@@ -171,6 +181,7 @@ def _append_private_marker_errors(
     server_card: dict[str, Any],
     registry: dict[str, Any],
     mcpb_manifest: dict[str, Any],
+    glama_claim: dict[str, Any],
     errors: list[str],
 ) -> None:
     for label, text in [
@@ -179,6 +190,7 @@ def _append_private_marker_errors(
         ("server card", json.dumps(server_card, sort_keys=True)),
         ("registry metadata", json.dumps(registry, sort_keys=True)),
         ("mcpb manifest", json.dumps(mcpb_manifest, sort_keys=True)),
+        ("glama claim metadata", json.dumps(glama_claim, sort_keys=True)),
     ]:
         _append_private_markers(label, text, errors)
 
@@ -201,10 +213,12 @@ def main() -> int:
     server_card = _load_json(paths["server_card"])
     registry = _load_json(paths["registry"])
     mcpb_manifest = _load_json(paths["mcpb_manifest"])
+    glama_claim = _load_json(paths["glama_claim"])
 
     registry_package, card_package = _append_metadata_errors(server_card, registry, errors)
     _append_version_errors(registry, registry_package, card_package, mcpb_manifest, errors)
     _append_mcpb_errors(mcpb_manifest, errors)
+    _append_glama_claim_errors(glama_claim, errors)
     _append_document_errors(packet_text, launch_text, errors)
     _append_private_marker_errors(
         packet_text,
@@ -212,6 +226,7 @@ def main() -> int:
         server_card,
         registry,
         mcpb_manifest,
+        glama_claim,
         errors,
     )
 

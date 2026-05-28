@@ -63,7 +63,8 @@ Submit in this order after the package works from a clean machine:
   Verify rendered tool schemas, safety annotations, install docs, license, and
   score after each public metadata refresh. Use Glama's Server tab for future
   reindex or correction requests. Do not use the Connector tab unless a future
-  release exposes a hosted HTTPS MCP URL.
+  release exposes a hosted HTTPS MCP URL. Root `glama.json` declares
+  `NavinAgrawal` as the maintainer for Glama claim metadata.
 - PulseMCP: listed at
   `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker` through registry
   ingestion. Verify the rendered `server.json` name, provider, GitHub link, and

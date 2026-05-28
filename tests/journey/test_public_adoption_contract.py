@@ -23,6 +23,7 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
         "CONTRIBUTING.md",
         "CHANGELOG.md",
         "ROADMAP.md",
+        "glama.json",
         ".github/ISSUE_TEMPLATE/bug_report.md",
         ".github/ISSUE_TEMPLATE/config_help.md",
         ".github/ISSUE_TEMPLATE/upstream_compatibility.md",
@@ -63,6 +64,23 @@ def test_mcpb_manifest_tool_names_are_client_safe() -> None:
         "broker_status",
     ]
     assert [name for name in tool_names if not client_safe_pattern.fullmatch(name)] == []
+
+
+def test_glama_claim_metadata_is_public_safe() -> None:
+    claim_path = ROOT / "glama.json"
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+
+    claim = json.loads(claim_path.read_text(encoding="utf-8"))
+    serialized = json.dumps(claim, sort_keys=True)
+
+    assert claim == {
+        "$schema": "https://glama.ai/mcp/schemas/server.json",
+        "maintainers": ["NavinAgrawal"],
+    }
+    if allowlist_path.exists():
+        assert "glama.json" in allowlist_path.read_text(encoding="utf-8")
+    assert "/Users/" not in serialized
+    assert "CloudStorage" not in serialized
 
 
 def test_packaged_chat_profiles_use_client_safe_broker_tool_names() -> None:
@@ -372,6 +390,7 @@ def test_directory_submission_check_is_make_backed() -> None:
         "docs/context-reduction-measurement.md",
         "https://glama.ai/",
         "https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker",
+        "glama.json",
         "https://www.pulsemcp.com/submit",
         "https://www.pulsemcp.com/servers/navinagrawal-mcp-broker",
         "PulseMCP: listed at",
