@@ -2,7 +2,7 @@
 
 All notable public changes will be recorded here.
 
-## 1.1.2 - 2026-05-27
+## 1.1.2 - 2026-05-28
 
 - Add source-backed broker facade tool descriptions and schemas for Glama,
   Smithery, Claude Desktop MCPB, and other directory scanners.
