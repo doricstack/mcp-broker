@@ -6,11 +6,10 @@ import os
 from pathlib import Path
 import re
 
-import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
+DOCKER_IMAGE_RE = re.compile(r"(?m)^image:\s*(?P<image>\S+)\s*$")
 
 
 def _load_json(path: str) -> dict:
@@ -26,10 +25,13 @@ def _python_version() -> str:
 
 
 def _docker_catalog_version() -> str:
-    catalog = yaml.safe_load(
-        (ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml").read_text(encoding="utf-8")
-    )
-    image = catalog["image"]
+    text = (ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml").read_text(encoding="utf-8")
+    match = DOCKER_IMAGE_RE.search(text)
+    if match is None:
+        raise RuntimeError("docker MCP catalog must define an image tag")
+    image = match.group("image")
+    if ":" not in image:
+        raise RuntimeError("docker MCP catalog image must include a tag")
     return image.rsplit(":", maxsplit=1)[1]
 
 

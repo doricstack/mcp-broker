@@ -591,7 +591,7 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
     if maintainer_inputs:
         assert "pipx validation date: 2026-05-27" in maintainer_inputs
         assert "uv validation date: 2026-05-27" in maintainer_inputs
-        assert re.search(r"Status: complete for `[0-9]+\.[0-9]+\.[0-9]+`\.", maintainer_inputs)
+        assert "Status: complete for `$(PACKAGE_VERSION)`." in maintainer_inputs
         assert "publication pending" not in maintainer_inputs
         assert "NPM_TOKEN" not in maintainer_inputs
         assert "NODE_AUTH_TOKEN" not in maintainer_inputs

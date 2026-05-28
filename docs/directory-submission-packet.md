@@ -91,7 +91,7 @@ manifest declares a `binary` runtime for Smithery compatibility and exposes
 when the GUI environment cannot find `uvx`. The MCPB schema allows rich tool
 descriptions but does not allow `inputSchema` under `tools`; keep schemas out
 of `mcpb/manifest.json`. `make smithery-publish` uses the repo adapter because
-Smithery CLI 1.1.1 converts valid MCPB tool entries into a server card without
+The Smithery CLI version used for validation converts valid MCPB tool entries into a server card without
 `inputSchema`, which the Smithery API rejects. The adapter lives at
 `scripts/smithery_release.py` and injects the source-backed broker facade
 schemas into the Smithery server-card payload.

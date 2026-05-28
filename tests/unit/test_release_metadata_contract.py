@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.sync_release_metadata import _bump_version, _validate_version
+from scripts.sync_release_metadata import (
+    _bump_version,
+    _validate_version,
+    docker_catalog_version_from_text,
+    replace_docker_catalog_version,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -22,3 +27,16 @@ def test_release_version_validation_rejects_non_semver() -> None:
         assert "invalid semantic version" in str(exc)
     else:
         raise AssertionError("version validation accepted v-prefixed input")
+
+
+def test_docker_catalog_version_sync_uses_standard_library_parser() -> None:
+    text = "name: mcp-broker\nimage: docker.io/navinagrawal/mcp-broker:2.3.4\ncategory: dev\n"
+
+    updated = replace_docker_catalog_version(text, "2.3.5")
+
+    assert docker_catalog_version_from_text(updated) == "2.3.5"
+    assert updated == (
+        "name: mcp-broker\n"
+        "image: docker.io/navinagrawal/mcp-broker:2.3.5\n"
+        "category: dev\n"
+    )

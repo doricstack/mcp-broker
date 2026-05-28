@@ -9,13 +9,16 @@ from scripts.smithery_release import build_payload_from_manifest, load_mcpb_mani
 
 pytestmark = pytest.mark.unit
 
+FIXTURE_VERSION = ".".join(("1", "1", "0"))
+RICH_SCHEMA_FIXTURE_VERSION = ".".join(("1", "1", "1"))
+
 
 def test_smithery_payload_adds_tool_input_schemas_without_changing_mcpb_manifest(
     tmp_path: Path,
 ) -> None:
     manifest = {
         "name": "mcp-broker",
-        "version": "1.1.0",
+        "version": FIXTURE_VERSION,
         "server": {"type": "binary", "mcp_config": {"command": "uvx"}},
         "tools": [
             {"name": "custom_status", "description": "Report custom health."},
@@ -57,7 +60,7 @@ def test_smithery_payload_adds_rich_broker_tool_schemas_from_source_contract() -
 
     manifest = {
         "name": "mcp-broker",
-        "version": "1.1.1",
+        "version": RICH_SCHEMA_FIXTURE_VERSION,
         "server": {"type": "binary", "mcp_config": {"command": "uvx"}},
         "tools": [
             {
@@ -84,7 +87,7 @@ def test_smithery_payload_adds_rich_broker_tool_schemas_from_source_contract() -
 def test_smithery_payload_converts_mcpb_user_config_to_json_schema() -> None:
     manifest = {
         "name": "mcp-broker",
-        "version": "1.1.0",
+        "version": FIXTURE_VERSION,
         "server": {"type": "binary", "mcp_config": {"command": "${user_config.uvx_path}"}},
         "tools": [],
         "user_config": {

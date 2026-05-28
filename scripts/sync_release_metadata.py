@@ -8,12 +8,11 @@ import re
 import sys
 from typing import Any
 
-import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+DOCKER_IMAGE_RE = re.compile(r"(?m)^image:\s*(?P<image>\S+)\s*$")
 
 
 def _read_python_version() -> str:
@@ -50,6 +49,27 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def docker_catalog_version_from_text(text: str) -> str:
+    match = DOCKER_IMAGE_RE.search(text)
+    if match is None:
+        raise RuntimeError("docker MCP catalog must define an image tag")
+    image = match.group("image")
+    if ":" not in image:
+        raise RuntimeError("docker MCP catalog image must include a tag")
+    return image.rsplit(":", maxsplit=1)[1]
+
+
+def replace_docker_catalog_version(text: str, version: str) -> str:
+    match = DOCKER_IMAGE_RE.search(text)
+    if match is None:
+        raise RuntimeError("docker MCP catalog must define an image tag")
+    image = match.group("image")
+    if ":" not in image:
+        raise RuntimeError("docker MCP catalog image must include a tag")
+    image_name = image.rsplit(":", maxsplit=1)[0]
+    return text[: match.start("image")] + f"{image_name}:{version}" + text[match.end("image") :]
 
 
 def _json_metadata_updates(version: str) -> dict[str, dict[str, Any]]:
@@ -100,18 +120,11 @@ def _sync_json_metadata(version: str, write: bool) -> list[str]:
 
 def _sync_docker_catalog(version: str, write: bool) -> bool:
     path = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise RuntimeError("docker/mcp-catalog/mcp-broker.yaml must contain a mapping")
-    image = data.get("image")
-    if not isinstance(image, str) or ":" not in image:
-        raise RuntimeError("docker/mcp-catalog/mcp-broker.yaml must define image with a tag")
-    image_name = image.rsplit(":", maxsplit=1)[0]
-    updated_image = f"{image_name}:{version}"
-    changed = image != updated_image
+    text = path.read_text(encoding="utf-8")
+    updated = replace_docker_catalog_version(text, version)
+    changed = updated != text
     if changed and write:
-        data["image"] = updated_image
-        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        path.write_text(updated, encoding="utf-8")
     return changed
 
 
