@@ -225,6 +225,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "make precommit" in workflows["ci.yml"]
     assert "make release-smoke" in workflows["ci.yml"]
     assert "make release RELEASE_APPLY=1" in workflows["publish-everywhere.yml"]
+    assert "RELEASE_VERSION=$version" in workflows["publish-everywhere.yml"]
     assert "make publish-version-check" in workflows["ci.yml"]
     assert "make npm-package-check" in workflows["ci.yml"]
     assert "make npm-smoke" in workflows["ci.yml"]

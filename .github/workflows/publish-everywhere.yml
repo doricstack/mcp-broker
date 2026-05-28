@@ -25,6 +25,11 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Resolve release version
+        run: |
+          version="$(PYTHONPATH="$GITHUB_WORKSPACE/src" python -c 'import mcp_broker, sys; sys.stdout.write(mcp_broker.__version__)')"
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
