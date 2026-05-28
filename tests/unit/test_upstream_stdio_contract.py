@@ -37,6 +37,43 @@ from mcp_broker.upstream_stdio import (
 pytestmark = pytest.mark.unit
 
 
+def test_stdio_upstream_finalizer_stops_live_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "runtime-state",
+    )
+    monkeypatch.setattr(
+        StdioUpstreamProcess,
+        "stop",
+        lambda self: calls.append(self.upstream.name),
+    )
+
+    client.__del__()
+
+    assert calls == ["fake"]
+
+
+def test_stdio_upstream_finalizer_suppresses_stop_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "runtime-state",
+    )
+
+    def fail_stop(_self: StdioUpstreamProcess) -> None:
+        raise RuntimeError("stop failed")
+
+    monkeypatch.setattr(StdioUpstreamProcess, "stop", fail_stop)
+
+    client.__del__()
+
+
 def test_stdio_upstream_reuses_process_and_writes_stderr(tmp_path: Path) -> None:
     script = _script(
         tmp_path,

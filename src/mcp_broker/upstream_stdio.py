@@ -60,6 +60,12 @@ class StdioUpstreamProcess:
         self._initialized = False
         self._stdout_buffer = b""
 
+    def __del__(self) -> None:
+        try:
+            self.stop()
+        except Exception:
+            return
+
     @property
     def state_dir(self) -> Path:
         configured = self.upstream.state_dir or f"upstreams/{self.upstream.name}"

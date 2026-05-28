@@ -228,7 +228,7 @@ publish-everywhere-check: ## Run all local gates required before registry public
 
 _publish-everywhere-check-impl:
 	$(call timed_make,"publish-everywhere-check: version check",publish-version-check)
-	$(call timed_make,"publish-everywhere-check: release gate",release-gate)
+	$(call timed_make,"publish-everywhere-check: release gate",PYTEST_MARKER_EXPRESSION="$(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" release-gate)
 	$(call timed_make,"publish-everywhere-check: package smoke children",-j $(PUBLISH_CHECK_JOBS) npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx)
 	$(call log_success,"Publish-everywhere checks passed")
 

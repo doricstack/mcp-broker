@@ -233,6 +233,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "published" in workflows["publish-everywhere.yml"]
     assert "id-token: write" in workflows["publish-everywhere.yml"]
     assert "packages: write" in workflows["publish-everywhere.yml"]
+    assert "PYTEST_MARKER_EXPRESSION:" not in workflows["publish-everywhere.yml"]
     assert "publish-pypi.yml" not in workflows
     assert "publish-python.yml" not in workflows
     assert "publish-mcp-registry.yml" not in workflows
@@ -362,6 +363,8 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         assert target not in makefile
 
     assert "scripts/check_release_versions.py" in makefile
+    assert "PUBLIC_RELEASE_PYTEST_MARKER_EXPRESSION ?= not private_contract" in makefile
+    assert "RELEASE_GATE_PYTEST_MARKER_EXPRESSION ?=" in makefile
     assert "scripts/update_homebrew_formula.py" in makefile
     assert "scripts/public-surface-smoke.sh" in makefile
     assert "pipx run --spec \"mcp-broker==$" in makefile
@@ -475,7 +478,7 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")
     assert "_publish-check-docker-smoke:" in makefile
     assert "_publish-check-docker-buildx:" in makefile
-    assert '$(call timed_make,"publish-everywhere-check: release gate",release-gate)' in check_section
+    assert '$(call timed_make,"publish-everywhere-check: release gate",PYTEST_MARKER_EXPRESSION="$(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" release-gate)' in check_section
     assert '$(call timed_make,"publish-everywhere-check: package smoke children",-j $(PUBLISH_CHECK_JOBS) npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx)' in check_section
     assert release_gate_index < publish_check_fanout_index
     assert 'docker-smoke DOCKER_IMAGE="mcp-broker:publish-check"' in makefile
