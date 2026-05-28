@@ -321,6 +321,24 @@ def test_mcpb_manifest_contract_is_public_safe() -> None:
     assert "config/broker.private.yaml" not in serialized
 
 
+def test_mcpb_manifest_tools_match_rich_compact_broker_descriptions() -> None:
+    from mcp_broker.tool_namespace import compact_broker_tool_definitions
+
+    manifest = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+    live_tools = {
+        tool["name"]: tool["description"]
+        for tool in compact_broker_tool_definitions(broker_tool_name_style="snake")
+    }
+
+    manifest_tools = {
+        tool["name"]: tool["description"]
+        for tool in manifest["tools"]
+    }
+
+    assert manifest_tools == live_tools
+    assert all("inputSchema" not in tool for tool in manifest["tools"])
+
+
 def test_registry_template_is_public_safe_and_points_to_pypi_package() -> None:
     template = json.loads((ROOT / "registry" / "server.template.json").read_text(encoding="utf-8"))
     raw = (ROOT / "registry" / "server.template.json").read_text(encoding="utf-8")

@@ -2499,51 +2499,18 @@ def test_daemon_tools_list_returns_compact_profile_without_starting_upstreams(
         }
     )
 
-    assert response["result"] == {
-        "tools": [
-            {
-                "name": "broker.search_tools",
-                "description": "Search broker-managed upstream tools",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"},
-                        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                    },
-                    "required": ["query"],
-                },
-            },
-            {
-                "name": "broker.describe_tool",
-                "description": "Describe one broker-managed upstream tool",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"name": {"type": "string"}},
-                    "required": ["name"],
-                },
-            },
-            {
-                "name": "broker.call_tool",
-                "description": "Call one broker-managed upstream tool",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "arguments": {"type": "object"},
-                    },
-                    "required": ["name", "arguments"],
-                },
-            },
-            {
-                "name": "broker.status",
-                "description": "Report broker-managed upstream status for this profile",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                },
-            },
-        ]
-    }
+    assert [tool["name"] for tool in response["result"]["tools"]] == [
+        "broker.search_tools",
+        "broker.describe_tool",
+        "broker.call_tool",
+        "broker.status",
+    ]
+    assert all(len(tool["description"]) >= 160 for tool in response["result"]["tools"])
+    assert response["result"]["tools"][0]["inputSchema"]["properties"]["query"]["description"]
+    assert (
+        response["result"]["tools"][2]["inputSchema"]["properties"]["arguments"]["additionalProperties"]
+        is True
+    )
 
 
 def test_daemon_tools_list_returns_profile_safe_compact_names(tmp_path: Path) -> None:

@@ -7,7 +7,150 @@ from dataclasses import dataclass
 from typing import Any
 
 from mcp_broker.config import BrokerSettings, UpstreamConfig
-from mcp_broker.profiles import ToolExposureProfile
+from mcp_broker.profiles import BROKER_TOOL_NAME_STYLES, ToolExposureProfile
+
+
+_COMPACT_BROKER_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
+    "broker.search_tools": {
+        "description": (
+            "Search the profile-visible upstream MCP tool catalog without advertising every upstream "
+            "tool to the client. Use this first when the task mentions a capability, service, keyword, "
+            "or upstream prefix and you need candidate broker-qualified tool names before describing "
+            "or calling one of them."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "description": (
+                "Search request for the broker catalog. The broker inspects only upstreams exposed to "
+                "the active profile, applies mutating-upstream policy, and returns matching tool "
+                "metadata plus skipped upstreams when discovery fails."
+            ),
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Capability, upstream name, tool name fragment, or task keyword to match "
+                        "against broker-qualified tool names, upstream names, descriptions, and schemas."
+                    ),
+                    "minLength": 1,
+                    "examples": ["github issue", "file read", "browser screenshot"],
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of matching tools to return. Keep this small for exploration, "
+                        "then refine the query or call broker_describe_tool for exact schema details."
+                    ),
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 20,
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    "broker.describe_tool": {
+        "description": (
+            "Describe one profile-visible upstream MCP tool by broker-qualified name. Use this after "
+            "broker_search_tools and before broker_call_tool so the client can inspect the exact "
+            "description, input schema, upstream owner, transport, and mutating metadata instead of "
+            "guessing arguments."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "description": (
+                "Describe request for one catalog entry. The name must be the full broker-qualified "
+                "tool name returned by broker_search_tools or another catalog response, including the "
+                "upstream prefix and namespace separator."
+            ),
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Full broker-qualified tool name to inspect, such as an upstream prefix joined "
+                        "to the upstream tool name by the configured namespace separator."
+                    ),
+                    "minLength": 1,
+                    "examples": ["github.get_me", "filesystem.read_file"],
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    "broker.call_tool": {
+        "description": (
+            "Call one profile-visible upstream MCP tool through the broker using its broker-qualified "
+            "name and exact argument object. The broker's mutating-tool policy remains gated by the "
+            "active profile's allowlist, so call broker_describe_tool first and pass only arguments "
+            "accepted by the described upstream schema."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "description": (
+                "Invocation request for a broker-managed upstream tool. The broker resolves the "
+                "namespaced name, enforces profile exposure and mutating-tool policy, serializes calls "
+                "when configured, and returns the upstream tool result."
+            ),
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Full broker-qualified tool name to invoke. Use a name returned by "
+                        "broker_search_tools or broker_describe_tool, not an unqualified upstream name."
+                    ),
+                    "minLength": 1,
+                    "examples": ["github.get_file_contents", "filesystem.read_file"],
+                },
+                "arguments": {
+                    "type": "object",
+                    "description": (
+                        "Exact JSON object accepted by the described upstream tool schema. Use an empty "
+                        "object only when broker_describe_tool shows that the upstream tool accepts no "
+                        "parameters."
+                    ),
+                    "default": {},
+                    "additionalProperties": True,
+                },
+            },
+            "required": ["name", "arguments"],
+            "additionalProperties": False,
+        },
+    },
+    "broker.status": {
+        "description": (
+            "Report broker and upstream status for the active profile without starting hidden or denied "
+            "upstreams. Use this for health checks, support tickets, and client validation because it "
+            "returns the profile name, broker socket path, aggregate status, upstream runtime state, "
+            "auth state, transport, process id, restarts, and mutating exposure."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "description": (
+                "Status request for the active broker profile. No user arguments are accepted; clients "
+                "may pass transport-control fields that the broker ignores, but status filters them "
+                "before validating the request."
+            ),
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def compact_broker_tool_definitions(*, broker_tool_name_style: str = "dotted") -> list[dict[str, Any]]:
+    if broker_tool_name_style not in BROKER_TOOL_NAME_STYLES:
+        allowed = ", ".join(sorted(BROKER_TOOL_NAME_STYLES))
+        raise ValueError(f"broker_tool_name_style must be one of: {allowed}")
+    return [
+        _broker_tool(
+            _compact_broker_tool_name(canonical_name, broker_tool_name_style),
+            definition["description"],
+            definition["inputSchema"],
+        )
+        for canonical_name, definition in _COMPACT_BROKER_TOOL_DEFINITIONS.items()
+    ]
 
 
 @dataclass(frozen=True)
@@ -87,52 +230,9 @@ class ToolNamespaceRouter:
         profile = self._profile
         if profile is None or not profile.compact_tools_enabled:
             return []
-        return [
-            _broker_tool(
-                self._compact_broker_tool_name(profile, "broker.search_tools"),
-                "Search broker-managed upstream tools",
-                {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"},
-                        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                    },
-                    "required": ["query"],
-                },
-            ),
-            _broker_tool(
-                self._compact_broker_tool_name(profile, "broker.describe_tool"),
-                "Describe one broker-managed upstream tool",
-                {
-                    "type": "object",
-                    "properties": {"name": {"type": "string"}},
-                    "required": ["name"],
-                },
-            ),
-            _broker_tool(
-                self._compact_broker_tool_name(profile, "broker.call_tool"),
-                "Call one broker-managed upstream tool",
-                {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "arguments": {"type": "object"},
-                    },
-                    "required": ["name", "arguments"],
-                },
-            ),
-            _broker_tool(
-                self._compact_broker_tool_name(profile, "broker.status"),
-                "Report broker-managed upstream status for this profile",
-                {
-                    "type": "object",
-                    "properties": {},
-                },
-            ),
-        ]
-
-    def _compact_broker_tool_name(self, profile: ToolExposureProfile, canonical_name: str) -> str:
-        return profile.exposed_broker_tool_name(canonical_name)
+        return compact_broker_tool_definitions(
+            broker_tool_name_style=profile.broker_tool_name_style
+        )
 
     def resolve_tool_name(self, advertised_name: str) -> ToolRoute:
         if self._separator not in advertised_name:
@@ -186,5 +286,11 @@ def _broker_tool(name: str, description: str, input_schema: dict[str, Any]) -> d
     return {
         "name": name,
         "description": description,
-        "inputSchema": input_schema,
+        "inputSchema": deepcopy(input_schema),
     }
+
+
+def _compact_broker_tool_name(canonical_name: str, broker_tool_name_style: str) -> str:
+    if broker_tool_name_style == "snake":
+        return canonical_name.replace(".", "_")
+    return canonical_name

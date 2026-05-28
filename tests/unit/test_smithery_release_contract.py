@@ -18,9 +18,9 @@ def test_smithery_payload_adds_tool_input_schemas_without_changing_mcpb_manifest
         "version": "1.1.0",
         "server": {"type": "binary", "mcp_config": {"command": "uvx"}},
         "tools": [
-            {"name": "broker_status", "description": "Report broker health."},
+            {"name": "custom_status", "description": "Report custom health."},
             {
-                "name": "broker_call_tool",
+                "name": "custom_call_tool",
                 "description": "Call one upstream tool.",
                 "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}},
             },
@@ -35,21 +35,50 @@ def test_smithery_payload_adds_tool_input_schemas_without_changing_mcpb_manifest
     loaded = load_mcpb_manifest(bundle_path)
     payload = build_payload_from_manifest(loaded)
 
-    assert loaded["tools"][0] == {"name": "broker_status", "description": "Report broker health."}
+    assert loaded["tools"][0] == {"name": "custom_status", "description": "Report custom health."}
     assert payload["type"] == "stdio"
     assert payload["runtime"] == "binary"
     assert payload["serverCard"]["tools"] == [
         {
-            "name": "broker_status",
-            "description": "Report broker health.",
+            "name": "custom_status",
+            "description": "Report custom health.",
             "inputSchema": {"type": "object", "properties": {}},
         },
         {
-            "name": "broker_call_tool",
+            "name": "custom_call_tool",
             "description": "Call one upstream tool.",
             "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}},
         },
     ]
+
+
+def test_smithery_payload_adds_rich_broker_tool_schemas_from_source_contract() -> None:
+    from mcp_broker.tool_namespace import compact_broker_tool_definitions
+
+    manifest = {
+        "name": "mcp-broker",
+        "version": "1.1.1",
+        "server": {"type": "binary", "mcp_config": {"command": "uvx"}},
+        "tools": [
+            {
+                "name": tool["name"],
+                "description": tool["description"],
+            }
+            for tool in compact_broker_tool_definitions(broker_tool_name_style="snake")
+        ],
+        "user_config": {},
+    }
+
+    payload = build_payload_from_manifest(manifest)
+    tools = {tool["name"]: tool for tool in payload["serverCard"]["tools"]}
+
+    assert tools["broker_search_tools"]["inputSchema"]["properties"]["query"]["description"]
+    assert tools["broker_search_tools"]["inputSchema"]["properties"]["limit"]["default"] == 20
+    assert (
+        tools["broker_call_tool"]["inputSchema"]["properties"]["arguments"]["additionalProperties"]
+        is True
+    )
+    assert tools["broker_status"]["inputSchema"]["additionalProperties"] is False
 
 
 def test_smithery_payload_converts_mcpb_user_config_to_json_schema() -> None:

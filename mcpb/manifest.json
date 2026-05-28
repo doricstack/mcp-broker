@@ -39,19 +39,19 @@
   "tools": [
     {
       "name": "broker_search_tools",
-      "description": "Search configured upstream MCP tools without loading every upstream tool into the client session."
+      "description": "Search the profile-visible upstream MCP tool catalog without advertising every upstream tool to the client. Use this first when the task mentions a capability, service, keyword, or upstream prefix and you need candidate broker-qualified tool names before describing or calling one of them."
     },
     {
       "name": "broker_describe_tool",
-      "description": "Describe one configured upstream MCP tool."
+      "description": "Describe one profile-visible upstream MCP tool by broker-qualified name. Use this after broker_search_tools and before broker_call_tool so the client can inspect the exact description, input schema, upstream owner, transport, and mutating metadata instead of guessing arguments."
     },
     {
       "name": "broker_call_tool",
-      "description": "Call one configured upstream MCP tool through the broker."
+      "description": "Call one profile-visible upstream MCP tool through the broker using its broker-qualified name and exact argument object. The broker's mutating-tool policy remains gated by the active profile's allowlist, so call broker_describe_tool first and pass only arguments accepted by the described upstream schema."
     },
     {
       "name": "broker_status",
-      "description": "Report broker and upstream health for the selected profile."
+      "description": "Report broker and upstream status for the active profile without starting hidden or denied upstreams. Use this for health checks, support tickets, and client validation because it returns the profile name, broker socket path, aggregate status, upstream runtime state, auth state, transport, process id, restarts, and mutating exposure."
     }
   ],
   "keywords": [

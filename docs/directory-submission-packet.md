@@ -88,10 +88,13 @@ Smithery publishes the MCPB bundle as `server.mcpb`; keep the source manifest
 at `mcpb/manifest.json` and rerun `make mcpb-smoke` before upload. The MCPB
 manifest declares a `binary` runtime for Smithery compatibility and exposes
 `UVX command path` so Claude Desktop users can provide an absolute `uvx` path
-when the GUI environment cannot find `uvx`. `make smithery-publish` uses the
-repo adapter because Smithery CLI 1.1.1 converts valid MCPB tool entries into a
-server card without `inputSchema`, which the Smithery API rejects. The adapter
-lives at `scripts/smithery_release.py`.
+when the GUI environment cannot find `uvx`. The MCPB schema allows rich tool
+descriptions but does not allow `inputSchema` under `tools`; keep schemas out
+of `mcpb/manifest.json`. `make smithery-publish` uses the repo adapter because
+Smithery CLI 1.1.1 converts valid MCPB tool entries into a server card without
+`inputSchema`, which the Smithery API rejects. The adapter lives at
+`scripts/smithery_release.py` and injects the source-backed broker facade
+schemas into the Smithery server-card payload.
 The local stdio startup smoke helper lives at `scripts/mcpb_stdio_smoke.py`.
 
 Before a Claude Desktop or Smithery update, run:

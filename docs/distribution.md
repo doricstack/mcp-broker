@@ -315,10 +315,12 @@ make directory-submission-check
 
 Smithery uses the local MCPB path for this release. The hosted or remote path
 waits until `mcp-broker` has a real streamable HTTP broker mode. The MCPB
-manifest stays valid for Claude Desktop, and `make smithery-publish` sends a
-Smithery-specific server-card payload with default object schemas for the four
-broker facade tools. The first accepted Smithery release returned deployment
-`aae18669-9500-4a5d-9870-8f9b3bfd404d` and MCP URL
+manifest stays valid for Claude Desktop with rich descriptions only; MCPB does
+not allow tool `inputSchema` fields. `make smithery-publish` sends a
+Smithery-specific server-card payload and injects the source-backed broker
+facade schemas for `broker_search_tools`, `broker_describe_tool`,
+`broker_call_tool`, and `broker_status`. The first accepted Smithery release
+returned deployment `aae18669-9500-4a5d-9870-8f9b3bfd404d` and MCP URL
 `https://mcp-broker--navinagrawal.run.tools`; public search indexing may lag.
 
 Glama lists the public repo at

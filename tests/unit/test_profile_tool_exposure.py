@@ -85,6 +85,38 @@ def test_profile_tool_exposure_enforces_budget_and_can_return_compact_broker_too
     ]
 
 
+def test_compact_broker_tools_include_directory_quality_metadata() -> None:
+    from mcp_broker.config import BrokerSettings
+    from mcp_broker.profiles import ToolExposureProfile
+    from mcp_broker.tool_namespace import ToolNamespaceRouter
+
+    router = ToolNamespaceRouter(
+        broker=BrokerSettings(tool_namespace_separator="."),
+        upstreams=_profiled_upstreams(),
+        profile=ToolExposureProfile(name="llm", max_tools=1, compact_tools_enabled=True),
+    )
+
+    tools = {tool["name"]: tool for tool in router.compact_broker_tools()}
+
+    for tool in tools.values():
+        assert len(tool["description"]) >= 160
+        assert tool["inputSchema"]["type"] == "object"
+        assert len(tool["inputSchema"]["description"]) >= 80
+        assert tool["inputSchema"]["additionalProperties"] is False
+        for property_schema in tool["inputSchema"]["properties"].values():
+            assert len(property_schema["description"]) >= 60
+
+    search_schema = tools["broker.search_tools"]["inputSchema"]
+    assert search_schema["properties"]["query"]["minLength"] == 1
+    assert search_schema["properties"]["limit"]["default"] == 20
+    assert "examples" in search_schema["properties"]["query"]
+
+    call_schema = tools["broker.call_tool"]["inputSchema"]
+    assert "mutating" in tools["broker.call_tool"]["description"]
+    assert call_schema["properties"]["arguments"]["additionalProperties"] is True
+    assert "examples" in call_schema["properties"]["name"]
+
+
 def test_profile_tool_exposure_allows_tool_count_equal_to_budget() -> None:
     from mcp_broker.config import BrokerSettings
     from mcp_broker.profiles import ToolExposureProfile

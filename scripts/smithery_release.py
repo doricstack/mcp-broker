@@ -12,11 +12,17 @@ from urllib.parse import quote
 import urllib.request
 import uuid
 
+from mcp_broker.tool_namespace import compact_broker_tool_definitions
+
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://api.smithery.ai"
 DEFAULT_SETTINGS_PATH = Path.home() / "Library/Application Support/smithery/settings.json"
 DEFAULT_TOOL_INPUT_SCHEMA = {"type": "object", "properties": {}}
+COMPACT_BROKER_TOOL_SCHEMAS = {
+    tool["name"]: tool["inputSchema"]
+    for tool in compact_broker_tool_definitions(broker_tool_name_style="snake")
+}
 SUPPORTED_RUNTIMES = {"binary", "python", "node", "bun"}
 
 
@@ -140,8 +146,18 @@ def _server_card_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
 
 def _tool_for_server_card(tool: dict[str, Any]) -> dict[str, Any]:
     converted = dict(tool)
-    converted.setdefault("inputSchema", dict(DEFAULT_TOOL_INPUT_SCHEMA))
+    if "inputSchema" not in converted:
+        converted["inputSchema"] = deepcopy_schema(
+            COMPACT_BROKER_TOOL_SCHEMAS.get(
+                str(converted.get("name")),
+                DEFAULT_TOOL_INPUT_SCHEMA,
+            )
+        )
     return converted
+
+
+def deepcopy_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(schema))
 
 
 def _config_schema_from_user_config(user_config: Any) -> dict[str, Any] | None:
