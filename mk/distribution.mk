@@ -159,7 +159,7 @@ mcpb-stdio-smoke: mcpb-pack broker-status ## Run the MCPB stdio command shape ag
 
 smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload from the MCPB bundle
 	$(call log_step,"Checking Smithery release payload")
-	@$(PYTHON_BIN) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
 		--name "$(SMITHERY_QUALIFIED_NAME)" \
 		--dry-run \
 		--payload-output "$(SMITHERY_PAYLOAD_OUTPUT)"
@@ -168,7 +168,7 @@ smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload
 
 smithery-publish: smithery-payload-check ## Publish the MCPB bundle to Smithery using the repo payload adapter
 	$(call log_step,"Publishing Smithery MCPB bundle")
-	@$(PYTHON_BIN) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
 		--name "$(SMITHERY_QUALIFIED_NAME)"
 	$(call log_success,"Smithery publish target completed: $(SMITHERY_QUALIFIED_NAME)")
 

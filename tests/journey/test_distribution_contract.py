@@ -139,6 +139,7 @@ def test_mcpb_distribution_targets_package_and_smoke_bundle() -> None:
     assert "smithery-payload-check:" in makefile
     assert "smithery-publish:" in makefile
     assert "scripts/smithery_release.py" in makefile
+    assert 'PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/smithery_release.py"' in makefile
     assert "scripts/mcpb_stdio_smoke.py" in makefile
     assert '@$(NPX) -y @anthropic-ai/mcpb pack "$(ROOT)/mcpb" "$(MCPB_OUTPUT)"' in makefile
     assert '@$(NPX) -y @anthropic-ai/mcpb info "$(MCPB_SMOKE_OUTPUT)"' in makefile
