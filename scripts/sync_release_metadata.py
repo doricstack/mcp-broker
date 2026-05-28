@@ -170,11 +170,14 @@ def _parse_args() -> argparse.Namespace:
         choices=["major", "minor", "patch"],
         help="derive the next semantic version from src/mcp_broker/__init__.py",
     )
-    mode = parser.add_mutually_exclusive_group(required=True)
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="write synchronized metadata")
     mode.add_argument("--check", action="store_true", help="fail if metadata would change")
     parser.add_argument("--emit-version", action="store_true", help="write the target version to stdout")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not (args.write or args.check or args.emit_version):
+        parser.error("set --write, --check, or --emit-version")
+    return args
 
 
 def main() -> int:
@@ -183,6 +186,11 @@ def main() -> int:
     version = _validate_version(args.version) if args.version else current_version
     if args.bump:
         version = _bump_version(current_version, args.bump)
+
+    if args.emit_version and not (args.write or args.check):
+        sys.stdout.write(version)
+        sys.stdout.write("\n")
+        return 0
 
     changed = sync_release_metadata(version, write=args.write)
     if args.emit_version:

@@ -5,6 +5,21 @@ on:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Exact release version to publish. Leave empty to use package metadata."
+        required: false
+        type: string
+      release_bump:
+        description: "Optional semver bump from package metadata for release planning."
+        required: false
+        default: current
+        type: choice
+        options:
+          - current
+          - patch
+          - minor
+          - major
   repository_dispatch:
     types:
       - publish-everywhere
@@ -27,7 +42,29 @@ jobs:
 
       - name: Resolve release version
         run: |
-          version="$(PYTHONPATH="$GITHUB_WORKSPACE/src" python -c 'import mcp_broker, sys; sys.stdout.write(mcp_broker.__version__)')"
+          release_version="${{ inputs.release_version || '' }}"
+          release_bump="${{ inputs.release_bump || 'current' }}"
+          release_tag="${{ github.event.release.tag_name || '' }}"
+
+          if [[ -n "$release_tag" ]]; then
+            release_version="${release_tag#v}"
+            release_bump="current"
+          fi
+
+          if [[ -n "$release_version" && "$release_bump" != "current" ]]; then
+            printf "release_version and release_bump are mutually exclusive\n" >&2
+            exit 2
+          fi
+
+          args=()
+          if [[ -n "$release_version" ]]; then
+            args+=(RELEASE_VERSION="$release_version")
+          fi
+          if [[ "$release_bump" != "current" ]]; then
+            args+=(RELEASE_BUMP="$release_bump")
+          fi
+
+          version="$(make --no-print-directory release-version-resolve "${args[@]}")"
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Set up uv
@@ -66,4 +103,4 @@ jobs:
       - name: Publish everywhere
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: make release RELEASE_APPLY=1 RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+        run: make release RELEASE_APPLY=1 RELEASE_VERSION="$RELEASE_VERSION" RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"

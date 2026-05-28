@@ -206,12 +206,16 @@ def test_current_release_versions_are_not_copied_across_docs_or_tests() -> None:
 
 def test_release_metadata_sync_target_is_the_only_release_bump_path() -> None:
     makefile = read_combined_makefiles(ROOT)
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     script = (ROOT / "scripts" / "sync_release_metadata.py").read_text(encoding="utf-8")
 
+    assert "release-version-resolve:" in makefile
     assert "release-version-sync:" in makefile
     assert "RELEASE_BUMP ?=" in makefile
     assert "scripts/sync_release_metadata.py" in makefile
     assert "--bump \"$(RELEASE_BUMP)\"" in makefile
+    assert "--emit-version" in makefile
+    assert "release-version-resolve RELEASE_BUMP=patch" in distribution
     assert "import logging" in script
     assert "print(" not in script
 
@@ -226,7 +230,11 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "make precommit" in workflows["ci.yml"]
     assert "make release-smoke" in workflows["ci.yml"]
     assert "make release RELEASE_APPLY=1" in workflows["publish-everywhere.yml"]
+    assert "release_version:" in workflows["publish-everywhere.yml"]
+    assert "release_bump:" in workflows["publish-everywhere.yml"]
     assert "RELEASE_VERSION=$version" in workflows["publish-everywhere.yml"]
+    assert "make --no-print-directory release-version-resolve" in workflows["publish-everywhere.yml"]
+    assert 'RELEASE_VERSION="$RELEASE_VERSION"' in workflows["publish-everywhere.yml"]
     assert "make publish-version-check" in workflows["ci.yml"]
     assert "make npm-package-check" in workflows["ci.yml"]
     assert "make npm-smoke" in workflows["ci.yml"]
@@ -479,11 +487,15 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")
     assert "_publish-check-docker-smoke:" in makefile
     assert "_publish-check-docker-buildx:" in makefile
+    assert "_publish-everywhere-required-env-check:" in makefile
     assert '$(call timed_make,"publish-everywhere-check: release gate",PYTEST_MARKER_EXPRESSION="$(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" release-gate)' in check_section
     assert '$(call timed_make,"publish-everywhere-check: package smoke children",-j $(PUBLISH_CHECK_JOBS) npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx)' in check_section
     assert release_gate_index < publish_check_fanout_index
     assert 'docker-smoke DOCKER_IMAGE="mcp-broker:publish-check"' in makefile
     assert 'docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)"' in makefile
+    assert '$(call timed_make,"publish-everywhere: required env",_publish-everywhere-required-env-check)' in publish_section
+    assert publish_section.index("_publish-everywhere-required-env-check") < pypi_index
+    assert "HOMEBREW_TAP_TOKEN is required before publish-everywhere starts" in makefile
     assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
     assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)' in publish_section
     assert "PUBLISH_EVERYWHERE_SKIP_CHECKS ?= 0" in makefile

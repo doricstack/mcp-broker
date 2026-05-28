@@ -96,6 +96,10 @@ pushes do not publish; the GitHub Release publication is the single normal
 release event. There are no per-registry publish workflows. Recovery runs the
 same `publish-everywhere` workflow with the same Makefile orchestrator.
 
+The Makefile validates required publication environment before the first
+registry write. For the current surface set, `HOMEBREW_TAP_TOKEN` must exist in
+GitHub Actions before PyPI publication starts.
+
 The orchestrator is retry-aware for partially completed releases. It checks the
 PyPI package version, NPM package version, MCP Registry metadata, and Homebrew
 formula state before submitting, so a rerun can recover after one registry
@@ -104,6 +108,7 @@ fails without treating already-published surfaces as fatal.
 Before tagging a release, synchronize the version and run the release check:
 
 ```bash
+make release-version-resolve RELEASE_BUMP=patch
 make release-version-sync RELEASE_BUMP=patch
 make release-check RELEASE_VERSION=<semver>
 ```

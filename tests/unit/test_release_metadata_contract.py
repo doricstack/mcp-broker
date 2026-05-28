@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
 from scripts.sync_release_metadata import (
@@ -27,6 +30,24 @@ def test_release_version_validation_rejects_non_semver() -> None:
         assert "invalid semantic version" in str(exc)
     else:
         raise AssertionError("version validation accepted v-prefixed input")
+
+
+def test_emit_version_only_does_not_report_synchronization() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/sync_release_metadata.py",
+            "--version",
+            "9.8.7",
+            "--emit-version",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == "9.8.7\n"
+    assert result.stderr == ""
 
 
 def test_docker_catalog_version_sync_uses_standard_library_parser() -> None:

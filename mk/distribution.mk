@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-resolve release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-required-env-check _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -181,6 +181,12 @@ directory-submission-check: mcpb-validate ## Validate directory submission packe
 		$(PYTHON_BIN) "$(ROOT)/scripts/check_directory_submission.py"
 	$(call log_success,"Directory submission check passed")
 
+release-version-resolve: ## Print the release version resolved from RELEASE_VERSION, RELEASE_BUMP, or package metadata
+	@$(PYTHON_BIN) "$(ROOT)/scripts/sync_release_metadata.py" \
+		$(if $(RELEASE_VERSION),--version "$(RELEASE_VERSION)",) \
+		$(if $(RELEASE_BUMP),--bump "$(RELEASE_BUMP)",) \
+		--emit-version
+
 release-version-sync: ## Synchronize release metadata from RELEASE_VERSION or RELEASE_BUMP
 	@test -n "$(RELEASE_VERSION)$(RELEASE_BUMP)" || { printf "\033[1;31m[ERROR]\033[0m Set RELEASE_VERSION=<semver> or RELEASE_BUMP=patch|minor|major\n" >&2; exit 2; }
 	@$(PYTHON_BIN) "$(ROOT)/scripts/sync_release_metadata.py" \
@@ -245,6 +251,7 @@ _publish-everywhere-impl:
 	@test "$(GITHUB_ACTIONS)" = "true" || { printf "\033[1;31m[ERROR]\033[0m publish-everywhere must run in GitHub Actions\n" >&2; exit 2; }
 	@test "$(PUBLISH_EVERYWHERE_APPLY)" = "1" || { printf "\033[1;31m[ERROR]\033[0m Set PUBLISH_EVERYWHERE_APPLY=1 to publish\n" >&2; exit 2; }
 	$(call timed_make,"publish-everywhere: preflight checks",_publish-everywhere-preflight)
+	$(call timed_make,"publish-everywhere: required env",_publish-everywhere-required-env-check)
 	$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)
 	$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)
 	$(call log_success,"Publish-everywhere completed")
@@ -255,6 +262,10 @@ _publish-everywhere-preflight:
 	else \
 		$(MAKE) --no-print-directory publish-everywhere-check; \
 	fi
+
+_publish-everywhere-required-env-check:
+	@test -n "$${HOMEBREW_TAP_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m HOMEBREW_TAP_TOKEN is required before publish-everywhere starts\n" >&2; exit 2; }
+	$(call log_success,"Publish-everywhere required environment is present")
 
 _publish-everywhere-pypi:
 	@status="$$(curl -fsS -o /dev/null -w '%{http_code}' "$(PYPI_VERSION_URL)" || true)"; \
