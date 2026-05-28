@@ -110,7 +110,7 @@ MCPB runtime command:
 ```json
 {
   "command": "${user_config.uvx_path}",
-  "args": ["mcp-broker", "stdio", "--init-if-missing"]
+  "args": ["mcp-broker", "stdio", "--profile", "${user_config.profile}", "--init-if-missing"]
 }
 ```
 
@@ -123,8 +123,10 @@ Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Ex
 
 Install `dist/mcp-broker-$(PACKAGE_VERSION).mcpb`, confirm `mcp-broker` appears, confirm
 `broker_search_tools`, `broker_describe_tool`, `broker_call_tool`, and
-`broker_status`, run one safe status or search call, reinstall once, then
-uninstall.
+`broker_status`, run one safe status or search call, reinstall or replace the
+bundle once if Claude Desktop offers that action, then uninstall. The current
+Claude Desktop extension UI may not expose a separate upgrade action; reinstall
+or replace is the available upgrade-equivalent path for this local MCPB.
 
 ## Secondary Directories
 
@@ -143,14 +145,17 @@ Current submission requirements checked on 2026-05-28:
   Verified on 2026-05-28 with HTTP 200 and page content containing
   `mcp-broker`, `NavinAgrawal`, and the public GitHub repository. Use this
   server config for any future refresh, not the page's generic GitHub Docker
-  placeholder:
+  placeholder. The mcp.so Tools tab returns `get server tools failed:no tools
+  found` when the listing omits `--profile docker`, because the public example
+  config is profile-gated and the compact broker tools are exposed through the
+  Docker/public listing profile:
 
 ```json
 {
   "mcpServers": {
     "mcp-broker": {
       "command": "uvx",
-      "args": ["mcp-broker", "stdio", "--init-if-missing"],
+      "args": ["mcp-broker", "stdio", "--profile", "docker", "--init-if-missing"],
       "env": {}
     }
   }

@@ -556,8 +556,8 @@ def test_docker_mcp_registry_submission_packet_is_staged() -> None:
         "No hidden host client config writes",
         "PR submitted and pending external Docker review",
         "https://github.com/docker/mcp-registry/pull/3819",
-        "blocked by",
-        "required review",
+        "mergeStateStatus=BLOCKED",
+        "REVIEW_REQUIRED",
     ]:
         assert term in submission
 

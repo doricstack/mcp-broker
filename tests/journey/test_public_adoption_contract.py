@@ -379,7 +379,7 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
     assert '"mcp-broker": {' in packet
     assert '"command": "${user_config.uvx_path}"' in packet
     assert "UVX command path" in packet
-    assert '"mcp-broker", "stdio", "--init-if-missing"' in packet
+    assert '"mcp-broker", "stdio", "--profile", "docker", "--init-if-missing"' in packet
     assert "609 to 43" in launch
     assert "276,989 to 45,281" in launch
     assert "/Users/" not in json.dumps(server)
@@ -414,8 +414,8 @@ def test_directory_submission_check_is_make_backed() -> None:
         "PulseMCP: listed at",
         "mcpservers.org: approved",
         "https://mcpservers.org/servers/navinagrawal/mcp-broker",
-        "mcp.so: submitted",
-        "It requires Sign In",
+        "mcp.so: live",
+        "https://mcp.so/server/mcp-broker/NavinAgrawal",
         "`registry.mcpcentral.io` currently does not resolve",
         "blocks non-browser automation",
         "mcp-publisher login github --registry https://registry.mcpcentral.io",
