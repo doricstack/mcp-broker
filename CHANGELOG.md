@@ -2,6 +2,10 @@
 
 All notable public changes will be recorded here.
 
+## 1.1.3 - 2026-05-28
+
+- Synchronize release metadata through the Makefile release path.
+
 ## 1.1.2 - 2026-05-28
 
 - Add source-backed broker facade tool descriptions and schemas for Glama,
