@@ -75,30 +75,40 @@ Publishing is orchestrated by `.github/workflows/publish-everywhere.yml`. The
 workflow calls:
 
 ```bash
-make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1
+make release RELEASE_APPLY=1
 ```
 
-That one target runs the release gates, publishes PyPI first, and then fans out
-NPM, Docker Hub, GHCR, MCP Registry metadata, and the Homebrew tap formula in
-one CI run. Tag pushes do not publish; the GitHub Release publication is the
-single normal release event. There are no per-registry publish workflows.
-Recovery runs the same `publish-everywhere` workflow with the same Makefile
-orchestrator.
+`make release` is the CI release transaction. It runs `make release-check` once,
+then calls `make publish-everywhere` with preflight reuse enabled. The lower
+level `publish-everywhere` target remains available for retry recovery, but the
+workflow does not call it directly.
+
+`make release-check RELEASE_VERSION=<semver>` is the local pre-push contract.
+It refuses to run without an explicit version unless GitHub Actions supplied a
+`v<semver>` release ref. It verifies version alignment, runs the publish
+preflight, and checks directory, MCPB, and Smithery metadata before a release
+tag or GitHub release is created.
+
+The release transaction publishes PyPI first, then fans out NPM, Docker Hub,
+GHCR, MCP Registry metadata, and the Homebrew tap formula in one CI run. Tag
+pushes do not publish; the GitHub Release publication is the single normal
+release event. There are no per-registry publish workflows. Recovery runs the
+same `publish-everywhere` workflow with the same Makefile orchestrator.
 
 The orchestrator is retry-aware for partially completed releases. It checks the
 PyPI package version, NPM package version, MCP Registry metadata, and Homebrew
 formula state before submitting, so a rerun can recover after one registry
 fails without treating already-published surfaces as fatal.
 
-Before tagging a release, run:
+Before tagging a release, set the version everywhere and run:
 
 ```bash
-make release-gate
+make release-check RELEASE_VERSION=<semver>
 ```
 
-That target refreshes dependencies once, then runs coverage, package checks,
-release smoke, and mutation in parallel. Mutation evidence is written under
-`var/quality/mutation_stats.json`.
+That target includes `make release-gate`, so the dependency refresh, coverage,
+package checks, release smoke, and mutation run in the release preflight.
+Mutation evidence is written under `var/quality/mutation_stats.json`.
 
 Before publishing from GitHub Actions, run the Linux parity gate when Docker is
 available:

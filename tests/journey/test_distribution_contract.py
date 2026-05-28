@@ -157,7 +157,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert set(workflows) == {"ci.yml", "publish-everywhere.yml"}
     assert "make precommit" in workflows["ci.yml"]
     assert "make release-smoke" in workflows["ci.yml"]
-    assert "make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1" in workflows["publish-everywhere.yml"]
+    assert "make release RELEASE_APPLY=1" in workflows["publish-everywhere.yml"]
     assert "make publish-version-check" in workflows["ci.yml"]
     assert "make npm-package-check" in workflows["ci.yml"]
     assert "make npm-smoke" in workflows["ci.yml"]
@@ -265,6 +265,9 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     )
 
     for target in [
+        "release-version-check:",
+        "release-check:",
+        "release:",
         "package-install-smoke:",
         "public-stable-surface-smoke:",
         "public-release-surface-smoke:",
@@ -314,7 +317,8 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "$(NPM) publish --access public --provenance" in makefile
     assert "--push" in makefile
     assert "mcp-publisher login github-oidc" in makefile
-    assert "make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1" in workflow
+    assert "make release RELEASE_APPLY=1" in workflow
+    assert "make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1" not in workflow
     assert "release:" in workflow
     assert "published" in workflow
     assert "id-token: write" in workflow
@@ -364,6 +368,14 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
 def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     makefile = read_combined_makefiles(ROOT)
 
+    release_section = makefile.split("_release-impl:", maxsplit=1)[1].split(
+        "publish-version-check:",
+        maxsplit=1,
+    )[0]
+    release_check_section = makefile.split("release-check:", maxsplit=1)[1].split(
+        "publish-everywhere-check:",
+        maxsplit=1,
+    )[0]
     check_section = makefile.split("publish-everywhere-check:", maxsplit=1)[1].split(
         "publish-everywhere:",
         maxsplit=1,
@@ -377,10 +389,19 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
 
     assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
     assert "PUBLISH_EVERYWHERE_JOBS ?= 4" in makefile
+    assert "RELEASE_APPLY ?= 0" in makefile
+    assert "RELEASE_VERSION ?=" in makefile
     assert "PYPI_PROJECT_NAME ?= mcp-broker" in makefile
     assert "PYPI_VERSION_URL ?= https://pypi.org/pypi/$(PYPI_PROJECT_NAME)/$(PACKAGE_VERSION)/json" in makefile
     assert "MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker" in makefile
     assert "MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)" in makefile
+    assert "release-version-check" in release_check_section
+    assert "publish-everywhere-check" in release_check_section
+    assert "directory-submission-check mcpb-smoke smithery-payload-check" in release_check_section
+    assert '$(call timed_make,"release-check: publish preflight",publish-everywhere-check)' in release_check_section
+    assert '$(call timed_make,"release-check: directory and bundle metadata",-j $(PUBLISH_CHECK_JOBS) directory-submission-check mcpb-smoke smithery-payload-check)' in release_check_section
+    assert '$(call timed_make,"release: preflight",release-check)' in release_section
+    assert '$(call timed_make,"release: publish",PUBLISH_EVERYWHERE_APPLY=1 PUBLISH_EVERYWHERE_SKIP_CHECKS=1 publish-everywhere)' in release_section
     assert "publish-version-check" in check_section
     release_gate_index = check_section.index("release-gate")
     publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")
@@ -393,6 +414,8 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert 'docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)"' in makefile
     assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
     assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)' in publish_section
+    assert "PUBLISH_EVERYWHERE_SKIP_CHECKS ?= 0" in makefile
+    assert "publish-everywhere: preflight checks skipped" in makefile
     assert pypi_index < fanout_index
     assert 'docker buildx build \\' in makefile
     assert '$(call timed_make,"publish child: docker-publish-check",docker-publish-check)' in makefile

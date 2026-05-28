@@ -65,14 +65,14 @@ distribution paths were introduced in `1.1.0`.
 Do not publish an NPM package until all of these pass:
 
 ```bash
-make publish-everywhere-check
+make release-check RELEASE_VERSION=<semver>
 make public-export-check PUBLIC_REPO=$PUBLIC_REPO
 ```
 
-Final publication happens through the one-shot CI workflow:
+Final publication happens through the one-shot CI release target:
 
 ```bash
-make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1
+make release RELEASE_APPLY=1
 ```
 
 After publication, verify through Make:

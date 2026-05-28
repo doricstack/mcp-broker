@@ -15,13 +15,17 @@ Required result:
 - Generated coverage output stays under `var/coverage`.
 - No repo-local command depends on private scripts outside this repository.
 
-Run the release gate before tagging:
+Choose the release version before the commit that will be pushed. Update all
+versioned metadata, commit those changes, then run the release transaction
+preflight before tagging:
 
 ```bash
-make release-gate
+make release-check RELEASE_VERSION=<semver>
 ```
 
 Required result:
+- The intended version is explicit and matches Python, NPM, MCP Registry, MCPB,
+  server-card, and changelog metadata.
 - Package metadata validates.
 - Release smoke passes.
 - Coverage, package checks, release smoke, and mutation run after the dependency
@@ -31,8 +35,10 @@ Required result:
 - Mutation score is 100 and no mutants are `survived`, `no_tests`, `skipped`,
   `suspicious`, `timeout`, `check_was_interrupted_by_user`, `segfault`, or
   `not_checked`.
-- The one-shot publication workflow runs `make publish-everywhere-check` before
-  publishing.
+- Directory submission, MCPB bundle, and Smithery payload metadata validate.
+- The one-shot publication workflow runs `make release RELEASE_APPLY=1`, which
+  reuses the preflight and then publishes every registry surface through
+  `publish-everywhere`.
 
 Run the Linux release parity gate before triggering PyPI:
 

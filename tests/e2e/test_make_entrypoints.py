@@ -80,7 +80,9 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "mutation-linux",
         "precommit",
         "quality-gate",
+        "release-check",
         "release-gate",
+        "release",
     ]:
         assert target in result.stdout
 
@@ -312,6 +314,13 @@ def test_make_parallel_gates_report_child_and_total_elapsed_time() -> None:
         "precommit child: journey",
         "mutation: total",
         "mutation-linux: total",
+        "release-check: total",
+        "release-check: version",
+        "release-check: publish preflight",
+        "release-check: directory and bundle metadata",
+        "release: total",
+        "release: preflight",
+        "release: publish",
         "release-gate: total",
         "release-gate: deps",
         "release-gate: parallel children",

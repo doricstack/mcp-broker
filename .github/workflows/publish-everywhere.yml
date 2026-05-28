@@ -61,4 +61,4 @@ jobs:
       - name: Publish everywhere
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: make publish-everywhere PUBLISH_EVERYWHERE_APPLY=1 RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+        run: make release RELEASE_APPLY=1 RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
