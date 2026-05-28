@@ -39,3 +39,9 @@ def test_linux_mutation_script_exports_container_mutants_for_debugging() -> None
     assert 'copy_mutants()' in script
     assert 'trap copy_mutants EXIT' in script
     assert 'cp -a /workspace/mutants/. /mutants-output/' in script
+
+
+def test_mutmut_copies_public_listing_metadata_into_mutant_workspaces() -> None:
+    setup_cfg = (ROOT / "setup.cfg").read_text(encoding="utf-8")
+
+    assert "glama.json" in setup_cfg

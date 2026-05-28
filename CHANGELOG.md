@@ -2,6 +2,16 @@
 
 All notable public changes will be recorded here.
 
+## 1.1.2 - 2026-05-27
+
+- Add source-backed broker facade tool descriptions and schemas for Glama,
+  Smithery, Claude Desktop MCPB, and other directory scanners.
+- Add `make release` as the CI release transaction so release publication runs
+  one version-aware target before publishing all registry surfaces.
+- Add `make release-check RELEASE_VERSION=<semver>` as the local pre-push
+  release gate for version alignment, package checks, directory metadata, MCPB,
+  and Smithery payload validation.
+
 ## 1.1.1 - 2026-05-27
 
 - Fix MCPB and Claude Desktop stdio startup when the broker daemon is already

@@ -75,6 +75,8 @@ PYTEST_FANOUT_WORKERS ?= $(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.writ
 PYTEST_PRECOMMIT_WORKERS ?= $(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.write(str(max(1, int("$(LOCAL_CPU_BUDGET)") // int("$(PRECOMMIT_JOBS)"))))' 2>/dev/null || printf 1)
 PYTEST_RELEASE_WORKERS ?= $(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.write(str(max(1, int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)"))))' 2>/dev/null || printf 1)
 PYTEST_XDIST_DIST ?= loadfile
+PYTEST_MARKER_EXPRESSION ?=
+PYTEST_MARKER_ARGS ?= $(if $(strip $(PYTEST_MARKER_EXPRESSION)),-m "$(PYTEST_MARKER_EXPRESSION)",)
 PYTEST_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_WORKERS)),,-n $(PYTEST_WORKERS) --dist $(PYTEST_XDIST_DIST))
 PYTEST_TARGETED_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_TARGETED_WORKERS)),,-n $(PYTEST_TARGETED_WORKERS) --dist $(PYTEST_XDIST_DIST))
 TEST_JOBS ?= 4
@@ -109,7 +111,7 @@ NPM               ?= npm
 NPX               ?= npx
 NPM_DIR           ?= $(ROOT)/npm
 NPM_PACKAGE_NAME  ?= @navinagrawal/mcp-broker
-PACKAGE_INSTALL_VERSION ?= 1.1.1
+PACKAGE_INSTALL_VERSION ?= $(PACKAGE_VERSION)
 DOCKER_IMAGE      ?= mcp-broker:local
 DOCKER_PLATFORM   ?=
 DOCKER_PLATFORMS  ?= linux/amd64,linux/arm64
@@ -149,6 +151,7 @@ PUBLISH_EVERYWHERE_APPLY ?= 0
 PUBLISH_EVERYWHERE_SKIP_CHECKS ?= 0
 RELEASE_APPLY ?= 0
 RELEASE_VERSION ?=
+RELEASE_BUMP ?=
 EXPECTED_PUBLISH_VERSION ?=
 MCPB_MANIFEST     ?= $(ROOT)/mcpb/manifest.json
 MCPB_OUTPUT       ?= $(PACKAGE_DIST_DIR)/mcp-broker-$(PACKAGE_VERSION).mcpb
@@ -158,10 +161,10 @@ MCPB_SMOKE_UNPACK_DIR ?= $(MCPB_SMOKE_DIR)/unpacked
 MCPB_STDIO_COMMAND ?= $(VENV_DIR)/bin/mcp-broker
 SMITHERY_QUALIFIED_NAME ?= navinagrawal/mcp-broker
 SMITHERY_PAYLOAD_OUTPUT ?= $(TEST_LOG_DIR)/smithery-payload.json
-PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_XDIST_ARGS)
-PYTEST_TARGETED_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_TARGETED_XDIST_ARGS)
-PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT) $(PYTEST_XDIST_ARGS)
-PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT) $(PYTEST_XDIST_ARGS)
+PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
+PYTEST_TARGETED_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_TARGETED_XDIST_ARGS)
+PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
+PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
 BROKER_WAIT_SECONDS ?= 10
 MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)
 MUTATION_ARGS    ?=

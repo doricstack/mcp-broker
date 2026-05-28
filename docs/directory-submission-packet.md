@@ -121,7 +121,7 @@ custom connector URL path:
 Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension...
 ```
 
-Install `dist/mcp-broker-1.1.1.mcpb`, confirm `mcp-broker` appears, confirm
+Install `dist/mcp-broker-$(PACKAGE_VERSION).mcpb`, confirm `mcp-broker` appears, confirm
 `broker_search_tools`, `broker_describe_tool`, `broker_call_tool`, and
 `broker_status`, run one safe status or search call, reinstall once, then
 uninstall.

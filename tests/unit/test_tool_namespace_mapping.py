@@ -206,3 +206,25 @@ def test_tool_namespace_advertise_all_skips_enabled_false_upstreams() -> None:
             "flag-disabled": [{"name": "hidden"}],
         }
     ) == [{"name": "read-store.search"}]
+
+
+def test_compact_broker_tools_rejects_unknown_name_style() -> None:
+    from mcp_broker.tool_namespace import compact_broker_tool_definitions
+
+    with pytest.raises(ValueError, match="broker_tool_name_style must be one of: dotted, snake"):
+        compact_broker_tool_definitions(broker_tool_name_style="camel")
+
+
+def test_compact_broker_tools_default_to_dotted_canonical_names() -> None:
+    from mcp_broker.tool_namespace import compact_broker_tool_definitions
+
+    definitions = compact_broker_tool_definitions()
+
+    assert [definition["name"] for definition in definitions] == [
+        "broker.search_tools",
+        "broker.describe_tool",
+        "broker.call_tool",
+        "broker.status",
+    ]
+    assert definitions[0]["inputSchema"]["properties"]["query"]["minLength"] == 1
+    assert definitions[2]["inputSchema"]["required"] == ["name", "arguments"]

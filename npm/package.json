@@ -1,6 +1,6 @@
 {
   "name": "@navinagrawal/mcp-broker",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Local MCP broker for sharing upstream MCP servers across MCP clients",
   "author": "Navin B Agrawal",
   "license": "MIT",

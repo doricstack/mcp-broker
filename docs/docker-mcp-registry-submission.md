@@ -11,8 +11,8 @@ required review, and not mergeable by this maintainer token because
 ## Package
 
 - Public repository: `https://github.com/NavinAgrawal/mcp-broker`
-- Primary image: `docker.io/navinagrawal/mcp-broker:1.1.1`
-- Mirror image: `ghcr.io/navinagrawal/mcp-broker:1.1.1`
+- Primary image: `docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)`
+- Mirror image: `ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)`
 - Catalog metadata: `docker/mcp-catalog/mcp-broker.yaml`
 
 ## Runtime Boundary
@@ -39,7 +39,7 @@ Run after image publication:
 
 ```bash
 make docker-publish-check
-make docker-release-smoke DOCKER_RELEASE_IMAGE=docker.io/navinagrawal/mcp-broker:1.1.1
+make docker-release-smoke DOCKER_RELEASE_IMAGE=docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)
 ```
 
 ## Submission Path

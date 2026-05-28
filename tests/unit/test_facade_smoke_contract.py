@@ -1521,3 +1521,48 @@ def test_broker_status_keeps_non_auth_errors_unknown() -> None:
     payload = json.loads(result["content"][0]["text"])
 
     assert payload["upstreams"]["display"]["auth_state"] == "unknown"
+
+
+def test_broker_status_reports_degraded_when_upstream_state_failed_without_error() -> None:
+    from mcp_broker.catalog import BrokerCatalogFacade
+    from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
+    from mcp_broker.profiles import ToolExposureProfile
+
+    result = BrokerCatalogFacade(
+        broker_config=BrokerConfig(
+            runtime=RuntimeConfig.from_mapping({"root": "/tmp/mcp-broker-test"}),
+            broker=BrokerSettings(),
+            upstreams={
+                "worker": UpstreamConfig(
+                    name="worker",
+                    command="worker",
+                    profiles=("llm-profile",),
+                )
+            },
+        ),
+        profile=ToolExposureProfile(name="llm-profile", max_tools=80, compact_tools_enabled=True),
+        list_upstream=lambda name, timeout: [],
+        call_upstream=lambda name, tool, args, timeout: {"content": []},
+        call_locks={},
+        status_provider=lambda _visible_upstreams: {
+            "worker": {"state": "failed", "last_error": None},
+        },
+    ).call_tool("broker.status", {})
+
+    payload = json.loads(result["content"][0]["text"])
+
+    assert payload["status"] == "degraded"
+    assert payload["upstreams"]["worker"]["state"] == "failed"
+
+
+def test_dotted_profile_keeps_broker_tool_names_canonical() -> None:
+    from mcp_broker.profiles import ToolExposureProfile
+
+    profile = ToolExposureProfile(
+        name="llm-profile",
+        max_tools=80,
+        compact_tools_enabled=True,
+        broker_tool_name_style="dotted",
+    )
+
+    assert profile.exposed_broker_tool_name("broker.status") == "broker.status"

@@ -13,8 +13,29 @@ from tests.support.makefiles import read_combined_makefiles
 pytestmark = pytest.mark.journey
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLISHED_STABLE_VERSION = "1.1.1"
-SOURCE_RELEASE_VERSION = "1.1.1"
+SEMVER_PATTERN = re.compile(r"\b(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\b")
+HISTORICAL_RELEASE_FILES = {
+    "CHANGELOG.md",
+    "docs/p16-maintainer-inputs.md",
+}
+STATIC_RELEASE_METADATA_FILES = {
+    ".well-known/mcp/server-card.json",
+    "docker/mcp-catalog/mcp-broker.yaml",
+    "mcpb/manifest.json",
+    "npm/package.json",
+    "registry/server.json",
+    "registry/server.template.json",
+    "src/mcp_broker/__init__.py",
+}
+
+
+def _package_version() -> str:
+    package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
+    assert package_version_match is not None
+    return package_version_match.group(1)
 
 
 def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
@@ -82,7 +103,6 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     assert pyproject["project"]["dynamic"] == ["version"]
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
-    assert package_version == SOURCE_RELEASE_VERSION
     assert package_version == latest_changelog_match.group(1)
     repository_match = re.fullmatch(
         r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
@@ -134,18 +154,65 @@ def test_stable_release_public_status_is_aligned_to_source_release() -> None:
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
     normalized_distribution = " ".join(distribution.split())
 
-    assert f"Stable release `{PUBLISHED_STABLE_VERSION}` is published" in readme
-    assert f"Package metadata is release-aligned for `{SOURCE_RELEASE_VERSION}`." in distribution
-    assert f"PyPI: `mcp-broker {PUBLISHED_STABLE_VERSION}` is published." in distribution
+    assert "Stable release metadata is validated by `make release-version-check`" in readme
+    assert "Package metadata is release-aligned by `make release-version-sync`." in distribution
+    assert "PyPI: `mcp-broker $(PACKAGE_VERSION)` is published by the release transaction." in distribution
     assert (
-        f"MCP Registry: `io.github.NavinAgrawal/mcp-broker {PUBLISHED_STABLE_VERSION}` "
-        "is published and marked latest."
+        "MCP Registry: `io.github.NavinAgrawal/mcp-broker $(PACKAGE_VERSION)` "
+        "is published and marked latest by the release transaction."
     ) in normalized_distribution
     assert (
-        f"Homebrew: `mcp-broker {PUBLISHED_STABLE_VERSION}` is published through the public tap."
+        "Homebrew: `mcp-broker $(PACKAGE_VERSION)` is published through the public tap."
         in distribution
     )
-    assert f"mcp-broker {PUBLISHED_STABLE_VERSION}" in github_publication
+    assert "mcp-broker $(PACKAGE_VERSION)" in github_publication
+
+
+def test_current_release_versions_are_not_copied_across_docs_or_tests() -> None:
+    current_version = _package_version()
+    offenders: list[str] = []
+    scanned_suffixes = {".md", ".py", ".sh", ".yml", ".yaml", ".json", ".toml", ".js"}
+    scanned_roots = [
+        ROOT / ".github",
+        ROOT / ".well-known",
+        ROOT / "docker",
+        ROOT / "docs",
+        ROOT / "mcpb",
+        ROOT / "mk",
+        ROOT / "npm",
+        ROOT / "registry",
+        ROOT / "scripts",
+        ROOT / "src",
+        ROOT / "tests",
+    ]
+
+    for root in scanned_roots:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix not in scanned_suffixes:
+                continue
+            relative = str(path.relative_to(ROOT))
+            if (
+                relative in HISTORICAL_RELEASE_FILES
+                or relative in STATIC_RELEASE_METADATA_FILES
+            ):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if current_version in text:
+                offenders.append(relative)
+
+    assert offenders == []
+
+
+def test_release_metadata_sync_target_is_the_only_release_bump_path() -> None:
+    makefile = read_combined_makefiles(ROOT)
+    script = (ROOT / "scripts" / "sync_release_metadata.py").read_text(encoding="utf-8")
+
+    assert "release-version-sync:" in makefile
+    assert "RELEASE_BUMP ?=" in makefile
+    assert "scripts/sync_release_metadata.py" in makefile
+    assert "--bump \"$(RELEASE_BUMP)\"" in makefile
+    assert "import logging" in script
+    assert "print(" not in script
 
 
 def test_public_release_workflows_cover_ci_package_and_registry_publish() -> None:
@@ -242,7 +309,7 @@ def test_npm_and_docker_distribution_decisions_are_recorded() -> None:
     assert "does not reimplement the Python broker in Node" in npm_doc
     assert "NPM trusted publishing is the preferred auth path" in npm_doc
     assert "NPM is an optional bridge package" in distribution
-    assert "Current source release: `1.1.1`" in distribution
+    assert "Current source release: `$(PACKAGE_VERSION)`" in distribution
     assert "docker.io/navinagrawal/mcp-broker" in distribution
     assert "ghcr.io/navinagrawal/mcp-broker" in distribution
     assert "Docker Hub is the primary image for Docker MCP Catalog work" in distribution
@@ -433,7 +500,7 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
         "name: mcp-broker",
         "title: mcp-broker",
         "type: server",
-        "image: docker.io/navinagrawal/mcp-broker:1.1.1",
+        f"image: docker.io/navinagrawal/mcp-broker:{_package_version()}",
         "description: Local MCP broker",
     ]:
         assert term in catalog_text
@@ -465,8 +532,8 @@ def test_docker_mcp_registry_submission_packet_is_staged() -> None:
     catalog = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
 
     for term in [
-        "docker.io/navinagrawal/mcp-broker:1.1.1",
-        "ghcr.io/navinagrawal/mcp-broker:1.1.1",
+        "docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)",
+        "ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)",
         "make docker-smoke",
         "make docker-mcp-catalog-smoke",
         "No hidden host client config writes",
@@ -520,11 +587,11 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
     plan = plan_path.read_text(encoding="utf-8") if plan_path.exists() else ""
 
     if todo:
-        assert "- [x] Validate `pipx` and `uvx` against the published `1.1.1` PyPI package." in todo
+        assert "- [x] Validate `pipx` and `uvx` against the published PyPI package." in todo
     if maintainer_inputs:
         assert "pipx validation date: 2026-05-27" in maintainer_inputs
         assert "uv validation date: 2026-05-27" in maintainer_inputs
-        assert "Status: complete for `1.1.1`." in maintainer_inputs
+        assert re.search(r"Status: complete for `[0-9]+\.[0-9]+\.[0-9]+`\.", maintainer_inputs)
         assert "publication pending" not in maintainer_inputs
         assert "NPM_TOKEN" not in maintainer_inputs
         assert "NODE_AUTH_TOKEN" not in maintainer_inputs

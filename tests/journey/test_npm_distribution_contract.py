@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -13,6 +14,15 @@ pytestmark = pytest.mark.journey
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _package_version() -> str:
+    package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
+    assert package_version_match is not None
+    return package_version_match.group(1)
+
+
 def test_npm_package_is_scoped_and_delegates_to_python_runtime() -> None:
     package = json.loads((ROOT / "npm" / "package.json").read_text(encoding="utf-8"))
     wrapper = (ROOT / "npm" / "bin" / "mcp-broker.js").read_text(encoding="utf-8")
@@ -20,7 +30,7 @@ def test_npm_package_is_scoped_and_delegates_to_python_runtime() -> None:
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
 
     assert package["name"] == "@navinagrawal/mcp-broker"
-    assert package["version"] == "1.1.1"
+    assert package["version"] == _package_version()
     assert package["author"] == "Navin B Agrawal"
     assert package["license"] == "MIT"
     assert package["bin"] == {"mcp-broker": "bin/mcp-broker.js"}

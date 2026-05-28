@@ -1,5 +1,5 @@
 name: mcp-broker
 title: mcp-broker
 type: server
-image: docker.io/navinagrawal/mcp-broker:1.1.1
+image: docker.io/navinagrawal/mcp-broker:1.1.2
 description: Local MCP broker that exposes configured upstream MCP servers through one compact client entry.

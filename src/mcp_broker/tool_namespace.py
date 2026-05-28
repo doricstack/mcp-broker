@@ -139,7 +139,12 @@ _COMPACT_BROKER_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 
-def compact_broker_tool_definitions(*, broker_tool_name_style: str = "dotted") -> list[dict[str, Any]]:
+def compact_broker_tool_definitions(
+    *,
+    broker_tool_name_style: str | None = None,
+) -> list[dict[str, Any]]:
+    if broker_tool_name_style is None:
+        broker_tool_name_style = "dotted"
     if broker_tool_name_style not in BROKER_TOOL_NAME_STYLES:
         allowed = ", ".join(sorted(BROKER_TOOL_NAME_STYLES))
         raise ValueError(f"broker_tool_name_style must be one of: {allowed}")

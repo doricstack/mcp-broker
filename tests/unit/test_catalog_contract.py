@@ -492,6 +492,34 @@ def test_status_reports_session_count_key_and_default_configured_states(tmp_path
     assert payload["upstreams"]["mode-disabled-store"]["state"] == "disabled"
 
 
+@pytest.mark.parametrize("state", ["exited", "failed", "backoff"])
+def test_status_degrades_for_stopped_runtime_states(tmp_path: Path, state: str) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"default-llm": ToolExposureProfile(name="default-llm", max_tools=20)},
+        upstreams={
+            "read-store": UpstreamConfig(
+                name="read-store",
+                command="read-store",
+                profiles=("default-llm",),
+            )
+        },
+    )
+
+    result = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["default-llm"],
+        list_upstream=lambda _name, _timeout: [],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+        status_provider=lambda _visible: {"read-store": {"state": state}},
+    ).call_tool("broker.status", {})
+
+    assert result["structuredContent"]["status"] == "degraded"
+    assert result["structuredContent"]["upstreams"]["read-store"]["last_error"] is None
+
+
 def test_status_filters_enabled_upstreams_hidden_by_profile_or_mutating_policy(tmp_path: Path) -> None:
     config = _catalog_config(tmp_path)
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PUBLIC_SURFACE_VERSION="${PUBLIC_SURFACE_VERSION:-1.0.0}"
+PUBLIC_SURFACE_VERSION="${PUBLIC_SURFACE_VERSION:-}"
 PUBLIC_SURFACE_REQUIRE_NPM="${PUBLIC_SURFACE_REQUIRE_NPM:-0}"
 PUBLIC_SURFACE_REQUIRE_DOCKER="${PUBLIC_SURFACE_REQUIRE_DOCKER:-0}"
 NPM_PACKAGE_NAME="${NPM_PACKAGE_NAME:-@navinagrawal/mcp-broker}"
@@ -17,7 +17,7 @@ Downloads public mcp-broker artifacts into a temporary directory and verifies
 the install surface a user would receive.
 
 Environment:
-  PUBLIC_SURFACE_VERSION          Version to verify, default: 1.0.0
+  PUBLIC_SURFACE_VERSION          Version to verify
   PUBLIC_SURFACE_REQUIRE_NPM      Set to 1 when NPM must exist
   PUBLIC_SURFACE_REQUIRE_DOCKER   Set to 1 when Docker image must exist
   PUBLIC_SURFACE_WORK_DIR         Optional existing work directory
@@ -44,6 +44,11 @@ command -v curl >/dev/null 2>&1 || { printf "curl is required\n" >&2; exit 2; }
 command -v tar >/dev/null 2>&1 || { printf "tar is required\n" >&2; exit 2; }
 command -v pipx >/dev/null 2>&1 || { printf "pipx is required\n" >&2; exit 2; }
 command -v uvx >/dev/null 2>&1 || { printf "uvx is required\n" >&2; exit 2; }
+
+if [[ -z "$PUBLIC_SURFACE_VERSION" ]]; then
+  printf "PUBLIC_SURFACE_VERSION is required\n" >&2
+  exit 2
+fi
 
 if [[ -z "$WORK_DIR" ]]; then
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mcp-broker-public-surface.XXXXXX")"

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import re
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
@@ -21,6 +23,14 @@ def _python_version() -> str:
     if not match:
         raise RuntimeError("missing src/mcp_broker/__init__.py __version__")
     return match.group(1)
+
+
+def _docker_catalog_version() -> str:
+    catalog = yaml.safe_load(
+        (ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml").read_text(encoding="utf-8")
+    )
+    image = catalog["image"]
+    return image.rsplit(":", maxsplit=1)[1]
 
 
 def main() -> int:
@@ -42,6 +52,7 @@ def main() -> int:
         "server_card_package": _load_json(".well-known/mcp/server-card.json")["packages"][0][
             "version"
         ],
+        "docker_mcp_catalog_image": _docker_catalog_version(),
     }
 
     if expected:

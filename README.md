@@ -133,7 +133,7 @@ Public release status:
 
 - The repo is designed to stay public-safe.
 - Private upstream inventory, account paths, OAuth state, secrets, sockets, logs, and generated client configs stay outside git.
-- Stable release `1.1.1` is published to PyPI, Homebrew, NPM, Docker Hub, GHCR, and the MCP Registry; publication proof is tracked in `docs/distribution.md`.
+- Stable release metadata is validated by `make release-version-check`; publication proof is tracked in `docs/distribution.md`.
 - Docker image support is available for container-friendly configs. Docker MCP Catalog submission still requires Docker review.
 - MCPB metadata is present at `mcpb/manifest.json` for local directory review.
 

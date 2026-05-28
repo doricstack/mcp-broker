@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -181,6 +181,14 @@ directory-submission-check: mcpb-validate ## Validate directory submission packe
 		$(PYTHON_BIN) "$(ROOT)/scripts/check_directory_submission.py"
 	$(call log_success,"Directory submission check passed")
 
+release-version-sync: ## Synchronize release metadata from RELEASE_VERSION or RELEASE_BUMP
+	@test -n "$(RELEASE_VERSION)$(RELEASE_BUMP)" || { printf "\033[1;31m[ERROR]\033[0m Set RELEASE_VERSION=<semver> or RELEASE_BUMP=patch|minor|major\n" >&2; exit 2; }
+	@$(PYTHON_BIN) "$(ROOT)/scripts/sync_release_metadata.py" \
+		$(if $(RELEASE_VERSION),--version "$(RELEASE_VERSION)",) \
+		$(if $(RELEASE_BUMP),--bump "$(RELEASE_BUMP)",) \
+		--write
+	$(call log_success,"Release metadata synchronized")
+
 release-version-check: ## Verify the intended release version is explicit and aligned
 	@expected="$(RELEASE_VERSION)"; \
 	if [[ -z "$$expected" && "$${GITHUB_REF_NAME:-}" == v* ]]; then expected="$${GITHUB_REF_NAME#v}"; fi; \
@@ -188,6 +196,7 @@ release-version-check: ## Verify the intended release version is explicit and al
 		printf "\033[1;31m[ERROR]\033[0m Set RELEASE_VERSION=<semver> before running release checks\n" >&2; \
 		exit 2; \
 	fi; \
+	$(PYTHON_BIN) "$(ROOT)/scripts/sync_release_metadata.py" --version "$$expected" --check; \
 	EXPECTED_PUBLISH_VERSION="$$expected" GITHUB_REF_NAME="$${GITHUB_REF_NAME:-}" $(PYTHON) "$(ROOT)/scripts/check_release_versions.py"
 	$(call log_success,"Release version is explicit and aligned")
 

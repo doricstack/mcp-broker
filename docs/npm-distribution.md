@@ -25,7 +25,7 @@ npx @navinagrawal/mcp-broker --help
 The NPM package is a thin Node wrapper. It delegates to the Python package:
 
 ```text
-mcp-broker==1.1.1
+mcp-broker==$(PACKAGE_VERSION)
 ```
 
 The wrapper does not reimplement the Python broker in Node. The Python package
@@ -51,16 +51,15 @@ Required package settings for trusted publishing:
 - Workflow file: `.github/workflows/publish-everywhere.yml`
 - Permission: publish
 
-As of 2026-05-27, `@navinagrawal/mcp-broker@1.1.1` is published and the package
-has a GitHub Actions trusted publisher for `publish-everywhere.yml`. The release
-workflow uses OIDC for future NPM publications and does not require a long-lived
-NPM registry token.
+The package has a GitHub Actions trusted publisher for
+`publish-everywhere.yml`. The release workflow uses OIDC for NPM publications
+and does not require a long-lived NPM registry token.
 
 ## Release Policy
 
-The current source release is `1.1.1`. It is a patch release for the Claude
-Desktop MCPB stdio startup path and Smithery MCPB adapter. The NPM and Docker
-distribution paths were introduced in `1.1.0`.
+The current source release comes from `$(PACKAGE_VERSION)`. Set it with
+`make release-version-sync RELEASE_VERSION=<semver>` or
+`make release-version-sync RELEASE_BUMP=patch|minor|major` before tagging.
 
 Do not publish an NPM package until all of these pass:
 

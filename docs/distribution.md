@@ -4,19 +4,20 @@ This page tracks public distribution paths for `mcp-broker`.
 
 ## Python Package
 
-Package metadata is release-aligned for `1.1.1`. The version is sourced from
-`src/mcp_broker/__init__.py`; `pyproject.toml` reads that value through
-Setuptools dynamic metadata.
+Package metadata is release-aligned by `make release-version-sync`. The release
+version is supplied through `RELEASE_VERSION=<semver>` or
+`RELEASE_BUMP=patch|minor|major`; package metadata, registry metadata, MCPB
+metadata, and Docker catalog metadata are synchronized from that input.
 
 Current public package status:
 
-- PyPI: `mcp-broker 1.1.1` is published.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker 1.1.1` is published and marked latest.
-- Homebrew: `mcp-broker 1.1.1` is published through the public tap.
-- NPM: `@navinagrawal/mcp-broker 1.1.1` is published.
-- Docker: `docker.io/navinagrawal/mcp-broker:1.1.1` and
-  `ghcr.io/navinagrawal/mcp-broker:1.1.1` are published.
-- Current source release: `1.1.1`.
+- PyPI: `mcp-broker $(PACKAGE_VERSION)` is published by the release transaction.
+- MCP Registry: `io.github.NavinAgrawal/mcp-broker $(PACKAGE_VERSION)` is published and marked latest by the release transaction.
+- Homebrew: `mcp-broker $(PACKAGE_VERSION)` is published through the public tap.
+- NPM: `@navinagrawal/mcp-broker $(PACKAGE_VERSION)` is published by the release transaction.
+- Docker: `docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)` and
+  `ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)` are published by the release transaction.
+- Current source release: `$(PACKAGE_VERSION)`.
 
 The package command surface is:
 
@@ -100,9 +101,10 @@ PyPI package version, NPM package version, MCP Registry metadata, and Homebrew
 formula state before submitting, so a rerun can recover after one registry
 fails without treating already-published surfaces as fatal.
 
-Before tagging a release, set the version everywhere and run:
+Before tagging a release, synchronize the version and run the release check:
 
 ```bash
+make release-version-sync RELEASE_BUMP=patch
 make release-check RELEASE_VERSION=<semver>
 ```
 
@@ -137,8 +139,8 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-The public tap points to the PyPI `1.1.1` source artifact. Future releases
-update the formula through `make publish-everywhere` with the
+The public tap points to the PyPI source artifact for `$(PACKAGE_VERSION)`.
+Future releases update the formula through `make publish-everywhere` with the
 `HOMEBREW_TAP_TOKEN` GitHub Actions secret.
 
 ## NPM
@@ -196,8 +198,8 @@ mcp-publisher publish
 PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
-`1.1.1` is published after PyPI publication and the registry marks `1.1.1` as
-the latest entry.
+The MCP Registry publication runs after PyPI publication and marks
+`$(PACKAGE_VERSION)` as the latest entry.
 
 Reference docs:
 
@@ -223,7 +225,7 @@ Build a release image with OCI labels, SBOM, and provenance:
 
 ```bash
 make docker-buildx \
-  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:1.1.1 \
+  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION) \
   DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
   DOCKER_PUSH=1
 ```
@@ -240,11 +242,11 @@ GHCR is a mirror:
 ghcr.io/navinagrawal/mcp-broker
 ```
 
-Recommended release tags for `1.1.1`:
+Recommended release tags for `$(PACKAGE_VERSION)`:
 
 ```text
-1.1.1
-1.1
+$(PACKAGE_VERSION)
+$(PACKAGE_MINOR_VERSION)
 ```
 
 Do not publish `latest` until the maintainer confirms the tag should track the

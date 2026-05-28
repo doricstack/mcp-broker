@@ -200,32 +200,34 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert '"$(RELEASE_GATE_LOG_DIR)/$(RELEASE_MUTATION_TARGET).log"' in makefile
     assert 'tail -n 80 "$$log" >&2' in makefile
     assert "paths_to_mutate=src/mcp_broker" in setup_cfg
-    assert (
-        "also_copy=\n"
-        "    config\n"
-        "    docs\n"
-        "    docker\n"
-        "    mk\n"
-        "    mcpb\n"
-        "    npm\n"
-        "    public-export\n"
-        "    registry\n"
-        "    scripts\n"
-        "    .github\n"
-        "    .well-known\n"
-        "    .dockerignore\n"
-        "    CHANGELOG.md\n"
-        "    CONTRIBUTING.md\n"
-        "    LICENSE\n"
-        "    ROADMAP.md\n"
-        "    SECURITY.md\n"
-        "    Dockerfile\n"
-        "    Makefile\n"
-        "    pyproject.toml\n"
-        "    pytest.ini\n"
-        "    README.md\n"
-        "    requirements.txt"
-    ) in setup_cfg
+    also_copy = setup_cfg.split("also_copy=\n", maxsplit=1)[1].split("tests_dir=", maxsplit=1)[0]
+    copied_paths = {line.strip() for line in also_copy.splitlines() if line.strip()}
+    assert {
+        "config",
+        "docs",
+        "docker",
+        "mk",
+        "mcpb",
+        "npm",
+        "public-export",
+        "registry",
+        "scripts",
+        ".github",
+        ".well-known",
+        ".dockerignore",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "glama.json",
+        "LICENSE",
+        "ROADMAP.md",
+        "SECURITY.md",
+        "Dockerfile",
+        "Makefile",
+        "pyproject.toml",
+        "pytest.ini",
+        "README.md",
+        "requirements.txt",
+    } <= copied_paths
     assert "    AGENTS.md" not in setup_cfg
     assert "    TODO.md" not in setup_cfg
     assert "tests_dir=\n    tests/unit\n    tests/journey" in setup_cfg
@@ -243,6 +245,10 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     assert "PYTEST_FANOUT_WORKERS ?=" in makefile
     assert "PYTEST_PRECOMMIT_WORKERS ?=" in makefile
     assert "PYTEST_RELEASE_WORKERS ?=" in makefile
+    assert "PYTEST_MARKER_EXPRESSION ?=" in makefile
+    assert 'PYTEST_MARKER_ARGS ?= $(if $(strip $(PYTEST_MARKER_EXPRESSION)),-m "$(PYTEST_MARKER_EXPRESSION)",)' in makefile
+    assert "$(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)" in makefile
+    assert "$(PYTEST_MARKER_ARGS) $(PYTEST_TARGETED_XDIST_ARGS)" in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(TEST_JOBS)")' in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(PRECOMMIT_JOBS)")' in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in makefile
@@ -361,6 +367,24 @@ def test_hidden_maintainer_violations_target_is_public_safe() -> None:
     assert '--violations-json "$(VIOLATIONS_JSON)"' in makefile
     assert '--output-json "$(GRADE_REPORT_JSON)"' in makefile
     assert "~/.llm-shared" not in makefile
+
+
+@pytest.mark.private_contract
+def test_public_export_verify_targets_fail_fast() -> None:
+    makefile = (ROOT / "local.mk").read_text(encoding="utf-8")
+
+    assert "PUBLIC_EXPORT_PYTEST_MARKER_EXPRESSION ?= not private_contract" in makefile
+
+    public_export_section = makefile.split(
+        "public-export-check: public-export",
+        maxsplit=1,
+    )[1].split("public-export-full-check:", maxsplit=1)[0]
+
+    assert (
+        '$(MAKE) --no-print-directory -C "$(PUBLIC_REPO)" "$$target" '
+        'PYTEST_MARKER_EXPRESSION="$(PUBLIC_EXPORT_PYTEST_MARKER_EXPRESSION)" '
+        "|| exit $$?"
+    ) in public_export_section
 
 
 def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> None:
