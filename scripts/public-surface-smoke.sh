@@ -94,12 +94,17 @@ XDG_CONFIG_HOME="$WORK_DIR/github-home/.config" \
 printf "public_surface_github_release=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 
 if command -v brew >/dev/null 2>&1; then
+  brew update --force --quiet >/dev/null
   HOMEBREW_CACHE="$WORK_DIR/homebrew-cache" brew fetch --formula NavinAgrawal/tap/mcp-broker >/dev/null
   brew info --formula NavinAgrawal/tap/mcp-broker | grep -q "$PUBLIC_SURFACE_VERSION"
-  if ! command -v mcp-broker >/dev/null 2>&1; then
+  if brew list --formula mcp-broker >/dev/null 2>&1; then
+    brew upgrade NavinAgrawal/tap/mcp-broker >/dev/null || \
+      brew list --formula --versions mcp-broker | grep -q " $PUBLIC_SURFACE_VERSION"
+  else
     brew install NavinAgrawal/tap/mcp-broker >/dev/null
   fi
-  mcp-broker --help >/dev/null
+  brew list --formula --versions mcp-broker | grep -q " $PUBLIC_SURFACE_VERSION"
+  "$(brew --prefix NavinAgrawal/tap/mcp-broker)/bin/mcp-broker" --help >/dev/null
   brew test NavinAgrawal/tap/mcp-broker >/dev/null
   printf "public_surface_homebrew=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 else
