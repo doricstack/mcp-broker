@@ -135,13 +135,15 @@ Use the same packet for:
 - `MCPCentral`
 - Active awesome-MCP-server lists that accept pull requests
 
-Current submission requirements checked on 2026-05-27:
+Current submission requirements checked on 2026-05-28:
 
 - mcpservers.org: approved at
   `https://mcpservers.org/servers/navinagrawal/mcp-broker`.
-- mcp.so: submitted on 2026-05-27. It requires Sign In before accepting
-  `https://mcp.so/submit`; public listing URL is pending directory review. Use
-  this server config, not the page's generic GitHub Docker placeholder:
+- mcp.so: live at `https://mcp.so/server/mcp-broker/NavinAgrawal`.
+  Verified on 2026-05-28 with HTTP 200 and page content containing
+  `mcp-broker`, `NavinAgrawal`, and the public GitHub repository. Use this
+  server config for any future refresh, not the page's generic GitHub Docker
+  placeholder:
 
 ```json
 {

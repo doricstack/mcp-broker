@@ -4,9 +4,9 @@ Status: PR submitted and pending external Docker review.
 
 PR: `https://github.com/docker/mcp-registry/pull/3819`
 
-Current PR state checked on 2026-05-27: open, not draft, mergeable, blocked by
-required review, and not mergeable by this maintainer token because
-`docker/mcp-registry` grants only read permission.
+Current PR state checked on 2026-05-28: open, not draft, `REVIEW_REQUIRED`,
+`mergeStateStatus=BLOCKED`, no review comments, and not mergeable by this
+maintainer token because `docker/mcp-registry` grants only read permission.
 
 ## Package
 
