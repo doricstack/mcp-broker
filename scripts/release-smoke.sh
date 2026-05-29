@@ -51,6 +51,7 @@ CLONE_DIR="$WORK_DIR/source"
 RUNTIME_ROOT="$WORK_DIR/runtime"
 HOME_DIR="$WORK_DIR/home"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+SOURCE_LIST_PATH="$WORK_DIR/source-files.txt"
 
 mkdir -p "$CLONE_DIR" "$RUNTIME_ROOT" "$HOME_DIR"
 XDG_CONFIG_HOME_DIR="$HOME_DIR/.config"
@@ -63,17 +64,14 @@ if [[ -f "$ROOT/scripts/public-export.py" && -f "$ROOT/public-export/allowlist.t
     --allowlist "$ROOT/public-export/allowlist.txt" \
     --denylist "$ROOT/public-export/denylist.txt"
 else
-  tar \
-    --exclude .git \
-    --exclude .pytest_cache \
-    --exclude .mutmut-cache \
-    --exclude build \
-    --exclude dist \
-    --exclude htmlcov \
-    --exclude mutants \
-    --exclude var \
-    --exclude venv-mcp-broker \
-    -C "$ROOT" -cf - . | tar -C "$CLONE_DIR" -xf -
+  (
+    cd "$ROOT"
+    git ls-files -co --exclude-standard -z >"$SOURCE_LIST_PATH"
+    COPYFILE_DISABLE=1 tar \
+      --null \
+      -T "$SOURCE_LIST_PATH" \
+      -cf -
+  ) | tar -C "$CLONE_DIR" -xf -
 fi
 
 (cd "$CLONE_DIR" && HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_CONFIG_HOME_DIR" make config-init RUNTIME_ROOT="$RUNTIME_ROOT")

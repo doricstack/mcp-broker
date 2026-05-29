@@ -673,8 +673,10 @@ def test_release_smoke_script_uses_tracked_public_files_only() -> None:
     assert "scripts/public-export.py" in text
     assert "--allowlist" in text
     assert "--denylist" in text
-    assert "--exclude venv-mcp-broker" in text
-    assert "--exclude var" in text
+    assert "git ls-files -co --exclude-standard -z" in text
+    assert '--null \\' in text
+    assert '-T "$SOURCE_LIST_PATH" \\' in text
+    assert '-C "$ROOT" -cf - .' not in text
     assert "make config-init" in text
     assert "make config-validate" in text
     assert "make broker-smoke" in text

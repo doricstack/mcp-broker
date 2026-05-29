@@ -350,6 +350,15 @@ def test_make_parallel_gates_report_child_and_total_elapsed_time() -> None:
     assert '$(call timed_make,"publish child: docker-publish-check",' in makefile
 
 
+def test_release_smoke_copies_nonignored_git_files_not_live_cache_tree() -> None:
+    script = (ROOT / "scripts" / "release-smoke.sh").read_text(encoding="utf-8")
+
+    assert "git ls-files -co --exclude-standard -z" in script
+    assert '--null \\' in script
+    assert '-T "$SOURCE_LIST_PATH" \\' in script
+    assert '-C "$ROOT" -cf - .' not in script
+
+
 def test_hidden_maintainer_violations_target_is_public_safe() -> None:
     makefile = read_combined_makefiles(ROOT)
 
