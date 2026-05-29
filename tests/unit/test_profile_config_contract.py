@@ -151,6 +151,38 @@ upstreams:
     }
 
 
+def test_tool_timeouts_accept_one_second_values() -> None:
+    from mcp_broker.config import _parse_tool_timeouts
+
+    assert _parse_tool_timeouts(
+        "upstreams.writer.tool_timeouts",
+        {
+            "fast-write": 1,
+            "slow-write": "300",
+        },
+    ) == {
+        "fast-write": 1,
+        "slow-write": 300,
+    }
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ([], "upstreams.writer.tool_timeouts must be a mapping"),
+        ({"": 30}, "upstreams.writer.tool_timeouts keys must be non-empty tool names"),
+        ({1: 30}, "upstreams.writer.tool_timeouts keys must be non-empty tool names"),
+        ({"write": True}, "upstreams.writer.tool_timeouts.write must be greater than 0"),
+        ({"write": object()}, "upstreams.writer.tool_timeouts.write must be greater than 0"),
+    ],
+)
+def test_tool_timeouts_reject_malformed_values(value: object, message: str) -> None:
+    from mcp_broker.config import _parse_tool_timeouts
+
+    with pytest.raises(ValueError, match=message):
+        _parse_tool_timeouts("upstreams.writer.tool_timeouts", value)
+
+
 def test_upstream_environment_resolution_requires_secret_files(tmp_path: Path) -> None:
     from mcp_broker.config import BrokerConfig
 

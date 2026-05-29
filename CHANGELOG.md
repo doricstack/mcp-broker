@@ -2,6 +2,11 @@
 
 All notable public changes will be recorded here.
 
+## 1.2.0 - 2026-05-29
+
+- Add per-tool upstream call timeouts so long-running brokered tools can get
+  more time without loosening the default timeout for every tool on an upstream.
+
 ## 1.1.3 - 2026-05-28
 
 - Synchronize release metadata through the Makefile release path.
