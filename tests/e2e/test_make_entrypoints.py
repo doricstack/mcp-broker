@@ -371,7 +371,10 @@ def test_hidden_maintainer_violations_target_is_public_safe() -> None:
 
 @pytest.mark.private_contract
 def test_public_export_verify_targets_fail_fast() -> None:
-    makefile = (ROOT / "local.mk").read_text(encoding="utf-8")
+    local_makefile = ROOT / "local.mk"
+    if not local_makefile.exists():
+        pytest.skip("local.mk is private maintainer wiring")
+    makefile = local_makefile.read_text(encoding="utf-8")
 
     assert "PUBLIC_EXPORT_PYTEST_MARKER_EXPRESSION ?= not private_contract" in makefile
 

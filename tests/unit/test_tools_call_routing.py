@@ -24,6 +24,76 @@ def test_broker_call_tool_routes_namespaced_tool_to_upstream() -> None:
     assert caller.calls == [("read-store", "search", {"query": "refund"}, 7)]
 
 
+def test_broker_call_tool_uses_configured_per_tool_timeout() -> None:
+    from mcp_broker.broker import BrokerCore
+    from mcp_broker.config import BrokerSettings, UpstreamConfig
+    from mcp_broker.profiles import ToolExposureProfile
+    from mcp_broker.schema import HealthPolicy
+
+    caller = RecordingCaller({"content": [{"type": "text", "text": "drafted"}]})
+    broker = BrokerCore(
+        settings=BrokerSettings(tool_namespace_separator="."),
+        upstreams={
+            "mail-writer": UpstreamConfig(
+                name="mail-writer",
+                command="ms365",
+                tool_prefix="mail-writer",
+                profiles=("protected",),
+                health=HealthPolicy(call_timeout_seconds=60),
+                tool_timeouts={"create-draft-email": 300},
+            )
+        },
+        profile=ToolExposureProfile(
+            name="protected",
+            max_tools=10,
+            allow_mutating_upstreams=("mail-writer",),
+        ),
+    )
+
+    result = broker.call_tool(
+        "mail-writer.create-draft-email",
+        {"subject": "large draft"},
+        caller,
+    )
+
+    assert result == {"content": [{"type": "text", "text": "drafted"}]}
+    assert caller.calls == [
+        ("mail-writer", "create-draft-email", {"subject": "large draft"}, 300)
+    ]
+
+
+def test_broker_call_tool_uses_default_timeout_when_tool_has_no_override() -> None:
+    from mcp_broker.broker import BrokerCore
+    from mcp_broker.config import BrokerSettings, UpstreamConfig
+    from mcp_broker.profiles import ToolExposureProfile
+    from mcp_broker.schema import HealthPolicy
+
+    caller = RecordingCaller({"content": [{"type": "text", "text": "ok"}]})
+    broker = BrokerCore(
+        settings=BrokerSettings(tool_namespace_separator="."),
+        upstreams={
+            "mail-writer": UpstreamConfig(
+                name="mail-writer",
+                command="ms365",
+                tool_prefix="mail-writer",
+                profiles=("protected",),
+                health=HealthPolicy(call_timeout_seconds=60),
+                tool_timeouts={"create-draft-email": 300},
+            )
+        },
+        profile=ToolExposureProfile(
+            name="protected",
+            max_tools=10,
+            allow_mutating_upstreams=("mail-writer",),
+        ),
+    )
+
+    result = broker.call_tool("mail-writer.verify-login", {}, caller)
+
+    assert result == {"content": [{"type": "text", "text": "ok"}]}
+    assert caller.calls == [("mail-writer", "verify-login", {}, 60)]
+
+
 def test_broker_call_tool_rejects_invalid_arguments() -> None:
     from mcp_broker.broker import BrokerCore, BrokerToolError
     from mcp_broker.config import BrokerSettings

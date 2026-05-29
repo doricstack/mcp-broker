@@ -83,6 +83,7 @@ UPSTREAM_KEYS = frozenset(
         "mutating",
         "serialize_calls",
         "startup_timeout_seconds",
+        "tool_timeouts",
         "restart",
         "health",
         "resources",
@@ -249,6 +250,7 @@ class UpstreamConfig:
     startup_timeout_seconds: int = 60
     restart: RestartPolicy = field(default_factory=RestartPolicy)
     health: HealthPolicy = field(default_factory=HealthPolicy)
+    tool_timeouts: dict[str, int] = field(default_factory=dict)
     resources: ResourcePolicy = field(default_factory=ResourcePolicy)
     auth_repair: AuthRepairPolicy | None = None
     auth_probe: AuthProbePolicy | None = None
@@ -311,6 +313,9 @@ class UpstreamConfig:
             ),
             smoke=SmokeProbe.from_mapping(f"upstreams.{name}.smoke", data.get("smoke")),
         )
+
+    def call_timeout_for_tool(self, tool_name: str) -> int:
+        return self.tool_timeouts.get(tool_name, self.health.call_timeout_seconds)
 
     def resolve_environment(self, environ: Mapping[str, str]) -> dict[str, str]:
         resolved: dict[str, str] = {}
@@ -534,11 +539,34 @@ def _parse_upstream_policies(name: str, data: dict[str, Any]) -> dict[str, objec
         ),
         "restart": RestartPolicy.from_mapping(f"upstreams.{name}.restart", data.get("restart")),
         "health": HealthPolicy.from_mapping(f"upstreams.{name}.health", data.get("health")),
+        "tool_timeouts": _parse_tool_timeouts(
+            f"upstreams.{name}.tool_timeouts",
+            data.get("tool_timeouts", {}),
+        ),
         "resources": ResourcePolicy.from_mapping(
             f"upstreams.{name}.resources",
             data.get("resources"),
         ),
     }
+
+
+def _parse_tool_timeouts(path: str, value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must be a mapping")
+    parsed: dict[str, int] = {}
+    for tool_name, timeout_seconds in value.items():
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError(f"{path} keys must be non-empty tool names")
+        if isinstance(timeout_seconds, bool):
+            raise ValueError(f"{path}.{tool_name} must be greater than 0")
+        try:
+            parsed_timeout = int(timeout_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{path}.{tool_name} must be greater than 0") from exc
+        if parsed_timeout <= 0:
+            raise ValueError(f"{path}.{tool_name} must be greater than 0")
+        parsed[tool_name] = parsed_timeout
+    return parsed
 
 
 def _parse_auth_probe(

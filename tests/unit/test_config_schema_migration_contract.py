@@ -144,6 +144,8 @@ upstreams:
       call_timeout_seconds: 60
       http_retry_attempts: 2
       http_retry_backoff_seconds: 0
+    tool_timeouts:
+      create-draft-email: 300
     resources:
       idle_timeout_seconds: 900
       cpu_watchdog_percent: 80
@@ -190,6 +192,7 @@ upstreams:
     assert config.upstreams["writer"].auth_probe is not None
     assert config.upstreams["writer"].health.http_retry_attempts == 2
     assert config.upstreams["writer"].health.http_retry_backoff_seconds == 0
+    assert config.upstreams["writer"].tool_timeouts == {"create-draft-email": 300}
     assert config.upstreams["writer"].smoke is not None
     assert config.upstreams["writer"].smoke.tool == "writer.status"
 
@@ -282,6 +285,7 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "upstreams.*.startup_timeout_seconds",
         "upstreams.*.state_dir",
         "upstreams.*.tags",
+        "upstreams.*.tool_timeouts",
         "upstreams.*.tool_prefix",
         "upstreams.*.transport",
         "upstreams.*.working_dir",

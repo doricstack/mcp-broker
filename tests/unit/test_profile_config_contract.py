@@ -104,6 +104,8 @@ upstreams:
       call_timeout_seconds: 60
       http_retry_attempts: 2
       http_retry_backoff_seconds: 0
+    tool_timeouts:
+      create-draft-email: 300
     resources:
       idle_timeout_seconds: 900
       cpu_watchdog_percent: 80
@@ -130,6 +132,7 @@ upstreams:
     assert upstream.health.call_timeout_seconds == 60
     assert upstream.health.http_retry_attempts == 2
     assert upstream.health.http_retry_backoff_seconds == 0
+    assert upstream.tool_timeouts == {"create-draft-email": 300}
     assert upstream.resources.idle_timeout_seconds == 900
     assert upstream.resources.cpu_watchdog_percent == 80
     assert upstream.resources.cpu_watchdog_seconds == 10
@@ -364,6 +367,23 @@ upstreams:
       call_timeout_seconds: 0
 """.strip(),
             "upstreams.bad.health.call_timeout_seconds",
+        ),
+        (
+            """
+runtime:
+  root: /tmp/x
+upstreams:
+  bad:
+    command: /tmp/tool
+    mode: shared
+    transport: stdio
+    tool_prefix: bad
+    state_dir: upstreams/bad
+    profiles: [codex]
+    tool_timeouts:
+      create-draft-email: 0
+""".strip(),
+            "upstreams.bad.tool_timeouts.create-draft-email",
         ),
         (
             """

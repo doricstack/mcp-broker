@@ -115,6 +115,28 @@ is configured, or `none` when no passive auth source exists.
 `auth_repair_attempts`, `auth_repair_successes`, and `auth_repair_failures` show
 whether a configured repair tool ran after a matching upstream error.
 
+## Long Upstream Calls
+
+Symptoms:
+- A large draft, export, notebook, or report call times out while smaller calls to the same upstream pass.
+- The upstream stays healthy, but the broker returns `upstream_timeout`.
+- Logs show `upstream.call` for the slow tool followed by a failed `tools/call`.
+
+Recovery:
+
+```yaml
+upstreams:
+  mail-writer:
+    health:
+      call_timeout_seconds: 60
+    tool_timeouts:
+      create-draft-email: 300
+```
+
+`health.call_timeout_seconds` remains the default for the upstream. `tool_timeouts` overrides only the named upstream-local tools after the broker removes the upstream prefix. For example, a client call to `mail-writer.create-draft-email` checks `create-draft-email`.
+
+Use this for slow mutating operations instead of raising the entire upstream timeout. Small status and discovery calls should still fail fast.
+
 ## Profile Denials
 
 Symptoms:

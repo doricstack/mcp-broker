@@ -274,6 +274,9 @@
         "startup_timeout_seconds": {
           "$ref": "#/$defs/positiveInteger"
         },
+        "tool_timeouts": {
+          "$ref": "#/$defs/toolTimeouts"
+        },
         "restart": {
           "$ref": "#/$defs/restart"
         },
@@ -420,6 +423,15 @@
       "additionalProperties": {
         "type": "string",
         "minLength": 1
+      }
+    },
+    "toolTimeouts": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/positiveInteger"
       }
     },
     "sessionEnvMap": {

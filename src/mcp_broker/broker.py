@@ -109,7 +109,7 @@ class BrokerCore:
                 upstream.name,
                 upstream_tool_name,
                 arguments,
-                upstream.health.call_timeout_seconds,
+                upstream.call_timeout_for_tool(upstream_tool_name),
             )
         except UpstreamCallTimeout as exc:
             raise BrokerToolError(
