@@ -128,6 +128,15 @@ bundle once if Claude Desktop offers that action, then uninstall. The current
 Claude Desktop extension UI may not expose a separate upgrade action; reinstall
 or replace is the available upgrade-equivalent path for this local MCPB.
 
+Anthropic publication closeout checked on 2026-05-30: this package does not
+have a hosted HTTPS MCP endpoint, so Claude's remote Custom Connector form is
+not the right submission path. The local MCPB path is Claude Desktop
+Extensions. Anthropic's third-party desktop extension interest form requires a
+signed-in browser session and returns `401 Unauthorized` to non-browser
+automation, so keep the repo-owned deliverable as the validated MCPB bundle and
+submit through a maintainer browser session only if Anthropic opens that path
+for local extensions.
+
 ## Secondary Directories
 
 Use the same packet for:
@@ -137,7 +146,7 @@ Use the same packet for:
 - `MCPCentral`
 - Active awesome-MCP-server lists that accept pull requests
 
-Current submission requirements checked on 2026-05-28:
+Current submission requirements checked on 2026-05-30:
 
 - mcpservers.org: approved at
   `https://mcpservers.org/servers/navinagrawal/mcp-broker`.
@@ -145,8 +154,8 @@ Current submission requirements checked on 2026-05-28:
   Verified on 2026-05-28 with HTTP 200 and page content containing
   `mcp-broker`, `NavinAgrawal`, and the public GitHub repository. Use this
   server config for any future refresh, not the page's generic GitHub Docker
-  placeholder. The mcp.so Tools tab returns `get server tools failed:no tools
-  found` when the listing omits `--profile docker`, because the public example
+  placeholder. If the mcp.so Tools tab returns `get server tools failed:no
+  tools found`, the listing is missing `--profile docker`; the public example
   config is profile-gated and the compact broker tools are exposed through the
   Docker/public listing profile:
 
@@ -164,22 +173,23 @@ Current submission requirements checked on 2026-05-28:
 
 - MCPCentral requires the publisher flow:
   `mcp-publisher login github --registry https://registry.mcpcentral.io`, then
-  `mcp-publisher publish`. As of 2026-05-27,
+  `mcp-publisher publish`. As of 2026-05-30,
   `registry.mcpcentral.io` currently does not resolve, so publishing is blocked
   before GitHub OAuth can start. The browser submit page at
   `https://mcpcentral.io/submit-server` redirects to sign-in and Cloudflare
-  blocks non-browser automation, so complete this only after the registry host
-  resolves or a signed-in maintainer browser session exposes a working publish
-  path.
+  blocks non-browser automation. No repo-owned publication path remains until
+  the registry host resolves or a signed-in maintainer browser session exposes
+  a working publish path.
 - `wong2/awesome-mcp-servers` points new submissions to
   `https://mcpservers.org/submit`, so do not open a duplicate PR there unless
   the maintainer guidance changes.
 - `punkpeye/awesome-mcp-servers` PR:
   `https://github.com/punkpeye/awesome-mcp-servers/pull/6993`.
-- `appcypher/awesome-mcp-servers` PR creation is blocked by GitHub
-  `CreatePullRequest` permissions even though the fork branch exists at
+- `appcypher/awesome-mcp-servers` PR creation is unavailable. The repo API is
+  readable, but the pulls API returns `404 Not Found`, and the browser compare
+  page reports that the owner disabled pull requests. The fork branch exists at
   `https://github.com/NavinAgrawal/awesome-mcp-servers-1/tree/add-mcp-broker`.
-  If the browser UI allows it, try the compare URL:
+  If that repository reopens submissions later, use the compare URL:
   `https://github.com/appcypher/awesome-mcp-servers/compare/main...NavinAgrawal:awesome-mcp-servers-1:add-mcp-broker`.
 
 Before submitting each one, verify the listing shows:
