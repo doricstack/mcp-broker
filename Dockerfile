@@ -3,7 +3,8 @@ FROM ${PYTHON_IMAGE}
 
 ARG VERSION=0.0.0
 ARG VCS_REF=unknown
-ARG SOURCE_URL=https://github.com/NavinAgrawal/mcp-broker
+ARG SOURCE_URL=
+ARG AUTHORS=
 
 LABEL org.opencontainers.image.title="mcp-broker" \
       org.opencontainers.image.description="Local MCP broker that exposes configured upstream MCP servers through one compact client entry." \
@@ -12,7 +13,7 @@ LABEL org.opencontainers.image.title="mcp-broker" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
       org.opencontainers.image.documentation="${SOURCE_URL}#readme" \
-      org.opencontainers.image.authors="Navin B Agrawal" \
+      org.opencontainers.image.authors="${AUTHORS}" \
       org.opencontainers.image.licenses="MIT"
 
 ENV MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker \

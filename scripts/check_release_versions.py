@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,11 +18,10 @@ def _load_json(path: str) -> dict:
 
 
 def _python_version() -> str:
-    init_text = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(encoding="utf-8")
-    match = re.search(r'__version__ = "([^"]+)"', init_text)
-    if not match:
-        raise RuntimeError("missing src/mcp_broker/__init__.py __version__")
-    return match.group(1)
+    sys.path.insert(0, str(ROOT / "src"))
+    from mcp_broker import __version__
+
+    return __version__
 
 
 def _docker_catalog_version() -> str:

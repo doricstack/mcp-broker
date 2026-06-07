@@ -15,12 +15,8 @@ SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 DOCKER_IMAGE_RE = re.compile(r"(?m)^image:\s*(?P<image>\S+)\s*$")
 
 
-def _read_python_version() -> str:
-    init_path = ROOT / "src" / "mcp_broker" / "__init__.py"
-    match = re.search(r'__version__ = "([^"]+)"', init_path.read_text(encoding="utf-8"))
-    if match is None:
-        raise RuntimeError("missing src/mcp_broker/__init__.py __version__")
-    return match.group(1)
+def _read_current_version() -> str:
+    return _validate_version(str(_load_json(ROOT / "npm" / "package.json")["version"]))
 
 
 def _bump_version(version: str, bump: str) -> str:
@@ -96,16 +92,6 @@ def _json_metadata_updates(version: str) -> dict[str, dict[str, Any]]:
     return updates
 
 
-def _sync_python_version(version: str, write: bool) -> bool:
-    path = ROOT / "src" / "mcp_broker" / "__init__.py"
-    text = path.read_text(encoding="utf-8")
-    updated = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{version}"', text)
-    changed = updated != text
-    if changed and write:
-        path.write_text(updated, encoding="utf-8")
-    return changed
-
-
 def _sync_json_metadata(version: str, write: bool) -> list[str]:
     changed: list[str] = []
     for relative, updated in _json_metadata_updates(version).items():
@@ -151,8 +137,6 @@ def _sync_changelog(version: str, write: bool) -> bool:
 
 def sync_release_metadata(version: str, *, write: bool) -> list[str]:
     changed: list[str] = []
-    if _sync_python_version(version, write):
-        changed.append("src/mcp_broker/__init__.py")
     changed.extend(_sync_json_metadata(version, write))
     if _sync_docker_catalog(version, write):
         changed.append("docker/mcp-catalog/mcp-broker.yaml")
@@ -182,7 +166,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    current_version = _read_python_version()
+    current_version = _read_current_version()
     version = _validate_version(args.version) if args.version else current_version
     if args.bump:
         version = _bump_version(current_version, args.bump)

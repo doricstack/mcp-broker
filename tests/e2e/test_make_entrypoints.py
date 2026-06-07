@@ -339,6 +339,9 @@ def test_make_parallel_gates_report_child_and_total_elapsed_time() -> None:
         "publish-everywhere: preflight checks",
         "publish-everywhere: pypi",
         "publish-everywhere: parallel registries",
+        "publish-everywhere: live registry verification",
+        "publish-everywhere: github release",
+        "publish-everywhere: github release verification",
     ]:
         assert f'$(call timed_make,"{label}",' in makefile
 

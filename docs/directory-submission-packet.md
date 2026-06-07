@@ -16,7 +16,7 @@ Local MCP broker that exposes one compact MCP entry while routing to many config
 Repository:
 
 ```text
-https://github.com/NavinAgrawal/mcp-broker
+${GITHUB_REPOSITORY_URL}
 ```
 
 Install:
@@ -45,7 +45,7 @@ Runtime state stays outside the repository. Local upstreams are configured in us
 Context-reduction evidence:
 
 ```text
-https://github.com/NavinAgrawal/mcp-broker/blob/main/docs/context-reduction-measurement.md
+${GITHUB_REPOSITORY_URL}/blob/main/docs/context-reduction-measurement.md
 ```
 
 Validation before submission:
@@ -59,20 +59,20 @@ make directory-submission-check
 Submit in this order after the package works from a clean machine:
 
 - Official MCP Registry: use `registry/server.json` and `mcp-publisher`.
-- Glama: listed at `https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`.
+- Glama: listed at `${GLAMA_LISTING_URL}`.
   Verify rendered tool schemas, safety annotations, install docs, license, and
   score after each public metadata refresh. Use Glama's Server tab for future
   reindex or correction requests. Do not use the Connector tab unless a future
   release exposes a hosted HTTPS MCP URL. Root `glama.json` declares
-  `NavinAgrawal` as the maintainer for Glama claim metadata.
+  `${GLAMA_MAINTAINER}` as the maintainer for Glama claim metadata.
 - PulseMCP: listed at
-  `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker` through registry
+  `${PULSEMCP_LISTING_URL}` through registry
   ingestion. Verify the rendered `server.json` name, provider, GitHub link, and
   description after each public metadata refresh. If the entry disappears,
-  submit the public GitHub repository at `https://www.pulsemcp.com/submit`.
+  submit the public GitHub repository at `${PULSEMCP_SUBMIT_URL}`.
 - Smithery: published via the local stdio/MCPB path. Release
-  `aae18669-9500-4a5d-9870-8f9b3bfd404d` returned `SUCCESS`; MCP URL:
-  `https://mcp-broker--navinagrawal.run.tools`.
+  `${SMITHERY_RELEASE_ID}` returned `SUCCESS`; MCP URL:
+  `${SMITHERY_MCP_URL}`.
 - Docker MCP Catalog: submit after Dockerfile and custom catalog smoke pass.
 
 Smithery MCPB command after account or namespace auth is ready:
@@ -80,7 +80,7 @@ Smithery MCPB command after account or namespace auth is ready:
 ```bash
 make smithery-payload-check
 smithery auth login
-smithery namespace use navinagrawal
+smithery namespace use ${SMITHERY_NAMESPACE}
 make smithery-publish
 ```
 
@@ -121,7 +121,7 @@ custom connector URL path:
 Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension...
 ```
 
-Install `dist/mcp-broker-$(PACKAGE_VERSION).mcpb`, confirm `mcp-broker` appears, confirm
+Install `dist/mcp-broker-${PACKAGE_VERSION}.mcpb`, confirm `mcp-broker` appears, confirm
 `broker_search_tools`, `broker_describe_tool`, `broker_call_tool`, and
 `broker_status`, run one safe status or search call, reinstall or replace the
 bundle once if Claude Desktop offers that action, then uninstall. The current
@@ -141,20 +141,20 @@ for local extensions.
 
 Use the same packet for:
 
-- `mcpservers.org`
-- `mcp.so`
+- `MCPSERVERS`
+- `MCP_SO`
 - `MCPCentral`
 - Active awesome-MCP-server lists that accept pull requests
 
 Current submission requirements checked on 2026-05-30:
 
-- mcpservers.org: approved at
-  `https://mcpservers.org/servers/navinagrawal/mcp-broker`.
-- mcp.so: live at `https://mcp.so/server/mcp-broker/NavinAgrawal`.
+- MCPSERVERS: approved at
+  `${MCPSERVERS_LISTING_URL}`.
+- MCP_SO: live at `${MCP_SO_LISTING_URL}`.
   Verified on 2026-05-28 with HTTP 200 and page content containing
-  `mcp-broker`, `NavinAgrawal`, and the public GitHub repository. Use this
+  `mcp-broker`, `${GLAMA_MAINTAINER}`, and the public GitHub repository. Use this
   server config for any future refresh, not the page's generic GitHub Docker
-  placeholder. If the mcp.so Tools tab returns `get server tools failed:no
+  placeholder. If the MCP_SO Tools tab returns `get server tools failed:no
   tools found`, the listing is missing `--profile docker`; the public example
   config is profile-gated and the compact broker tools are exposed through the
   Docker/public listing profile:
@@ -172,25 +172,25 @@ Current submission requirements checked on 2026-05-30:
 ```
 
 - MCPCentral requires the publisher flow:
-  `mcp-publisher login github --registry https://registry.mcpcentral.io`, then
+  `mcp-publisher login github --registry ${MCPCENTRAL_REGISTRY_URL}`, then
   `mcp-publisher publish`. As of 2026-05-30,
-  `registry.mcpcentral.io` currently does not resolve, so publishing is blocked
+  `${MCPCENTRAL_REGISTRY_URL}` currently does not resolve, so publishing is blocked
   before GitHub OAuth can start. The browser submit page at
-  `https://mcpcentral.io/submit-server` redirects to sign-in and Cloudflare
+  `${MCPCENTRAL_SUBMIT_URL}` redirects to sign-in and Cloudflare
   blocks non-browser automation. No repo-owned publication path remains until
   the registry host resolves or a signed-in maintainer browser session exposes
   a working publish path.
 - `wong2/awesome-mcp-servers` points new submissions to
-  `https://mcpservers.org/submit`, so do not open a duplicate PR there unless
+  `${MCPSERVERS_SUBMIT_URL}`, so do not open a duplicate PR there unless
   the maintainer guidance changes.
 - `punkpeye/awesome-mcp-servers` PR:
-  `https://github.com/punkpeye/awesome-mcp-servers/pull/6993`.
+  `${PUNKPEYE_AWESOME_PR_URL}`.
 - `appcypher/awesome-mcp-servers` PR creation is unavailable. The repo API is
   readable, but the pulls API returns `404 Not Found`, and the browser compare
   page reports that the owner disabled pull requests. The fork branch exists at
-  `https://github.com/NavinAgrawal/awesome-mcp-servers-1/tree/add-mcp-broker`.
+  `${APPCYPHER_AWESOME_FORK_BRANCH_URL}`.
   If that repository reopens submissions later, use the compare URL:
-  `https://github.com/appcypher/awesome-mcp-servers/compare/main...NavinAgrawal:awesome-mcp-servers-1:add-mcp-broker`.
+  `${APPCYPHER_AWESOME_COMPARE_URL}`.
 
 Before submitting each one, verify the listing shows:
 

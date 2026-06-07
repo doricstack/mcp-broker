@@ -7,7 +7,11 @@ import tomllib
 
 import pytest
 
-from tests.support.makefiles import read_combined_makefiles
+from tests.support.makefiles import (
+    expand_make_value,
+    read_combined_makefiles,
+    read_make_variable_defaults,
+)
 
 
 pytestmark = pytest.mark.journey
@@ -25,20 +29,131 @@ STATIC_RELEASE_METADATA_FILES = {
     "npm/package.json",
     "registry/server.json",
     "registry/server.template.json",
-    "src/mcp_broker/__init__.py",
 }
 
 
 def _package_version() -> str:
-    package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
-    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
-    assert package_version_match is not None
-    return package_version_match.group(1)
+    package = json.loads((ROOT / "npm" / "package.json").read_text(encoding="utf-8"))
+    return str(package["version"])
+
+
+def _public_coordinate_values(make_vars: dict[str, str]) -> set[str]:
+    direct_variables = [
+        "GITHUB_OWNER",
+        "PUBLIC_NAMESPACE",
+        "GITHUB_REPO",
+        "PRIVATE_GITHUB_REPO",
+        "NPM_PACKAGE_NAME",
+        "MCP_REGISTRY_NAME",
+        "HOMEBREW_TAP_REPO",
+        "HOMEBREW_TAP_REF",
+        "SMITHERY_QUALIFIED_NAME",
+        "SMITHERY_NAMESPACE",
+        "SMITHERY_RELEASE_ID",
+        "GLAMA_MAINTAINER",
+        "DOCKER_REGISTRY_HOST",
+        "DOCKER_REGISTRY_SERVICE",
+        "GHCR_REGISTRY_HOST",
+        "GHCR_REGISTRY_SERVICE",
+    ]
+    expanded_variables = [
+        "GITHUB_REPOSITORY_URL",
+        "GITHUB_REPOSITORY_HOST_PATH",
+        "PRIVATE_GITHUB_REPOSITORY_URL",
+        "GITHUB_TAG_SOURCE_TARBALL_URL",
+        "DOCKER_REPOSITORY_IMAGE",
+        "GHCR_REPOSITORY_IMAGE",
+        "DOCKER_HUB_API_REPOSITORY_BASE_URL",
+        "DOCKER_REGISTRY_AUTH_URL",
+        "DOCKER_REGISTRY_MANIFEST_BASE_URL",
+        "GHCR_REGISTRY_AUTH_URL",
+        "GHCR_REGISTRY_MANIFEST_BASE_URL",
+        "PYPI_PROJECT_URL",
+        "PYPI_SIMPLE_CHECK_URL",
+        "NPM_REGISTRY_URL",
+        "NPM_PACKAGE_URL",
+        "DOCKER_HUB_TAGS_URL",
+        "HOMEBREW_TAP_URL",
+        "HOMEBREW_TAP_CLONE_URL",
+        "SMITHERY_LISTING_URL",
+        "SMITHERY_API_BASE_URL",
+        "SMITHERY_MCP_URL",
+        "GLAMA_LISTING_URL",
+        "GLAMA_SCHEMA_URL",
+        "PULSEMCP_LISTING_URL",
+        "PULSEMCP_SUBMIT_URL",
+        "MCPSERVERS_LISTING_URL",
+        "MCPSERVERS_SUBMIT_URL",
+        "MCP_SO_LISTING_URL",
+        "MCPCENTRAL_REGISTRY_URL",
+        "MCPCENTRAL_SUBMIT_URL",
+        "MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL",
+        "DOCKER_MCP_CATALOG_PR_URL",
+        "PUNKPEYE_AWESOME_PR_URL",
+        "APPCYPHER_AWESOME_FORK_BRANCH_URL",
+        "APPCYPHER_AWESOME_COMPARE_URL",
+    ]
+    return {
+        *[expand_make_value(make_vars, make_vars[variable]) for variable in direct_variables],
+        (
+            f"{expand_make_value(make_vars, make_vars['DOCKER_NAMESPACE'])}/"
+            f"{expand_make_value(make_vars, make_vars['DOCKER_IMAGE_NAME'])}"
+        ),
+        *[expand_make_value(make_vars, make_vars[variable]) for variable in expanded_variables],
+    }
+
+
+def _centralized_coordinate_scan_paths() -> list[Path]:
+    scanned_suffixes = {".py", ".sh", ".js", ".yml", ".yaml", ".mk", ".toml", ".json", ".md"}
+    scanned_roots = [
+        ROOT / "src",
+        ROOT / "scripts",
+        ROOT / "tests",
+        ROOT / ".github" / "workflows",
+        ROOT / "mk",
+        ROOT / "docs",
+    ]
+    scanned_files = [ROOT / "Dockerfile", ROOT / "README.md", ROOT / "CHANGELOG.md", ROOT / "TODO.md"]
+    paths = list(scanned_files)
+    for root in scanned_roots:
+        if not root.exists():
+            continue
+        paths.extend(path for path in sorted(root.rglob("*")) if path.is_file() and path.suffix in scanned_suffixes)
+    return paths
+
+
+def _find_public_coordinate_offenders(make_vars: dict[str, str]) -> list[str]:
+    allowed_paths = {
+        "mk/config.mk",
+        "pyproject.toml",
+        "npm/package.json",
+        "npm/README.md",
+        "registry/server.json",
+        "registry/server.template.json",
+        "mcpb/manifest.json",
+        ".well-known/mcp/server-card.json",
+        "docker/mcp-catalog/mcp-broker.yaml",
+    }
+    readme_mcp_marker = f"<!-- mcp-name: {expand_make_value(make_vars, make_vars['MCP_REGISTRY_NAME'])} -->"
+    offenders: list[str] = []
+    for path in _centralized_coordinate_scan_paths():
+        if not path.exists():
+            continue
+        relative = path.relative_to(ROOT).as_posix()
+        if relative in allowed_paths:
+            continue
+        text = path.read_text(encoding="utf-8").replace(readme_mcp_marker, "")
+        offenders.extend(
+            f"{relative}: {value}"
+            for value in _public_coordinate_values(make_vars)
+            if value and value in text
+        )
+    return offenders
 
 
 def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
+    repository_url = expand_make_value(make_vars, make_vars["GITHUB_REPOSITORY_URL"])
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     install_doc = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -76,13 +191,14 @@ def test_distribution_docs_and_package_metadata_are_public_ready() -> None:
     assert "$HOME/Projects" not in install_doc
     forbidden_minor_image = "python:" + ".".join(("3", "13"))
     assert forbidden_minor_image not in pyproject
-    assert "https://github.com/NavinAgrawal/mcp-broker" in pyproject
+    assert repository_url in pyproject
     assert "Codex and Claude sessions" not in pyproject
     assert "to Codex and Claude." not in readme
     assert "Renders Codex and Claude MCP config entries" not in readme
 
 
 def test_release_version_is_single_sourced_and_public_metadata_matches() -> None:
+    makefile = read_combined_makefiles(ROOT)
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(encoding="utf-8")
     daemon = (ROOT / "src" / "mcp_broker" / "daemon.py").read_text(encoding="utf-8")
@@ -94,15 +210,20 @@ def test_release_version_is_single_sourced_and_public_metadata_matches() -> None
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
-    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
-    assert package_version_match is not None
-    package_version = package_version_match.group(1)
+    package_version = _package_version()
     latest_changelog_match = re.search(r"^## ([0-9]+\.[0-9]+\.[0-9]+) - ", changelog, re.M)
     assert latest_changelog_match is not None
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert "version" not in pyproject["project"]
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mcp_broker.__version__"
+    assert "__version__ = _resolve_version()" in package_init
+    assert re.search(r'__version__\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"', package_init) is None
+    assert "MCP_BROKER_VERSION" in package_init
+    assert "PACKAGE_VERSION   ?= $(shell" in makefile
+    assert "MCP_BROKER_VERSION ?= $(PACKAGE_VERSION)" in makefile
+    assert "export MCP_BROKER_VERSION" in makefile
+    assert "npm/package.json" in makefile
     assert package_version == latest_changelog_match.group(1)
     repository_match = re.fullmatch(
         r"https://github\.com/([^/]+)/([^/]+)", server["repository"]["url"]
@@ -129,7 +250,7 @@ def test_mcpb_distribution_targets_package_and_smoke_bundle() -> None:
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
 
     assert re.search(
-        r"^MCPB_OUTPUT\s+\?= \$\(PACKAGE_DIST_DIR\)/mcp-broker-\$\(PACKAGE_VERSION\)\.mcpb$",
+        r"^MCPB_OUTPUT\s+\?= \$\(PACKAGE_DIST_DIR\)/\$\(PACKAGE_SLUG\)-\$\(PACKAGE_VERSION\)\.mcpb$",
         makefile,
         re.M,
     )
@@ -150,6 +271,7 @@ def test_mcpb_distribution_targets_package_and_smoke_bundle() -> None:
 
 
 def test_stable_release_public_status_is_aligned_to_source_release() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
@@ -157,16 +279,19 @@ def test_stable_release_public_status_is_aligned_to_source_release() -> None:
 
     assert "Stable release metadata is validated by `make release-version-check`" in readme
     assert "Package metadata is release-aligned by `make release-version-sync`." in distribution
-    assert "PyPI: `mcp-broker $(PACKAGE_VERSION)` is published by the release transaction." in distribution
     assert (
-        "MCP Registry: `io.github.NavinAgrawal/mcp-broker $(PACKAGE_VERSION)` "
+        "PyPI: `${PYPI_PROJECT_NAME} ${PACKAGE_VERSION}` is published by the release transaction."
+        in distribution
+    )
+    assert (
+        "MCP Registry: `${MCP_REGISTRY_NAME} ${PACKAGE_VERSION}` "
         "is published and marked latest by the release transaction."
     ) in normalized_distribution
     assert (
-        "Homebrew: `mcp-broker $(PACKAGE_VERSION)` is published through the public tap."
+        "Homebrew: `${HOMEBREW_FORMULA_REF} ${PACKAGE_VERSION}` is published through the public tap."
         in distribution
     )
-    assert "mcp-broker $(PACKAGE_VERSION)" in github_publication
+    assert "${PACKAGE_SLUG} ${PACKAGE_VERSION}" in github_publication
 
 
 def test_current_release_versions_are_not_copied_across_docs_or_tests() -> None:
@@ -186,20 +311,28 @@ def test_current_release_versions_are_not_copied_across_docs_or_tests() -> None:
         ROOT / "src",
         ROOT / "tests",
     ]
+    scanned_files = [
+        ROOT / "Dockerfile",
+        ROOT / "Makefile",
+        ROOT / "README.md",
+        ROOT / "TODO.md",
+    ]
 
-    for root in scanned_roots:
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or path.suffix not in scanned_suffixes:
-                continue
-            relative = str(path.relative_to(ROOT))
-            if (
-                relative in HISTORICAL_RELEASE_FILES
-                or relative in STATIC_RELEASE_METADATA_FILES
-            ):
-                continue
-            text = path.read_text(encoding="utf-8")
-            if current_version in text:
-                offenders.append(relative)
+    for path in [
+        *scanned_files,
+        *(path for root in scanned_roots for path in sorted(root.rglob("*"))),
+    ]:
+        if not path.is_file() or path.suffix not in scanned_suffixes:
+            continue
+        relative = str(path.relative_to(ROOT))
+        if (
+            relative in HISTORICAL_RELEASE_FILES
+            or relative in STATIC_RELEASE_METADATA_FILES
+        ):
+            continue
+        text = path.read_text(encoding="utf-8")
+        if current_version in text:
+            offenders.append(relative)
 
     assert offenders == []
 
@@ -240,6 +373,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "make npm-smoke" in workflows["ci.yml"]
     assert "release:" in workflows["publish-everywhere.yml"]
     assert "published" in workflows["publish-everywhere.yml"]
+    assert "contents: write" in workflows["publish-everywhere.yml"]
     assert "id-token: write" in workflows["publish-everywhere.yml"]
     assert "packages: write" in workflows["publish-everywhere.yml"]
     assert "PYTEST_MARKER_EXPRESSION:" not in workflows["publish-everywhere.yml"]
@@ -249,6 +383,7 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
 
 
 def test_package_build_targets_are_available_through_make() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     makefile = read_combined_makefiles(ROOT)
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -260,6 +395,7 @@ def test_package_build_targets_are_available_through_make() -> None:
 
     assert "package-build:" in makefile
     assert "package-check:" in makefile
+    assert 'MCP_BROKER_VERSION="$(PACKAGE_VERSION)" $(PYTHON) -m build' in makefile
     assert "$(PYTHON) -m build" in makefile
     assert "$(PYTHON) -m twine check" in makefile
     assert "build==" in requirements
@@ -267,7 +403,7 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "pytest==9.0.3" in requirements
     assert "pytest-xdist==3.8.0" in requirements
     assert pyproject["project"]["license"] == "MIT"
-    assert pyproject["project"]["authors"] == [{"name": "Navin B Agrawal"}]
+    assert pyproject["project"]["authors"] == [{"name": make_vars["PACKAGE_AUTHOR"]}]
     for dependency in pyproject["project"]["dependencies"]:
         package_name = re.split(r"[<>=~!]", dependency, maxsplit=1)[0]
         assert any(line.startswith(package_name + "==") for line in normalized_requirements)
@@ -282,6 +418,7 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
         "ARG VERSION=",
         "ARG VCS_REF=",
         "ARG SOURCE_URL=",
+        "ARG AUTHORS=",
         "org.opencontainers.image.title",
         "org.opencontainers.image.version",
         "org.opencontainers.image.revision",
@@ -290,7 +427,8 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
     ]:
         assert term in dockerfile
     assert 'org.opencontainers.image.licenses="MIT"' in dockerfile
-    assert 'org.opencontainers.image.authors="Navin B Agrawal"' in dockerfile
+    assert 'org.opencontainers.image.authors="${AUTHORS}"' in dockerfile
+    assert '--build-arg AUTHORS="$(PACKAGE_AUTHOR)"' in makefile
 
     for term in [
         "docker-buildx:",
@@ -310,19 +448,20 @@ def test_docker_distribution_has_oci_labels_and_multi_arch_release_target() -> N
 
 
 def test_npm_and_docker_distribution_decisions_are_recorded() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     npm_doc = (ROOT / "docs" / "npm-distribution.md").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     maintainer_inputs_path = ROOT / "docs" / "p16-maintainer-inputs.md"
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
 
     assert "`mcp-broker` on NPM is a different project" in npm_doc
-    assert "`@navinagrawal/mcp-broker`" in npm_doc
+    assert "`${NPM_PACKAGE_NAME}`" in npm_doc
     assert "does not reimplement the Python broker in Node" in npm_doc
     assert "NPM trusted publishing is the preferred auth path" in npm_doc
     assert "NPM is an optional bridge package" in distribution
-    assert "Current source release: `$(PACKAGE_VERSION)`" in distribution
-    assert "docker.io/navinagrawal/mcp-broker" in distribution
-    assert "ghcr.io/navinagrawal/mcp-broker" in distribution
+    assert "Current source release: `${PACKAGE_VERSION}`" in distribution
+    assert "${DOCKER_REPOSITORY_IMAGE}" in distribution
+    assert "${GHCR_REPOSITORY_IMAGE}" in distribution
     assert "Docker Hub is the primary image for Docker MCP Catalog work" in distribution
     if maintainer_inputs_path.exists():
         maintainer_inputs = maintainer_inputs_path.read_text(encoding="utf-8")
@@ -349,6 +488,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         "package-install-smoke:",
         "public-stable-surface-smoke:",
         "public-release-surface-smoke:",
+        "public-release-live-verify:",
         "publish-everywhere-check:",
         "publish-everywhere:",
         "_publish-everywhere-pypi:",
@@ -356,6 +496,9 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         "_publish-everywhere-docker:",
         "_publish-everywhere-mcp-registry:",
         "_publish-everywhere-homebrew:",
+        "_publish-everywhere-live-verify-registries:",
+        "_publish-everywhere-github-release:",
+        "_publish-everywhere-live-verify-github-release:",
         "docker-mcp-catalog-smoke:",
         "docker-publish-check:",
         "docker-release-smoke:",
@@ -376,6 +519,12 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "RELEASE_GATE_PYTEST_MARKER_EXPRESSION ?=" in makefile
     assert "scripts/update_homebrew_formula.py" in makefile
     assert "scripts/public-surface-smoke.sh" in makefile
+    assert "scripts/verify_public_release.py" in makefile
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+    if allowlist_path.exists():
+        assert "scripts/verify_public_release.py" in allowlist_path.read_text(
+            encoding="utf-8"
+        )
     assert "pipx run --spec \"mcp-broker==$" in makefile
     assert '"$(UVX)" --from "mcp-broker==$' in makefile
     assert "PUBLIC_SURFACE_REQUIRE_NPM=1" in makefile
@@ -403,6 +552,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "published" in workflow
     assert "id-token: write" in workflow
     assert "packages: write" in workflow
+    assert "contents: write" in workflow
     assert "DOCKERHUB_USERNAME" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
     assert "NODE_AUTH_TOKEN" not in workflow
@@ -447,6 +597,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
 
 def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     makefile = read_combined_makefiles(ROOT)
+    make_vars = read_make_variable_defaults(ROOT)
 
     release_section = makefile.split("_release-impl:", maxsplit=1)[1].split(
         "publish-version-check:",
@@ -466,15 +617,56 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     )[0]
     pypi_index = publish_section.index("_publish-everywhere-pypi")
     fanout_index = publish_section.index("_publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry")
+    registry_verify_index = publish_section.index("_publish-everywhere-live-verify-registries")
+    github_release_index = publish_section.index("_publish-everywhere-github-release")
+    github_verify_index = publish_section.index("_publish-everywhere-live-verify-github-release")
 
     assert "PUBLISH_CHECK_JOBS ?= 2" in makefile
     assert "PUBLISH_EVERYWHERE_JOBS ?= 4" in makefile
     assert "RELEASE_APPLY ?= 0" in makefile
     assert "RELEASE_VERSION ?=" in makefile
-    assert "PYPI_PROJECT_NAME ?= mcp-broker" in makefile
-    assert "PYPI_VERSION_URL ?= https://pypi.org/pypi/$(PYPI_PROJECT_NAME)/$(PACKAGE_VERSION)/json" in makefile
-    assert "MCP_REGISTRY_NAME ?= io.github.NavinAgrawal/mcp-broker" in makefile
-    assert "MCP_REGISTRY_SEARCH_URL ?= https://registry.modelcontextprotocol.io/v0.1/servers?search=$(MCP_REGISTRY_NAME)" in makefile
+    for variable in [
+        "PYPI_PROJECT_NAME",
+        "PYPI_VERSION_URL",
+        "PYPI_SIMPLE_CHECK_URL",
+        "GITHUB_REPO",
+        "GITHUB_RELEASE_TAG",
+        "GITHUB_RELEASE_URL",
+        "GITHUB_TAG_SOURCE_TARBALL_URL",
+        "DOCKER_HUB_REPOSITORY_URL",
+        "DOCKER_HUB_RELEASE_TAG_URL",
+        "DOCKER_HUB_MINOR_TAG_URL",
+        "DOCKER_HUB_API_REPOSITORY_BASE_URL",
+        "DOCKER_REGISTRY_HOST",
+        "DOCKER_REGISTRY_SERVICE",
+        "DOCKER_REGISTRY_AUTH_URL",
+        "DOCKER_REGISTRY_MANIFEST_BASE_URL",
+        "GHCR_REGISTRY_HOST",
+        "GHCR_REGISTRY_SERVICE",
+        "GHCR_REGISTRY_AUTH_URL",
+        "GHCR_REGISTRY_MANIFEST_BASE_URL",
+        "MCP_REGISTRY_NAME",
+        "MCP_REGISTRY_API_BASE_URL",
+        "MCP_REGISTRY_SEARCH_URL",
+        "MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL",
+        "NPM_REGISTRY_URL",
+        "HOMEBREW_TAP_CLONE_URL",
+        "SMITHERY_API_BASE_URL",
+    ]:
+        assert variable in make_vars
+    assert "$(PYPI_PROJECT_NAME)" in make_vars["PYPI_VERSION_URL"]
+    assert "$(PACKAGE_VERSION)" in make_vars["PYPI_VERSION_URL"]
+    assert "$(PACKAGE_VERSION)" in make_vars["GITHUB_RELEASE_TAG"]
+    assert "$(GITHUB_REPO)" in make_vars["GITHUB_RELEASE_URL"]
+    assert "$(GITHUB_RELEASE_TAG)" in make_vars["GITHUB_RELEASE_URL"]
+    assert "$(DOCKER_NAMESPACE)" in make_vars["DOCKER_HUB_REPOSITORY_URL"]
+    assert "$(DOCKER_IMAGE_NAME)" in make_vars["DOCKER_HUB_REPOSITORY_URL"]
+    assert "$(DOCKER_RELEASE_TAG)" in make_vars["DOCKER_HUB_RELEASE_TAG_URL"]
+    assert "$(PACKAGE_MINOR_VERSION)" in make_vars["DOCKER_HUB_MINOR_TAG_URL"]
+    assert "$(MCP_REGISTRY_NAME)" in make_vars["MCP_REGISTRY_SEARCH_URL"]
+    assert "$(GITHUB_REPOSITORY_URL)" in make_vars["GITHUB_TAG_SOURCE_TARBALL_URL"]
+    assert "$(PYPI_PROJECT_NAME)" in make_vars["PYPI_SIMPLE_CHECK_URL"]
+    assert "$(HOMEBREW_TAP_URL)" in make_vars["HOMEBREW_TAP_CLONE_URL"]
     assert "release-version-check" in release_check_section
     assert "publish-everywhere-check" in release_check_section
     assert "directory-submission-check mcpb-smoke smithery-payload-check" in release_check_section
@@ -488,6 +680,9 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert "_publish-check-docker-smoke:" in makefile
     assert "_publish-check-docker-buildx:" in makefile
     assert "_publish-everywhere-required-env-check:" in makefile
+    assert "_publish-everywhere-live-verify-registries:" in makefile
+    assert "_publish-everywhere-github-release:" in makefile
+    assert "_publish-everywhere-live-verify-github-release:" in makefile
     assert '$(call timed_make,"publish-everywhere-check: release gate",PYTEST_MARKER_EXPRESSION="$(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" release-gate)' in check_section
     assert '$(call timed_make,"publish-everywhere-check: package smoke children",-j $(PUBLISH_CHECK_JOBS) npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx)' in check_section
     assert release_gate_index < publish_check_fanout_index
@@ -498,16 +693,106 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert "HOMEBREW_TAP_TOKEN is required before publish-everywhere starts" in makefile
     assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
     assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: live registry verification",_publish-everywhere-live-verify-registries)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: github release",_publish-everywhere-github-release)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: github release verification",_publish-everywhere-live-verify-github-release)' in publish_section
     assert "PUBLISH_EVERYWHERE_SKIP_CHECKS ?= 0" in makefile
     assert "publish-everywhere: preflight checks skipped" in makefile
     assert pypi_index < fanout_index
+    assert fanout_index < registry_verify_index < github_release_index < github_verify_index
     assert 'docker buildx build \\' in makefile
     assert '$(call timed_make,"publish child: docker-publish-check",docker-publish-check)' in makefile
     assert "\n\t+@label=\"$(call strip_quotes,$(1))\"" in makefile
     assert "\n\t@label=\"$(call strip_quotes,$(1))\"" not in makefile
 
 
+def test_public_release_live_verification_proves_registry_truth_before_github_latest() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
+    makefile = read_combined_makefiles(ROOT)
+    verifier = (ROOT / "scripts" / "verify_public_release.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "publish-everywhere.yml").read_text(
+        encoding="utf-8"
+    )
+    distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
+    normalized_distribution = " ".join(distribution.split())
+
+    registries_section = makefile.split(
+        "_publish-everywhere-live-verify-registries:",
+        maxsplit=1,
+    )[1].split("_publish-everywhere-github-release:", maxsplit=1)[0]
+    github_release_section = makefile.split(
+        "_publish-everywhere-github-release:",
+        maxsplit=1,
+    )[1].split("_publish-everywhere-live-verify-github-release:", maxsplit=1)[0]
+    github_verify_section = makefile.split(
+        "_publish-everywhere-live-verify-github-release:",
+        maxsplit=1,
+    )[1].split("_publish-everywhere-pypi:", maxsplit=1)[0]
+
+    assert "public-release-live-verify:" in makefile
+    assert "--checks pypi,npm,docker-hub,docker-registry,ghcr,mcp-registry,homebrew" in registries_section
+    assert "--checks github-release" in github_verify_section
+    assert "gh release view \"$(GITHUB_RELEASE_TAG)\"" in github_release_section
+    assert "gh release create \"$(GITHUB_RELEASE_TAG)\"" in github_release_section
+    assert "gh release edit \"$(GITHUB_RELEASE_TAG)\"" in github_release_section
+    assert "Docker Hub repository is not public" in verifier
+    assert "Docker Hub tag is not public" in verifier
+    for variable in [
+        "DOCKER_HUB_API_REPOSITORY_BASE_URL",
+        "DOCKER_REGISTRY_AUTH_URL",
+        "GHCR_REGISTRY_AUTH_URL",
+        "DOCKER_REGISTRY_HOST",
+        "GHCR_REGISTRY_HOST",
+        "MCP_REGISTRY_API_BASE_URL",
+        "NPM_REGISTRY_URL",
+        "PYPI_VERSION_URL",
+        "GITHUB_RELEASE_URL",
+    ]:
+        assert expand_make_value(make_vars, make_vars[variable]) not in verifier
+    assert "github_repo:" not in verifier
+    assert "pypi_project:" not in verifier
+    assert "npm_package: str =" not in verifier
+    assert "docker_namespace: str =" not in verifier
+    assert "docker_image_name: str =" not in verifier
+    assert "mcp_registry_name: str =" not in verifier
+    assert "homebrew_formula_url: str =" not in verifier
+    assert "--github-repo" not in makefile
+    assert "--pypi-project" not in makefile
+    assert "--npm-package \"$(NPM_PACKAGE_NAME)\"" in makefile
+    assert "--docker-namespace \"$(DOCKER_NAMESPACE)\"" in makefile
+    assert "--docker-image-name \"$(DOCKER_IMAGE_NAME)\"" in makefile
+    assert "--mcp-registry-name \"$(MCP_REGISTRY_NAME)\"" in makefile
+    assert "--github-release-url \"$(GITHUB_RELEASE_URL)\"" in makefile
+    assert "--pypi-version-url \"$(PYPI_VERSION_URL)\"" in makefile
+    assert "--npm-registry-url \"$(NPM_REGISTRY_URL)\"" in makefile
+    assert "--docker-hub-api-repository-base-url \"$(DOCKER_HUB_API_REPOSITORY_BASE_URL)\"" in makefile
+    assert "--docker-registry-service \"$(DOCKER_REGISTRY_SERVICE)\"" in makefile
+    assert "--docker-registry-host \"$(DOCKER_REGISTRY_HOST)\"" in makefile
+    assert "--docker-registry-auth-url \"$(DOCKER_REGISTRY_AUTH_URL)\"" in makefile
+    assert "--docker-registry-manifest-base-url \"$(DOCKER_REGISTRY_MANIFEST_BASE_URL)\"" in makefile
+    assert "--ghcr-registry-service \"$(GHCR_REGISTRY_SERVICE)\"" in makefile
+    assert "--ghcr-registry-host \"$(GHCR_REGISTRY_HOST)\"" in makefile
+    assert "--ghcr-registry-auth-url \"$(GHCR_REGISTRY_AUTH_URL)\"" in makefile
+    assert "--ghcr-registry-manifest-base-url \"$(GHCR_REGISTRY_MANIFEST_BASE_URL)\"" in makefile
+    assert "--mcp-registry-search-url \"$(MCP_REGISTRY_SEARCH_URL)\"" in makefile
+    assert "--homebrew-formula-url \"$(HOMEBREW_FORMULA_RAW_URL)\"" in makefile
+    assert "--base-url \"$(SMITHERY_API_BASE_URL)\"" in makefile
+    assert (
+        "MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL=$(make --no-print-directory print-var "
+        "VAR=MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL)"
+    ) in workflow
+    assert "${MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL}/mcp-publisher_" in workflow
+    assert "public live verification" in distribution
+    assert "GitHub Release is created only after registry verification passes" in normalized_distribution
+
+
+def test_public_release_coordinates_are_centralized_in_make_config() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
+    assert _find_public_coordinate_offenders(make_vars) == []
+
+
 def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     makefile = read_combined_makefiles(ROOT)
     catalog_file = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
     catalog_text = catalog_file.read_text(encoding="utf-8")
@@ -517,7 +802,13 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
         "name: mcp-broker",
         "title: mcp-broker",
         "type: server",
-        f"image: docker.io/navinagrawal/mcp-broker:{_package_version()}",
+        (
+            "image: "
+            f"{expand_make_value(make_vars, make_vars['DOCKER_REGISTRY'])}/"
+            f"{expand_make_value(make_vars, make_vars['DOCKER_NAMESPACE'])}/"
+            f"{expand_make_value(make_vars, make_vars['DOCKER_IMAGE_NAME'])}:"
+            f"{_package_version()}"
+        ),
         "description: Local MCP broker",
     ]:
         assert term in catalog_text
@@ -527,8 +818,8 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
     assert "--server \"file://$(DOCKER_MCP_CATALOG_FILE)\"" in makefile
     assert "docker mcp catalog server ls" in makefile
     assert "docker mcp catalog remove" in makefile
-    assert "DOCKER_MCP_CATALOG_FILE ?= $(ROOT)/docker/mcp-catalog/mcp-broker.yaml" in makefile
-    assert "DOCKER_MCP_CATALOG_REF ?= mcp-broker-local-catalog:local" in makefile
+    assert "DOCKER_MCP_CATALOG_FILE ?= $(ROOT)/docker/mcp-catalog/$(PACKAGE_SLUG).yaml" in makefile
+    assert "DOCKER_MCP_CATALOG_REF ?= $(PACKAGE_SLUG)-local-catalog:local" in makefile
     release_smoke = re.search(
         r"(?ms)^docker-release-smoke:.*?(?=^[A-Za-z0-9_.-]+:|\Z)",
         makefile,
@@ -543,19 +834,20 @@ def test_docker_mcp_catalog_smoke_uses_file_metadata_boundary() -> None:
 
 
 def test_docker_mcp_registry_submission_packet_is_staged() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     submission = (ROOT / "docs" / "docker-mcp-registry-submission.md").read_text(
         encoding="utf-8"
     )
     catalog = ROOT / "docker" / "mcp-catalog" / "mcp-broker.yaml"
 
     for term in [
-        "docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)",
-        "ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)",
+        "${DOCKER_REPOSITORY_IMAGE}:${PACKAGE_VERSION}",
+        "${GHCR_REPOSITORY_IMAGE}:${PACKAGE_VERSION}",
         "make docker-smoke",
         "make docker-mcp-catalog-smoke",
         "No hidden host client config writes",
         "PR submitted and pending external Docker review",
-        "https://github.com/docker/mcp-registry/pull/3819",
+        "${DOCKER_MCP_CATALOG_PR_URL}",
         "mergeStateStatus=BLOCKED",
         "REVIEW_REQUIRED",
     ]:
@@ -573,17 +865,20 @@ def test_public_surface_smoke_downloads_real_public_artifacts() -> None:
     assert "grep -q '\"tools\"' \"$DOCKER_OUTPUT\"" in script
     for term in [
         "mktemp -d",
-        "pip install \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
-        "pipx run --spec \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
-        "uvx --from \"mcp-broker==$PUBLIC_SURFACE_VERSION\"",
-        "github.com/NavinAgrawal/mcp-broker/archive/refs/tags/v$PUBLIC_SURFACE_VERSION.tar.gz",
+        "require_env PYPI_PROJECT_NAME",
+        "require_env PACKAGE_COMMAND_NAME",
+        "require_env GITHUB_TAG_SOURCE_TARBALL_URL",
+        "require_env MCP_REGISTRY_SEARCH_URL",
+        "pip install \"$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION\"",
+        "pipx run --spec \"$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION\"",
+        "uvx --from \"$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION\"",
+        "\"$GITHUB_TAG_SOURCE_TARBALL_URL\"",
         "HOMEBREW_CACHE=\"$WORK_DIR/homebrew-cache\"",
         "brew update --force --quiet",
-        "brew fetch --formula NavinAgrawal/tap/mcp-broker",
-        "brew upgrade NavinAgrawal/tap/mcp-broker",
-        "brew list --formula --versions mcp-broker",
-        "brew test NavinAgrawal/tap/mcp-broker",
-        "registry.modelcontextprotocol.io/v0.1/servers?search=",
+        "brew fetch --formula \"$HOMEBREW_FORMULA_REF\"",
+        "brew upgrade \"$HOMEBREW_FORMULA_REF\"",
+        "brew list --formula --versions \"$PYPI_PROJECT_NAME\"",
+        "brew test \"$HOMEBREW_FORMULA_REF\"",
         "npm view \"$NPM_PACKAGE_NAME@$PUBLIC_SURFACE_VERSION\"",
         "docker buildx imagetools inspect \"$DOCKER_RELEASE_IMAGE\"",
     ]:
@@ -611,7 +906,7 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
     if maintainer_inputs:
         assert "pipx validation date: 2026-05-27" in maintainer_inputs
         assert "uv validation date: 2026-05-27" in maintainer_inputs
-        assert "Status: complete for `$(PACKAGE_VERSION)`." in maintainer_inputs
+        assert "Status: complete for `${PACKAGE_VERSION}`." in maintainer_inputs
         assert "publication pending" not in maintainer_inputs
         assert "NPM_TOKEN" not in maintainer_inputs
         assert "NODE_AUTH_TOKEN" not in maintainer_inputs

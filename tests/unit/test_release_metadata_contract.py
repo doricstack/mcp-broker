@@ -51,13 +51,13 @@ def test_emit_version_only_does_not_report_synchronization() -> None:
 
 
 def test_docker_catalog_version_sync_uses_standard_library_parser() -> None:
-    text = "name: mcp-broker\nimage: docker.io/navinagrawal/mcp-broker:2.3.4\ncategory: dev\n"
+    text = "name: example-broker\nimage: ${DOCKER_REPOSITORY_IMAGE}:2.3.4\ncategory: dev\n"
 
     updated = replace_docker_catalog_version(text, "2.3.5")
 
     assert docker_catalog_version_from_text(updated) == "2.3.5"
     assert updated == (
-        "name: mcp-broker\n"
-        "image: docker.io/navinagrawal/mcp-broker:2.3.5\n"
+        "name: example-broker\n"
+        "image: ${DOCKER_REPOSITORY_IMAGE}:2.3.5\n"
         "category: dev\n"
     )

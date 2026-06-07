@@ -7,7 +7,11 @@ import re
 import pytest
 import yaml
 
-from tests.support.makefiles import read_combined_makefiles
+from tests.support.makefiles import (
+    expand_make_value,
+    read_combined_makefiles,
+    read_make_variable_defaults,
+)
 
 
 pytestmark = pytest.mark.journey
@@ -68,6 +72,7 @@ def test_mcpb_manifest_tool_names_are_client_safe() -> None:
 
 
 def test_glama_claim_metadata_is_public_safe() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     claim_path = ROOT / "glama.json"
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
 
@@ -75,8 +80,8 @@ def test_glama_claim_metadata_is_public_safe() -> None:
     serialized = json.dumps(claim, sort_keys=True)
 
     assert claim == {
-        "$schema": "https://glama.ai/mcp/schemas/server.json",
-        "maintainers": ["NavinAgrawal"],
+        "$schema": expand_make_value(make_vars, make_vars["GLAMA_SCHEMA_URL"]),
+        "maintainers": [expand_make_value(make_vars, make_vars["GLAMA_MAINTAINER"])],
     }
     if allowlist_path.exists():
         assert "glama.json" in allowlist_path.read_text(encoding="utf-8")
@@ -227,8 +232,12 @@ def test_public_metadata_docs_are_ready_for_first_release() -> None:
     roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
     readiness = (ROOT / "docs" / "public-readiness.md").read_text(encoding="utf-8")
 
-    assert "## 0.1.1" in changelog
-    assert "## 0.1.0" in changelog
+    release_headings = re.findall(
+        r"^## (?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*) - ",
+        changelog,
+        re.M,
+    )
+    assert len(release_headings) >= 2
     assert "context-reduction-measurement.md" in changelog
     assert "Private-To-Public Export" in roadmap
     assert "GitHub topics" in readiness
@@ -311,6 +320,8 @@ def test_public_adoption_guides_cover_comparison_adoption_and_safety() -> None:
 
 
 def test_public_distribution_docs_cover_package_registry_and_directory_paths() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
+    repository_url = expand_make_value(make_vars, make_vars["GITHUB_REPOSITORY_URL"])
     install = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     github_publication = (ROOT / "docs" / "github-publication.md").read_text(encoding="utf-8")
@@ -335,10 +346,10 @@ def test_public_distribution_docs_cover_package_registry_and_directory_paths() -
         "mcpb/manifest.json",
         "Smithery",
         "Glama",
-        "https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker",
+        "${GLAMA_LISTING_URL}",
         "PulseMCP",
         "PulseMCP has also appeared from the registry/server.json surface",
-        "https://www.pulsemcp.com/servers/navinagrawal-mcp-broker",
+        "${PULSEMCP_LISTING_URL}",
         "Homebrew",
         "make release-gate",
         "var/quality/mutation_stats.json",
@@ -398,12 +409,13 @@ def test_docker_packaging_contract_is_public_safe() -> None:
 
 
 def test_mcpb_manifest_contract_is_public_safe() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     manifest_path = ROOT / "mcpb" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["name"] == "mcp-broker"
     assert manifest["license"] == "MIT"
-    assert manifest["author"]["name"] == "Navin B Agrawal"
+    assert manifest["author"]["name"] == make_vars["PACKAGE_AUTHOR"]
     assert manifest["server"]["type"] == "binary"
     assert manifest["server"]["mcp_config"]["command"] == "${user_config.uvx_path}"
     assert manifest["server"]["mcp_config"]["args"][:2] == ["mcp-broker", "stdio"]
@@ -468,8 +480,8 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
     assert card["packages"][0]["identifier"] == "mcp-broker"
     assert "GitHub OIDC" in distribution
     assert "PyPI package must exist first" in distribution
-    assert "mcpservers.org" in packet
-    assert "mcp.so" in packet
+    assert "MCPSERVERS" in packet
+    assert "MCP_SO" in packet
     assert "MCPCentral" in packet
     assert '"mcpServers": {' in packet
     assert '"mcp-broker": {' in packet
@@ -484,6 +496,7 @@ def test_registry_metadata_and_server_card_are_public_ready() -> None:
 
 
 def test_directory_submission_check_is_make_backed() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     makefile = read_combined_makefiles(ROOT)
     distribution = (ROOT / "docs" / "distribution.md").read_text(encoding="utf-8")
     packet = (ROOT / "docs" / "directory-submission-packet.md").read_text(encoding="utf-8")
@@ -495,28 +508,55 @@ def test_directory_submission_check_is_make_backed() -> None:
     assert "$(PYTHON_BIN) \"$(ROOT)/scripts/check_directory_submission.py\"" in makefile
     assert "make directory-submission-check" in distribution
     assert "/Users/" not in script_text
+    for env_name in [
+        "PACKAGE_SLUG",
+        "PACKAGE_COMMAND_NAME",
+        "PYPI_PROJECT_NAME",
+        "GLAMA_SCHEMA_URL",
+    ]:
+        assert f'{env_name}="$({env_name})"' in makefile
+        assert f'_required_env("{env_name}")' in script_text
+    for env_name in [
+        "GITHUB_REPOSITORY_URL",
+        "GLAMA_LISTING_URL",
+        "PULSEMCP_LISTING_URL",
+        "PULSEMCP_SUBMIT_URL",
+        "MCPSERVERS_LISTING_URL",
+        "MCP_SO_LISTING_URL",
+        "MCPCENTRAL_REGISTRY_URL",
+    ]:
+        assert f'{env_name}="$({env_name})"' in makefile
+        assert f'_placeholder_env("{env_name}")' in script_text
+    for copied_term in [
+        '"mcp-broker"',
+        '"pipx install mcp-broker"',
+        '"mcp-broker init"',
+        '"mcp-broker render codex --dry-run"',
+        '"MCPSERVERS"',
+        '"MCP_SO"',
+    ]:
+        assert copied_term not in script_text
     for term in [
         "broker_search_tools",
         "broker_describe_tool",
         "broker_call_tool",
         "broker_status",
-        "https://github.com/NavinAgrawal/mcp-broker",
+        "${GITHUB_REPOSITORY_URL}",
         "docs/context-reduction-measurement.md",
-        "https://glama.ai/",
-        "https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker",
+        "${GLAMA_LISTING_URL}",
         "glama.json",
-        "https://www.pulsemcp.com/submit",
-        "https://www.pulsemcp.com/servers/navinagrawal-mcp-broker",
+        "${PULSEMCP_SUBMIT_URL}",
+        "${PULSEMCP_LISTING_URL}",
         "PulseMCP: listed at",
-        "mcpservers.org: approved",
-        "https://mcpservers.org/servers/navinagrawal/mcp-broker",
-        "mcp.so: live",
-        "https://mcp.so/server/mcp-broker/NavinAgrawal",
-        "`registry.mcpcentral.io` currently does not resolve",
+        "MCPSERVERS: approved",
+        "${MCPSERVERS_LISTING_URL}",
+        "MCP_SO: live",
+        "${MCP_SO_LISTING_URL}",
+        "`${MCPCENTRAL_REGISTRY_URL}` currently does not resolve",
         "blocks non-browser automation",
-        "mcp-publisher login github --registry https://registry.mcpcentral.io",
-        "https://github.com/punkpeye/awesome-mcp-servers/pull/6993",
-        "https://github.com/appcypher/awesome-mcp-servers/compare/main...NavinAgrawal:awesome-mcp-servers-1:add-mcp-broker",
+        "mcp-publisher login github --registry ${MCPCENTRAL_REGISTRY_URL}",
+        "${PUNKPEYE_AWESOME_PR_URL}",
+        "${APPCYPHER_AWESOME_COMPARE_URL}",
         "Server tab",
         "Connector tab",
         "Settings -> Extensions -> Advanced settings -> Extension Developer -> Install Extension",

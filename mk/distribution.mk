@@ -1,11 +1,11 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-resolve release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-required-env-check _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke public-release-live-verify npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-resolve release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-required-env-check _publish-everywhere-live-verify-registries _publish-everywhere-github-release _publish-everywhere-live-verify-github-release _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
 
 package-build: $(VENV_DIR)/.deps.stamp ## Build wheel and source distribution into dist/
 	@rm -rf "$(PACKAGE_DIST_DIR)"
-	@$(PYTHON) -m build --outdir "$(PACKAGE_DIST_DIR)" "$(ROOT)"
+	@MCP_BROKER_VERSION="$(PACKAGE_VERSION)" $(PYTHON) -m build --outdir "$(PACKAGE_DIST_DIR)" "$(ROOT)"
 	$(call log_success,"Package artifacts built in $(PACKAGE_DIST_DIR)")
 
 package-check: package-build ## Validate built package metadata
@@ -27,15 +27,53 @@ public-stable-surface-smoke: ## Download and verify public stable artifacts from
 	@PUBLIC_SURFACE_VERSION="$(PACKAGE_INSTALL_VERSION)" \
 		PUBLIC_SURFACE_REQUIRE_NPM=0 \
 		PUBLIC_SURFACE_REQUIRE_DOCKER=0 \
+		PYPI_PROJECT_NAME="$(PYPI_PROJECT_NAME)" \
+		PACKAGE_COMMAND_NAME="$(PACKAGE_COMMAND_NAME)" \
+		PACKAGE_CLIENT_COMMAND_NAME="$(PACKAGE_CLIENT_COMMAND_NAME)" \
+		PACKAGE_DAEMON_COMMAND_NAME="$(PACKAGE_DAEMON_COMMAND_NAME)" \
+		GITHUB_TAG_SOURCE_TARBALL_URL="$(GITHUB_TAG_SOURCE_TARBALL_URL)" \
+		HOMEBREW_FORMULA_REF="$(HOMEBREW_FORMULA_REF)" \
+		MCP_REGISTRY_NAME="$(MCP_REGISTRY_NAME)" \
+		MCP_REGISTRY_SEARCH_URL="$(MCP_REGISTRY_SEARCH_URL)" \
 		"$(ROOT)/scripts/public-surface-smoke.sh"
 
 public-release-surface-smoke: ## Download and verify every public release surface after publication
 	@PUBLIC_SURFACE_VERSION="$(PACKAGE_VERSION)" \
 		PUBLIC_SURFACE_REQUIRE_NPM=1 \
 		PUBLIC_SURFACE_REQUIRE_DOCKER=1 \
+		PYPI_PROJECT_NAME="$(PYPI_PROJECT_NAME)" \
+		PACKAGE_COMMAND_NAME="$(PACKAGE_COMMAND_NAME)" \
+		PACKAGE_CLIENT_COMMAND_NAME="$(PACKAGE_CLIENT_COMMAND_NAME)" \
+		PACKAGE_DAEMON_COMMAND_NAME="$(PACKAGE_DAEMON_COMMAND_NAME)" \
+		GITHUB_TAG_SOURCE_TARBALL_URL="$(GITHUB_TAG_SOURCE_TARBALL_URL)" \
+		HOMEBREW_FORMULA_REF="$(HOMEBREW_FORMULA_REF)" \
+		MCP_REGISTRY_NAME="$(MCP_REGISTRY_NAME)" \
+		MCP_REGISTRY_SEARCH_URL="$(MCP_REGISTRY_SEARCH_URL)" \
 		NPM_PACKAGE_NAME="$(NPM_PACKAGE_NAME)" \
 		DOCKER_RELEASE_IMAGE="$(DOCKER_RELEASE_IMAGE)" \
 		"$(ROOT)/scripts/public-surface-smoke.sh"
+
+public-release-live-verify: ## Verify public registry APIs and release object for the current release
+	@$(PYTHON_BIN) "$(ROOT)/scripts/verify_public_release.py" \
+		--version "$(PACKAGE_VERSION)" \
+		--npm-package "$(NPM_PACKAGE_NAME)" \
+		--docker-namespace "$(DOCKER_NAMESPACE)" \
+		--docker-image-name "$(DOCKER_IMAGE_NAME)" \
+		--mcp-registry-name "$(MCP_REGISTRY_NAME)" \
+		--github-release-url "$(GITHUB_RELEASE_URL)" \
+		--pypi-version-url "$(PYPI_VERSION_URL)" \
+		--npm-registry-url "$(NPM_REGISTRY_URL)" \
+		--docker-hub-api-repository-base-url "$(DOCKER_HUB_API_REPOSITORY_BASE_URL)" \
+		--docker-registry-service "$(DOCKER_REGISTRY_SERVICE)" \
+		--docker-registry-host "$(DOCKER_REGISTRY_HOST)" \
+		--docker-registry-auth-url "$(DOCKER_REGISTRY_AUTH_URL)" \
+		--docker-registry-manifest-base-url "$(DOCKER_REGISTRY_MANIFEST_BASE_URL)" \
+		--ghcr-registry-service "$(GHCR_REGISTRY_SERVICE)" \
+		--ghcr-registry-host "$(GHCR_REGISTRY_HOST)" \
+		--ghcr-registry-auth-url "$(GHCR_REGISTRY_AUTH_URL)" \
+		--ghcr-registry-manifest-base-url "$(GHCR_REGISTRY_MANIFEST_BASE_URL)" \
+		--mcp-registry-search-url "$(MCP_REGISTRY_SEARCH_URL)" \
+		--homebrew-formula-url "$(HOMEBREW_FORMULA_RAW_URL)"
 
 npm-account-check: ## Verify the maintainer NPM login and scoped package visibility
 	@test -d "$(NPM_DIR)" || { printf "\033[1;31m[ERROR]\033[0m Missing NPM package directory: %s\n" "$(NPM_DIR)" >&2; exit 1; }
@@ -63,6 +101,7 @@ docker-build: ## Build the local Docker image
 		--build-arg VERSION="$(PACKAGE_VERSION)" \
 		--build-arg VCS_REF="$$(git -C "$(ROOT)" rev-parse --short HEAD 2>/dev/null || printf unknown)" \
 		--build-arg SOURCE_URL="$(DOCKER_SOURCE_URL)" \
+		--build-arg AUTHORS="$(PACKAGE_AUTHOR)" \
 		-t "$(DOCKER_IMAGE)" "$(ROOT)"
 	$(call log_success,"Docker image built: $(DOCKER_IMAGE)")
 
@@ -93,6 +132,7 @@ docker-buildx: ## Build multi-arch Docker image with SBOM/provenance; set DOCKER
 		--build-arg VERSION="$(PACKAGE_VERSION)" \
 		--build-arg VCS_REF="$$(git -C "$(ROOT)" rev-parse --short HEAD 2>/dev/null || printf unknown)" \
 		--build-arg SOURCE_URL="$(DOCKER_SOURCE_URL)" \
+		--build-arg AUTHORS="$(PACKAGE_AUTHOR)" \
 		--sbom=$$SBOM_ARG \
 		--provenance=$$PROVENANCE_ARG \
 		-t "$(DOCKER_IMAGE)" \
@@ -161,6 +201,7 @@ smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload
 	$(call log_step,"Checking Smithery release payload")
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
 		--name "$(SMITHERY_QUALIFIED_NAME)" \
+		--base-url "$(SMITHERY_API_BASE_URL)" \
 		--dry-run \
 		--payload-output "$(SMITHERY_PAYLOAD_OUTPUT)"
 	@$(PYTHON_BIN) -c 'import json, pathlib; p=json.loads(pathlib.Path("$(SMITHERY_PAYLOAD_OUTPUT)").read_text()); assert p["type"]=="stdio"; assert p["runtime"]=="binary"; assert "configSchema" in p; tools=p["serverCard"]["tools"]; assert all(t.get("inputSchema",{}).get("type")=="object" for t in tools); assert {t["name"] for t in tools}>={"broker_search_tools","broker_describe_tool","broker_call_tool","broker_status"}'
@@ -169,7 +210,8 @@ smithery-payload-check: mcpb-pack ## Build and validate Smithery release payload
 smithery-publish: smithery-payload-check ## Publish the MCPB bundle to Smithery using the repo payload adapter
 	$(call log_step,"Publishing Smithery MCPB bundle")
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) "$(ROOT)/scripts/smithery_release.py" "$(MCPB_OUTPUT)" \
-		--name "$(SMITHERY_QUALIFIED_NAME)"
+		--name "$(SMITHERY_QUALIFIED_NAME)" \
+		--base-url "$(SMITHERY_API_BASE_URL)"
 	$(call log_success,"Smithery publish target completed: $(SMITHERY_QUALIFIED_NAME)")
 
 directory-submission-check: mcpb-validate ## Validate directory submission packet, server card, registry metadata, and MCPB manifest
@@ -178,6 +220,18 @@ directory-submission-check: mcpb-validate ## Validate directory submission packe
 		SERVER_CARD_PATH="$(SERVER_CARD_PATH)" \
 		REGISTRY_METADATA_PATH="$(REGISTRY_METADATA_PATH)" \
 		MCPB_MANIFEST="$(MCPB_MANIFEST)" \
+		PACKAGE_SLUG="$(PACKAGE_SLUG)" \
+		PACKAGE_COMMAND_NAME="$(PACKAGE_COMMAND_NAME)" \
+		GITHUB_REPOSITORY_URL="$(GITHUB_REPOSITORY_URL)" \
+		PYPI_PROJECT_NAME="$(PYPI_PROJECT_NAME)" \
+		GLAMA_MAINTAINER="$(GLAMA_MAINTAINER)" \
+		GLAMA_SCHEMA_URL="$(GLAMA_SCHEMA_URL)" \
+		GLAMA_LISTING_URL="$(GLAMA_LISTING_URL)" \
+		PULSEMCP_LISTING_URL="$(PULSEMCP_LISTING_URL)" \
+		PULSEMCP_SUBMIT_URL="$(PULSEMCP_SUBMIT_URL)" \
+		MCPSERVERS_LISTING_URL="$(MCPSERVERS_LISTING_URL)" \
+		MCP_SO_LISTING_URL="$(MCP_SO_LISTING_URL)" \
+		MCPCENTRAL_REGISTRY_URL="$(MCPCENTRAL_REGISTRY_URL)" \
 		$(PYTHON_BIN) "$(ROOT)/scripts/check_directory_submission.py"
 	$(call log_success,"Directory submission check passed")
 
@@ -254,6 +308,9 @@ _publish-everywhere-impl:
 	$(call timed_make,"publish-everywhere: required env",_publish-everywhere-required-env-check)
 	$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)
 	$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)
+	$(call timed_make,"publish-everywhere: live registry verification",_publish-everywhere-live-verify-registries)
+	$(call timed_make,"publish-everywhere: github release",_publish-everywhere-github-release)
+	$(call timed_make,"publish-everywhere: github release verification",_publish-everywhere-live-verify-github-release)
 	$(call log_success,"Publish-everywhere completed")
 
 _publish-everywhere-preflight:
@@ -267,13 +324,80 @@ _publish-everywhere-required-env-check:
 	@test -n "$${HOMEBREW_TAP_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m HOMEBREW_TAP_TOKEN is required before publish-everywhere starts\n" >&2; exit 2; }
 	$(call log_success,"Publish-everywhere required environment is present")
 
+_publish-everywhere-live-verify-registries:
+	@$(PYTHON_BIN) "$(ROOT)/scripts/verify_public_release.py" \
+		--version "$(PACKAGE_VERSION)" \
+		--checks pypi,npm,docker-hub,docker-registry,ghcr,mcp-registry,homebrew \
+		--npm-package "$(NPM_PACKAGE_NAME)" \
+		--docker-namespace "$(DOCKER_NAMESPACE)" \
+		--docker-image-name "$(DOCKER_IMAGE_NAME)" \
+		--mcp-registry-name "$(MCP_REGISTRY_NAME)" \
+		--github-release-url "$(GITHUB_RELEASE_URL)" \
+		--pypi-version-url "$(PYPI_VERSION_URL)" \
+		--npm-registry-url "$(NPM_REGISTRY_URL)" \
+		--docker-hub-api-repository-base-url "$(DOCKER_HUB_API_REPOSITORY_BASE_URL)" \
+		--docker-registry-service "$(DOCKER_REGISTRY_SERVICE)" \
+		--docker-registry-host "$(DOCKER_REGISTRY_HOST)" \
+		--docker-registry-auth-url "$(DOCKER_REGISTRY_AUTH_URL)" \
+		--docker-registry-manifest-base-url "$(DOCKER_REGISTRY_MANIFEST_BASE_URL)" \
+		--ghcr-registry-service "$(GHCR_REGISTRY_SERVICE)" \
+		--ghcr-registry-host "$(GHCR_REGISTRY_HOST)" \
+		--ghcr-registry-auth-url "$(GHCR_REGISTRY_AUTH_URL)" \
+		--ghcr-registry-manifest-base-url "$(GHCR_REGISTRY_MANIFEST_BASE_URL)" \
+		--mcp-registry-search-url "$(MCP_REGISTRY_SEARCH_URL)" \
+		--homebrew-formula-url "$(HOMEBREW_FORMULA_RAW_URL)"
+
+_publish-everywhere-github-release:
+	@command -v gh >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m gh is required to create the GitHub Release\n" >&2; exit 2; }
+	@test -n "$${GH_TOKEN:-$${GITHUB_TOKEN:-}}" || { printf "\033[1;31m[ERROR]\033[0m GH_TOKEN or GITHUB_TOKEN is required to create the GitHub Release\n" >&2; exit 2; }
+	@target="$$(git -C "$(ROOT)" rev-parse HEAD)"; \
+	if gh release view "$(GITHUB_RELEASE_TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
+		gh release edit "$(GITHUB_RELEASE_TAG)" \
+			--repo "$(GITHUB_REPO)" \
+			--target "$$target" \
+			--title "$(GITHUB_RELEASE_TITLE)" \
+			--notes-file "$(GITHUB_RELEASE_NOTES_FILE)" \
+			--latest; \
+	else \
+		gh release create "$(GITHUB_RELEASE_TAG)" \
+			--repo "$(GITHUB_REPO)" \
+			--target "$$target" \
+			--title "$(GITHUB_RELEASE_TITLE)" \
+			--notes-file "$(GITHUB_RELEASE_NOTES_FILE)" \
+			--latest; \
+	fi
+	$(call log_success,"GitHub Release published: $(GITHUB_RELEASE_TAG)")
+
+_publish-everywhere-live-verify-github-release:
+	@$(PYTHON_BIN) "$(ROOT)/scripts/verify_public_release.py" \
+		--version "$(PACKAGE_VERSION)" \
+		--checks github-release \
+		--npm-package "$(NPM_PACKAGE_NAME)" \
+		--docker-namespace "$(DOCKER_NAMESPACE)" \
+		--docker-image-name "$(DOCKER_IMAGE_NAME)" \
+		--mcp-registry-name "$(MCP_REGISTRY_NAME)" \
+		--github-release-url "$(GITHUB_RELEASE_URL)" \
+		--pypi-version-url "$(PYPI_VERSION_URL)" \
+		--npm-registry-url "$(NPM_REGISTRY_URL)" \
+		--docker-hub-api-repository-base-url "$(DOCKER_HUB_API_REPOSITORY_BASE_URL)" \
+		--docker-registry-service "$(DOCKER_REGISTRY_SERVICE)" \
+		--docker-registry-host "$(DOCKER_REGISTRY_HOST)" \
+		--docker-registry-auth-url "$(DOCKER_REGISTRY_AUTH_URL)" \
+		--docker-registry-manifest-base-url "$(DOCKER_REGISTRY_MANIFEST_BASE_URL)" \
+		--ghcr-registry-service "$(GHCR_REGISTRY_SERVICE)" \
+		--ghcr-registry-host "$(GHCR_REGISTRY_HOST)" \
+		--ghcr-registry-auth-url "$(GHCR_REGISTRY_AUTH_URL)" \
+		--ghcr-registry-manifest-base-url "$(GHCR_REGISTRY_MANIFEST_BASE_URL)" \
+		--mcp-registry-search-url "$(MCP_REGISTRY_SEARCH_URL)" \
+		--homebrew-formula-url "$(HOMEBREW_FORMULA_RAW_URL)"
+
 _publish-everywhere-pypi:
 	@status="$$(curl -fsS -o /dev/null -w '%{http_code}' "$(PYPI_VERSION_URL)" || true)"; \
 	if [ "$$status" = "200" ]; then \
 		printf "\033[1;32m[OK]\033[0m PyPI package already exists: %s==%s\n" "$(PYPI_PROJECT_NAME)" "$(PACKAGE_VERSION)"; \
 	elif [ "$$status" = "404" ]; then \
 		command -v "$(UV)" >/dev/null 2>&1 || { printf "\033[1;31m[ERROR]\033[0m uv is required for publish-everywhere\n" >&2; exit 2; }; \
-		"$(UV)" publish --trusted-publishing always --check-url "https://pypi.org/simple/mcp-broker/" "$(PACKAGE_DIST_DIR)"/*; \
+		"$(UV)" publish --trusted-publishing always --check-url "$(PYPI_SIMPLE_CHECK_URL)" "$(PACKAGE_DIST_DIR)"/*; \
 	else \
 		printf "\033[1;31m[ERROR]\033[0m PyPI version check failed for %s (HTTP %s)\n" "$(PYPI_VERSION_URL)" "$$status" >&2; \
 		exit 2; \
@@ -296,6 +420,7 @@ _publish-everywhere-docker:
 		--build-arg VERSION="$(PACKAGE_VERSION)" \
 		--build-arg VCS_REF="$$(git -C "$(ROOT)" rev-parse --short HEAD 2>/dev/null || printf unknown)" \
 		--build-arg SOURCE_URL="$(DOCKER_SOURCE_URL)" \
+		--build-arg AUTHORS="$(PACKAGE_AUTHOR)" \
 		--sbom=$(DOCKER_SBOM) \
 		--provenance=$(DOCKER_PROVENANCE) \
 		"$${TAG_ARGS[@]}" \
@@ -329,11 +454,11 @@ _publish-everywhere-homebrew:
 		chmod 700 "$$tmpdir/git-askpass.sh"; \
 		GIT_ASKPASS="$$tmpdir/git-askpass.sh" GIT_TERMINAL_PROMPT=0 \
 			git clone --depth 1 --branch "$(HOMEBREW_TAP_BRANCH)" \
-			"https://github.com/$(HOMEBREW_TAP_REPO).git" "$$tmpdir/tap"; \
+			"$(HOMEBREW_TAP_CLONE_URL)" "$$tmpdir/tap"; \
 		"$(PYTHON)" "$(ROOT)/scripts/update_homebrew_formula.py" \
 			--formula "$$tmpdir/tap/$(HOMEBREW_FORMULA_PATH)" \
-			--project "$(PYPI_PROJECT_NAME)" \
 			--version "$(PACKAGE_VERSION)" \
+			--pypi-version-url "$(PYPI_VERSION_URL)" \
 			--pypi-attempts "$(HOMEBREW_PYPI_ATTEMPTS)" \
 			--pypi-retry-delay-seconds "$(HOMEBREW_PYPI_RETRY_DELAY_SECONDS)"; \
 		if git -C "$$tmpdir/tap" diff --quiet -- "$(HOMEBREW_FORMULA_PATH)"; then \

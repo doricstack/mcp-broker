@@ -17,12 +17,7 @@ REQUIRED_TOOLS = {
     "broker_status",
 }
 
-REQUIRED_PACKET_TERMS = [
-    "mcp-broker",
-    "https://github.com/NavinAgrawal/mcp-broker",
-    "pipx install mcp-broker",
-    "mcp-broker init",
-    "mcp-broker render codex --dry-run",
+REQUIRED_PACKET_STATIC_TERMS = [
     "Runtime state stays outside the repository",
     "Mutating tools require profile allowlists",
     "docs/context-reduction-measurement.md",
@@ -30,8 +25,6 @@ REQUIRED_PACKET_TERMS = [
     "broker_describe_tool",
     "broker_call_tool",
     "broker_status",
-    "mcpservers.org",
-    "mcp.so",
     "MCPCentral",
     "glama.json",
 ]
@@ -60,6 +53,18 @@ def _repo_path(env_name: str, default: str) -> Path:
     configured = os.environ.get(env_name, default)
     path = Path(configured)
     return path if path.is_absolute() else ROOT / path
+
+
+def _required_env(env_name: str) -> str:
+    value = os.environ.get(env_name)
+    if not value:
+        raise ValueError(f"{env_name} is required")
+    return value
+
+
+def _placeholder_env(env_name: str) -> str:
+    _required_env(env_name)
+    return f"${{{env_name}}}"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -111,7 +116,7 @@ def _append_metadata_errors(
 
     expected_package = {
         "registryType": "pypi",
-        "identifier": "mcp-broker",
+        "identifier": _required_env("PYPI_PROJECT_NAME"),
     }
     for key, expected in expected_package.items():
         if registry_package.get(key) != expected:
@@ -158,15 +163,32 @@ def _append_mcpb_errors(mcpb_manifest: dict[str, Any], errors: list[str]) -> Non
 
 
 def _append_glama_claim_errors(glama_claim: dict[str, Any], errors: list[str]) -> None:
-    if glama_claim.get("$schema") != "https://glama.ai/mcp/schemas/server.json":
+    if glama_claim.get("$schema") != _required_env("GLAMA_SCHEMA_URL"):
         errors.append("glama.json schema is not the Glama server schema")
 
-    if glama_claim.get("maintainers") != ["NavinAgrawal"]:
-        errors.append('glama.json maintainers must be ["NavinAgrawal"]')
+    maintainer = os.environ["GLAMA_MAINTAINER"]
+    if glama_claim.get("maintainers") != [maintainer]:
+        errors.append(f"glama.json maintainers must be [{maintainer!r}]")
 
 
 def _append_document_errors(packet_text: str, launch_text: str, errors: list[str]) -> None:
-    _append_missing_terms("directory submission packet", packet_text, REQUIRED_PACKET_TERMS, errors)
+    package_command_name = _required_env("PACKAGE_COMMAND_NAME")
+    pypi_project_name = _required_env("PYPI_PROJECT_NAME")
+    required_packet_terms = [
+        *REQUIRED_PACKET_STATIC_TERMS,
+        _required_env("PACKAGE_SLUG"),
+        f"pipx install {pypi_project_name}",
+        f"{package_command_name} init",
+        f"{package_command_name} render codex --dry-run",
+        _placeholder_env("GITHUB_REPOSITORY_URL"),
+        _placeholder_env("GLAMA_LISTING_URL"),
+        _placeholder_env("PULSEMCP_LISTING_URL"),
+        _placeholder_env("PULSEMCP_SUBMIT_URL"),
+        _placeholder_env("MCPSERVERS_LISTING_URL"),
+        _placeholder_env("MCP_SO_LISTING_URL"),
+        _placeholder_env("MCPCENTRAL_REGISTRY_URL"),
+    ]
+    _append_missing_terms("directory submission packet", packet_text, required_packet_terms, errors)
     _append_missing_terms(
         "launch doc",
         launch_text,

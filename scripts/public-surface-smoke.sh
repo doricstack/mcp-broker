@@ -4,8 +4,16 @@ set -euo pipefail
 PUBLIC_SURFACE_VERSION="${PUBLIC_SURFACE_VERSION:-}"
 PUBLIC_SURFACE_REQUIRE_NPM="${PUBLIC_SURFACE_REQUIRE_NPM:-0}"
 PUBLIC_SURFACE_REQUIRE_DOCKER="${PUBLIC_SURFACE_REQUIRE_DOCKER:-0}"
-NPM_PACKAGE_NAME="${NPM_PACKAGE_NAME:-@navinagrawal/mcp-broker}"
-DOCKER_RELEASE_IMAGE="${DOCKER_RELEASE_IMAGE:-docker.io/navinagrawal/mcp-broker:$PUBLIC_SURFACE_VERSION}"
+PYPI_PROJECT_NAME="${PYPI_PROJECT_NAME:-}"
+PACKAGE_COMMAND_NAME="${PACKAGE_COMMAND_NAME:-}"
+PACKAGE_CLIENT_COMMAND_NAME="${PACKAGE_CLIENT_COMMAND_NAME:-}"
+PACKAGE_DAEMON_COMMAND_NAME="${PACKAGE_DAEMON_COMMAND_NAME:-}"
+GITHUB_TAG_SOURCE_TARBALL_URL="${GITHUB_TAG_SOURCE_TARBALL_URL:-}"
+HOMEBREW_FORMULA_REF="${HOMEBREW_FORMULA_REF:-}"
+MCP_REGISTRY_NAME="${MCP_REGISTRY_NAME:-}"
+MCP_REGISTRY_SEARCH_URL="${MCP_REGISTRY_SEARCH_URL:-}"
+NPM_PACKAGE_NAME="${NPM_PACKAGE_NAME:-}"
+DOCKER_RELEASE_IMAGE="${DOCKER_RELEASE_IMAGE:-}"
 WORK_DIR="${PUBLIC_SURFACE_WORK_DIR:-}"
 KEEP_WORK_DIR="${PUBLIC_SURFACE_KEEP:-0}"
 
@@ -45,9 +53,32 @@ command -v tar >/dev/null 2>&1 || { printf "tar is required\n" >&2; exit 2; }
 command -v pipx >/dev/null 2>&1 || { printf "pipx is required\n" >&2; exit 2; }
 command -v uvx >/dev/null 2>&1 || { printf "uvx is required\n" >&2; exit 2; }
 
+require_env() {
+  local name="$1"
+  if [[ -z "${!name:-}" ]]; then
+    printf "%s is required\n" "$name" >&2
+    exit 2
+  fi
+}
+
 if [[ -z "$PUBLIC_SURFACE_VERSION" ]]; then
   printf "PUBLIC_SURFACE_VERSION is required\n" >&2
   exit 2
+fi
+
+require_env PYPI_PROJECT_NAME
+require_env PACKAGE_COMMAND_NAME
+require_env PACKAGE_CLIENT_COMMAND_NAME
+require_env PACKAGE_DAEMON_COMMAND_NAME
+require_env GITHUB_TAG_SOURCE_TARBALL_URL
+require_env HOMEBREW_FORMULA_REF
+require_env MCP_REGISTRY_NAME
+require_env MCP_REGISTRY_SEARCH_URL
+if [[ "$PUBLIC_SURFACE_REQUIRE_NPM" == "1" ]]; then
+  require_env NPM_PACKAGE_NAME
+fi
+if [[ "$PUBLIC_SURFACE_REQUIRE_DOCKER" == "1" ]]; then
+  require_env DOCKER_RELEASE_IMAGE
 fi
 
 if [[ -z "$WORK_DIR" ]]; then
@@ -66,22 +97,22 @@ printf "public_surface_smoke_start version=%s work_dir=%s\n" "$PUBLIC_SURFACE_VE
 PYPI_VENV="$WORK_DIR/pypi-venv"
 python3 -m venv "$PYPI_VENV"
 PYTHONPATH="" "$PYPI_VENV/bin/python" -m pip install --upgrade pip >/dev/null
-PYTHONPATH="" "$PYPI_VENV/bin/python" -m pip install "mcp-broker==$PUBLIC_SURFACE_VERSION" >/dev/null
-PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker" --help >/dev/null
-PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker-client" --help >/dev/null
-PYTHONPATH="" "$PYPI_VENV/bin/mcp-broker-daemon" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/python" -m pip install "$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION" >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/$PACKAGE_COMMAND_NAME" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/$PACKAGE_CLIENT_COMMAND_NAME" --help >/dev/null
+PYTHONPATH="" "$PYPI_VENV/bin/$PACKAGE_DAEMON_COMMAND_NAME" --help >/dev/null
 printf "public_surface_pypi=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 
 PIPX_HOME="$WORK_DIR/pipx-home" PIPX_BIN_DIR="$WORK_DIR/pipx-bin" \
-  PYTHONPATH="" pipx run --spec "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
+  PYTHONPATH="" pipx run --spec "$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION" "$PACKAGE_COMMAND_NAME" --help >/dev/null
 UV_TOOL_DIR="$WORK_DIR/uv-tools" UV_CACHE_DIR="$WORK_DIR/uv-cache" \
-  PYTHONPATH="" uvx --from "mcp-broker==$PUBLIC_SURFACE_VERSION" mcp-broker --help >/dev/null
+  PYTHONPATH="" uvx --from "$PYPI_PROJECT_NAME==$PUBLIC_SURFACE_VERSION" "$PACKAGE_COMMAND_NAME" --help >/dev/null
 printf "public_surface_tool_runners=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 
 SOURCE_TARBALL="$WORK_DIR/github-source.tar.gz"
 SOURCE_DIR="$WORK_DIR/github-source"
 curl -fsSL \
-  "https://github.com/NavinAgrawal/mcp-broker/archive/refs/tags/v$PUBLIC_SURFACE_VERSION.tar.gz" \
+  "$GITHUB_TAG_SOURCE_TARBALL_URL" \
   -o "$SOURCE_TARBALL"
 mkdir -p "$SOURCE_DIR"
 tar -xzf "$SOURCE_TARBALL" -C "$SOURCE_DIR" --strip-components 1
@@ -95,38 +126,38 @@ printf "public_surface_github_release=true version=%s\n" "$PUBLIC_SURFACE_VERSIO
 
 if command -v brew >/dev/null 2>&1; then
   brew update --force --quiet >/dev/null
-  HOMEBREW_CACHE="$WORK_DIR/homebrew-cache" brew fetch --formula NavinAgrawal/tap/mcp-broker >/dev/null
-  brew info --formula NavinAgrawal/tap/mcp-broker | grep -q "$PUBLIC_SURFACE_VERSION"
-  if brew list --formula mcp-broker >/dev/null 2>&1; then
-    brew upgrade NavinAgrawal/tap/mcp-broker >/dev/null || \
-      brew list --formula --versions mcp-broker | grep -q " $PUBLIC_SURFACE_VERSION"
+  HOMEBREW_CACHE="$WORK_DIR/homebrew-cache" brew fetch --formula "$HOMEBREW_FORMULA_REF" >/dev/null
+  brew info --formula "$HOMEBREW_FORMULA_REF" | grep -q "$PUBLIC_SURFACE_VERSION"
+  if brew list --formula "$PYPI_PROJECT_NAME" >/dev/null 2>&1; then
+    brew upgrade "$HOMEBREW_FORMULA_REF" >/dev/null || \
+      brew list --formula --versions "$PYPI_PROJECT_NAME" | grep -q " $PUBLIC_SURFACE_VERSION"
   else
-    brew install NavinAgrawal/tap/mcp-broker >/dev/null
+    brew install "$HOMEBREW_FORMULA_REF" >/dev/null
   fi
-  brew list --formula --versions mcp-broker | grep -q " $PUBLIC_SURFACE_VERSION"
-  "$(brew --prefix NavinAgrawal/tap/mcp-broker)/bin/mcp-broker" --help >/dev/null
-  brew test NavinAgrawal/tap/mcp-broker >/dev/null
+  brew list --formula --versions "$PYPI_PROJECT_NAME" | grep -q " $PUBLIC_SURFACE_VERSION"
+  "$(brew --prefix "$HOMEBREW_FORMULA_REF")/bin/$PACKAGE_COMMAND_NAME" --help >/dev/null
+  brew test "$HOMEBREW_FORMULA_REF" >/dev/null
   printf "public_surface_homebrew=true version=%s\n" "$PUBLIC_SURFACE_VERSION"
 else
   printf "public_surface_homebrew=missing_brew\n" >&2
   exit 2
 fi
 
-PUBLIC_SURFACE_VERSION="$PUBLIC_SURFACE_VERSION" python3 - <<'PY'
+PUBLIC_SURFACE_VERSION="$PUBLIC_SURFACE_VERSION" MCP_REGISTRY_NAME="$MCP_REGISTRY_NAME" MCP_REGISTRY_SEARCH_URL="$MCP_REGISTRY_SEARCH_URL" PYPI_PROJECT_NAME="$PYPI_PROJECT_NAME" python3 - <<'PY'
 import json
 import os
 import sys
-import urllib.parse
 import urllib.request
 
-name = "io.github.NavinAgrawal/mcp-broker"
+name = os.environ["MCP_REGISTRY_NAME"]
 version = os.environ["PUBLIC_SURFACE_VERSION"]
-url = "https://registry.modelcontextprotocol.io/v0.1/servers?search=" + urllib.parse.quote(name)
+project = os.environ["PYPI_PROJECT_NAME"]
+url = os.environ["MCP_REGISTRY_SEARCH_URL"]
 with urllib.request.urlopen(url, timeout=30) as response:
     payload = json.load(response)
 
 encoded = json.dumps(payload)
-if name not in encoded or version not in encoded or "mcp-broker" not in encoded:
+if name not in encoded or version not in encoded or project not in encoded:
     raise SystemExit(f"MCP Registry response missing {name} {version}")
 sys.stdout.write(f"public_surface_mcp_registry=true version={version}\n")
 PY

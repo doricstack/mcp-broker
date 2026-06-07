@@ -2,7 +2,7 @@
 
 Status: PR submitted and pending external Docker review.
 
-PR: `https://github.com/docker/mcp-registry/pull/3819`
+PR: `${DOCKER_MCP_CATALOG_PR_URL}`
 
 Current PR state checked on 2026-05-28: open, not draft, `REVIEW_REQUIRED`,
 `mergeStateStatus=BLOCKED`, no review comments, and not mergeable by this
@@ -10,9 +10,9 @@ maintainer token because `docker/mcp-registry` grants only read permission.
 
 ## Package
 
-- Public repository: `https://github.com/NavinAgrawal/mcp-broker`
-- Primary image: `docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)`
-- Mirror image: `ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)`
+- Public repository: `${GITHUB_REPOSITORY_URL}`
+- Primary image: `${DOCKER_REPOSITORY_IMAGE}:${PACKAGE_VERSION}`
+- Mirror image: `${GHCR_REPOSITORY_IMAGE}:${PACKAGE_VERSION}`
 - Catalog metadata: `docker/mcp-catalog/mcp-broker.yaml`
 
 ## Runtime Boundary
@@ -39,7 +39,7 @@ Run after image publication:
 
 ```bash
 make docker-publish-check
-make docker-release-smoke DOCKER_RELEASE_IMAGE=docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)
+make docker-release-smoke DOCKER_RELEASE_IMAGE=${DOCKER_REPOSITORY_IMAGE}:${PACKAGE_VERSION}
 ```
 
 ## Submission Path

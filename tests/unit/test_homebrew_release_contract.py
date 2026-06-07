@@ -23,7 +23,7 @@ EXAMPLE_WHEEL_URL = f"https://example.invalid/mcp_broker-{NEW_VERSION}-py3-none-
 
 FORMULA_TEXT = """class McpBroker < Formula
   desc "Local MCP broker"
-  homepage "https://github.com/NavinAgrawal/mcp-broker"
+  homepage "https://example.invalid/example-broker"
   url "__OLD_SDIST_URL__"
   sha256 "oldsha"
   license "MIT"
@@ -113,7 +113,7 @@ def test_fetch_pypi_release_retries_until_json_is_available() -> None:
         return Response()
 
     assert fetch_pypi_release(
-        "mcp-broker",
+        f"https://example.invalid/pypi/example-broker/{NEW_VERSION}/json",
         NEW_VERSION,
         attempts=4,
         retry_delay_seconds=0.25,
@@ -130,7 +130,7 @@ def test_fetch_pypi_release_fails_after_retry_budget() -> None:
 
     with pytest.raises(ValueError, match="PyPI release payload unavailable"):
         fetch_pypi_release(
-            "mcp-broker",
+            f"https://example.invalid/pypi/example-broker/{NEW_VERSION}/json",
             NEW_VERSION,
             attempts=2,
             retry_delay_seconds=0,

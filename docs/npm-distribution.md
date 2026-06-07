@@ -11,13 +11,13 @@ unscoped NPM name.
 The package for this project is:
 
 ```text
-@navinagrawal/mcp-broker
+${NPM_PACKAGE_NAME}
 ```
 
 Expected user command after publication:
 
 ```bash
-npx @navinagrawal/mcp-broker --help
+npx ${NPM_PACKAGE_NAME} --help
 ```
 
 ## Runtime Contract
@@ -25,7 +25,7 @@ npx @navinagrawal/mcp-broker --help
 The NPM package is a thin Node wrapper. It delegates to the Python package:
 
 ```text
-mcp-broker==$(PACKAGE_VERSION)
+mcp-broker==${PACKAGE_VERSION}
 ```
 
 The wrapper does not reimplement the Python broker in Node. The Python package
@@ -44,10 +44,10 @@ from public repositories.
 
 Required package settings for trusted publishing:
 
-- Package name: `@navinagrawal/mcp-broker`
+- Package name: `${NPM_PACKAGE_NAME}`
 - Visibility: public
 - Trusted publisher: GitHub Actions
-- Repository: `NavinAgrawal/mcp-broker`
+- Repository: `${GITHUB_REPO}`
 - Workflow file: `.github/workflows/publish-everywhere.yml`
 - Permission: publish
 
@@ -57,7 +57,7 @@ and does not require a long-lived NPM registry token.
 
 ## Release Policy
 
-The current source release comes from `$(PACKAGE_VERSION)`. Set it with
+The current source release comes from `${PACKAGE_VERSION}`. Set it with
 `make release-version-sync RELEASE_VERSION=<semver>` or
 `make release-version-sync RELEASE_BUMP=patch|minor|major` before tagging.
 

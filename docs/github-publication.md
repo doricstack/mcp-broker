@@ -32,7 +32,7 @@ ai-tools
 Website:
 
 ```text
-https://github.com/<owner>/mcp-broker#readme
+https://github.com/${GITHUB_REPO}#readme
 ```
 
 ## Pinned Demo Issue
@@ -61,7 +61,7 @@ The demo should show:
 Release title:
 
 ```text
-mcp-broker $(PACKAGE_VERSION)
+${PACKAGE_SLUG} ${PACKAGE_VERSION}
 ```
 
 Use these release notes as the starting body:
@@ -69,7 +69,7 @@ Use these release notes as the starting body:
 release notes:
 
 ```text
-mcp-broker $(PACKAGE_VERSION) is the current stable public release.
+${PACKAGE_SLUG} ${PACKAGE_VERSION} is the current stable public release.
 
 Highlights:
 - one compact MCP facade for many upstream MCP servers

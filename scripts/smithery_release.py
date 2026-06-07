@@ -16,7 +16,7 @@ from mcp_broker.tool_namespace import compact_broker_tool_definitions
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_BASE_URL = "https://api.smithery.ai"
+SMITHERY_API_BASE_URL_ENV = "SMITHERY_API_BASE_URL"
 DEFAULT_SETTINGS_PATH = Path.home() / "Library/Application Support/smithery/settings.json"
 DEFAULT_TOOL_INPUT_SCHEMA = {"type": "object", "properties": {}}
 COMPACT_BROKER_TOOL_SCHEMAS = {
@@ -79,7 +79,7 @@ def publish_bundle(
     *,
     bundle_path: Path,
     qualified_name: str,
-    base_url: str = DEFAULT_BASE_URL,
+    base_url: str,
     settings_path: Path = DEFAULT_SETTINGS_PATH,
 ) -> dict[str, Any]:
     manifest = load_mcpb_manifest(bundle_path)
@@ -310,7 +310,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Publish MCPB bundles to Smithery.")
     parser.add_argument("bundle", type=Path, help="Path to the .mcpb bundle")
     parser.add_argument("-n", "--name", required=True, help="Smithery qualified name")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Smithery API base URL")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get(SMITHERY_API_BASE_URL_ENV, ""),
+        help="Smithery API base URL",
+    )
     parser.add_argument(
         "--settings",
         type=Path,
@@ -324,6 +328,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if not args.base_url:
+        raise RuntimeError(f"{SMITHERY_API_BASE_URL_ENV} or --base-url is required")
     manifest = load_mcpb_manifest(args.bundle)
     payload = build_payload_from_manifest(manifest)
     if args.dry_run:

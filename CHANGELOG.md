@@ -45,7 +45,7 @@ All notable public changes will be recorded here.
 
 - Add the one-shot `make publish-everywhere` CI release path for PyPI, NPM,
   Docker Hub, GHCR, and MCP Registry publication.
-- Add the scoped NPM bridge package at `@navinagrawal/mcp-broker`.
+- Add the scoped NPM bridge package at `${NPM_PACKAGE_NAME}`.
 - Add Docker Hub primary and GHCR mirror publication contracts for the Docker
   image release path.
 

@@ -38,7 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         update = find_sdist_release(
             fetch_pypi_release(
-                args.project,
+                args.pypi_version_url,
                 args.version,
                 attempts=args.pypi_attempts,
                 retry_delay_seconds=args.pypi_retry_delay_seconds,
@@ -69,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def fetch_pypi_release(
-    project: str,
+    pypi_version_url: str,
     version: str,
     *,
     attempts: int = 12,
@@ -77,11 +77,10 @@ def fetch_pypi_release(
     opener: Callable[[str, int], ResponseReader] = urlopen,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    url = f"https://pypi.org/pypi/{project}/{version}/json"
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
         try:
-            with opener(url, timeout=30) as response:
+            with opener(pypi_version_url, timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             last_error = exc
@@ -89,7 +88,7 @@ def fetch_pypi_release(
                 break
             LOGGER.info(
                 "PyPI release JSON not ready for %s %s; retrying attempt %s/%s",
-                project,
+                pypi_version_url,
                 version,
                 attempt + 1,
                 max(1, attempts),
@@ -136,8 +135,8 @@ def render_formula_update(text: str, update: FormulaUpdate) -> str:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--formula", type=Path, required=True, help="Formula file to update")
-    parser.add_argument("--project", default="mcp-broker", help="PyPI project name")
     parser.add_argument("--version", required=True, help="PyPI version to read")
+    parser.add_argument("--pypi-version-url", required=True, help="PyPI release JSON URL")
     parser.add_argument("--pypi-attempts", type=int, default=12, help="PyPI JSON fetch attempts")
     parser.add_argument(
         "--pypi-retry-delay-seconds",

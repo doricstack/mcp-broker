@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import re
 
 import pytest
 
-from tests.support.makefiles import read_combined_makefiles
+from tests.support.makefiles import (
+    expand_make_value,
+    read_combined_makefiles,
+    read_make_variable_defaults,
+)
 
 
 pytestmark = pytest.mark.journey
@@ -15,23 +18,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _package_version() -> str:
-    package_init = (ROOT / "src" / "mcp_broker" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
-    package_version_match = re.search(r'__version__ = "([^"]+)"', package_init)
-    assert package_version_match is not None
-    return package_version_match.group(1)
+    package = json.loads((ROOT / "npm" / "package.json").read_text(encoding="utf-8"))
+    return str(package["version"])
 
 
 def test_npm_package_is_scoped_and_delegates_to_python_runtime() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
     package = json.loads((ROOT / "npm" / "package.json").read_text(encoding="utf-8"))
     wrapper = (ROOT / "npm" / "bin" / "mcp-broker.js").read_text(encoding="utf-8")
     readme = (ROOT / "npm" / "README.md").read_text(encoding="utf-8")
     allowlist_path = ROOT / "public-export" / "allowlist.txt"
 
-    assert package["name"] == "@navinagrawal/mcp-broker"
+    assert package["name"] == expand_make_value(make_vars, make_vars["NPM_PACKAGE_NAME"])
     assert package["version"] == _package_version()
-    assert package["author"] == "Navin B Agrawal"
+    assert package["author"] == make_vars["PACKAGE_AUTHOR"]
     assert package["license"] == "MIT"
     assert package["bin"] == {"mcp-broker": "bin/mcp-broker.js"}
     assert package["files"] == ["bin/", "README.md"]
@@ -47,9 +47,10 @@ def test_npm_package_is_scoped_and_delegates_to_python_runtime() -> None:
 
 def test_makefile_exposes_npm_distribution_targets() -> None:
     makefile = read_combined_makefiles(ROOT)
+    make_vars = read_make_variable_defaults(ROOT)
 
     for term in [
-        "NPM_PACKAGE_NAME  ?= @navinagrawal/mcp-broker",
+        f"NPM_PACKAGE_NAME  ?= {make_vars['NPM_PACKAGE_NAME']}",
         "npm-account-check:",
         "npm-package-check:",
         "npm-smoke:",

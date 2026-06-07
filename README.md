@@ -193,7 +193,7 @@ Package installs:
 ```bash
 pipx install mcp-broker
 uv tool install mcp-broker
-brew tap NavinAgrawal/tap
+brew tap ${HOMEBREW_TAP_REF}
 brew install mcp-broker
 ```
 

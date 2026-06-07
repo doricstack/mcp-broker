@@ -48,7 +48,7 @@ uvx mcp-broker status
 Homebrew:
 
 ```bash
-brew tap NavinAgrawal/tap
+brew tap ${HOMEBREW_TAP_REF}
 brew install mcp-broker
 ```
 

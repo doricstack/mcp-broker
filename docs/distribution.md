@@ -11,13 +11,13 @@ metadata, and Docker catalog metadata are synchronized from that input.
 
 Current public package status:
 
-- PyPI: `mcp-broker $(PACKAGE_VERSION)` is published by the release transaction.
-- MCP Registry: `io.github.NavinAgrawal/mcp-broker $(PACKAGE_VERSION)` is published and marked latest by the release transaction.
-- Homebrew: `mcp-broker $(PACKAGE_VERSION)` is published through the public tap.
-- NPM: `@navinagrawal/mcp-broker $(PACKAGE_VERSION)` is published by the release transaction.
-- Docker: `docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)` and
-  `ghcr.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION)` are published by the release transaction.
-- Current source release: `$(PACKAGE_VERSION)`.
+- PyPI: `${PYPI_PROJECT_NAME} ${PACKAGE_VERSION}` is published by the release transaction.
+- MCP Registry: `${MCP_REGISTRY_NAME} ${PACKAGE_VERSION}` is published and marked latest by the release transaction.
+- Homebrew: `${HOMEBREW_FORMULA_REF} ${PACKAGE_VERSION}` is published through the public tap.
+- NPM: `${NPM_PACKAGE_NAME} ${PACKAGE_VERSION}` is published by the release transaction.
+- Docker: `${DOCKER_REPOSITORY_IMAGE}:${PACKAGE_VERSION}` and
+  `${GHCR_REPOSITORY_IMAGE}:${PACKAGE_VERSION}` are published by the release transaction.
+- Current source release: `${PACKAGE_VERSION}`.
 
 The package command surface is:
 
@@ -72,6 +72,16 @@ make public-release-surface-smoke
 That release gate adds NPM and Docker checks and must pass before any directory
 submission claims those surfaces are live.
 
+CI also runs public live verification during the publish transaction:
+
+```bash
+make public-release-live-verify
+```
+
+That verifier checks public registry APIs and anonymous image pull manifests for
+the intended version. It fails when a registry accepts a publisher write but a
+normal public user cannot see the version.
+
 Publishing is orchestrated by `.github/workflows/publish-everywhere.yml`. The
 workflow calls:
 
@@ -91,10 +101,12 @@ preflight, and checks directory, MCPB, and Smithery metadata before a release
 tag or GitHub release is created.
 
 The release transaction publishes PyPI first, then fans out NPM, Docker Hub,
-GHCR, MCP Registry metadata, and the Homebrew tap formula in one CI run. Tag
-pushes do not publish; the GitHub Release publication is the single normal
-release event. There are no per-registry publish workflows. Recovery runs the
-same `publish-everywhere` workflow with the same Makefile orchestrator.
+GHCR, MCP Registry metadata, and the Homebrew tap formula in one CI run. Public
+live verification runs after that fan-out. The GitHub Release is created only
+after registry verification passes, then the release object is verified through
+the GitHub API. Tag pushes do not publish. There are no per-registry publish
+workflows. Recovery runs the same `publish-everywhere` workflow with the same
+Makefile orchestrator.
 
 The Makefile validates required publication environment before the first
 registry write. For the current surface set, `HOMEBREW_TAP_TOKEN` must exist in
@@ -133,7 +145,7 @@ values.
 Homebrew is published through:
 
 ```bash
-brew tap NavinAgrawal/tap
+brew tap ${HOMEBREW_TAP_REF}
 brew install mcp-broker
 ```
 
@@ -144,7 +156,7 @@ untouched during install, and preserves the runtime root contract:
 $HOME/mcp/mcp-broker/
 ```
 
-The public tap points to the PyPI source artifact for `$(PACKAGE_VERSION)`.
+The public tap points to the PyPI source artifact for `${PACKAGE_VERSION}`.
 Future releases update the formula through `make publish-everywhere` with the
 `HOMEBREW_TAP_TOKEN` GitHub Actions secret.
 
@@ -156,7 +168,7 @@ but the Python package remains the runtime source of truth.
 The NPM package name is:
 
 ```text
-@navinagrawal/mcp-broker
+${NPM_PACKAGE_NAME}
 ```
 
 Do not publish the unscoped `mcp-broker` package name on NPM. That name already
@@ -185,7 +197,7 @@ generic for downstream forks.
 Before publishing from GitHub Actions:
 
 - Publish the `mcp-broker` package to PyPI.
-- Confirm the PyPI package README contains `mcp-name: io.github.NavinAgrawal/mcp-broker`.
+- Confirm the PyPI package README contains `mcp-name: ${MCP_REGISTRY_NAME}`.
 - Confirm `registry/server.json` and the PyPI package version match.
 - Confirm the public GitHub repo has OIDC access to the MCP Registry namespace.
 - Run `.github/workflows/publish-everywhere.yml`. Do not publish the MCP
@@ -204,7 +216,7 @@ PyPI package must exist first. The MCP Registry validates that the public
 package matches the server metadata before accepting the entry.
 
 The MCP Registry publication runs after PyPI publication and marks
-`$(PACKAGE_VERSION)` as the latest entry.
+`${PACKAGE_VERSION}` as the latest entry.
 
 Reference docs:
 
@@ -230,7 +242,7 @@ Build a release image with OCI labels, SBOM, and provenance:
 
 ```bash
 make docker-buildx \
-  DOCKER_IMAGE=docker.io/navinagrawal/mcp-broker:$(PACKAGE_VERSION) \
+  DOCKER_IMAGE=${DOCKER_REPOSITORY_IMAGE}:${PACKAGE_VERSION} \
   DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
   DOCKER_PUSH=1
 ```
@@ -238,20 +250,20 @@ make docker-buildx \
 Docker Hub is the primary image for Docker MCP Catalog work:
 
 ```text
-docker.io/navinagrawal/mcp-broker
+${DOCKER_REPOSITORY_IMAGE}
 ```
 
 GHCR is a mirror:
 
 ```text
-ghcr.io/navinagrawal/mcp-broker
+${GHCR_REPOSITORY_IMAGE}
 ```
 
-Recommended release tags for `$(PACKAGE_VERSION)`:
+Recommended release tags for `${PACKAGE_VERSION}`:
 
 ```text
-$(PACKAGE_VERSION)
-$(PACKAGE_MINOR_VERSION)
+${PACKAGE_VERSION}
+${PACKAGE_MINOR_VERSION}
 ```
 
 Do not publish `latest` until the maintainer confirms the tag should track the
@@ -337,15 +349,15 @@ not allow tool `inputSchema` fields. `make smithery-publish` sends a
 Smithery-specific server-card payload and injects the source-backed broker
 facade schemas for `broker_search_tools`, `broker_describe_tool`,
 `broker_call_tool`, and `broker_status`. The first accepted Smithery release
-returned deployment `aae18669-9500-4a5d-9870-8f9b3bfd404d` and MCP URL
-`https://mcp-broker--navinagrawal.run.tools`; public search indexing may lag.
+returned deployment `${SMITHERY_RELEASE_ID}` and MCP URL
+`${SMITHERY_MCP_URL}`; public search indexing may lag.
 
 Glama lists the public repo at
-`https://glama.ai/mcp/servers/NavinAgrawal/mcp-broker`. PulseMCP has also appeared from the registry/server.json surface at `https://www.pulsemcp.com/servers/navinagrawal-mcp-broker`. Check that tool names, schemas,
+`${GLAMA_LISTING_URL}`. PulseMCP has also appeared from the registry/server.json surface at `${PULSEMCP_LISTING_URL}`. Check that tool names, schemas,
 install instructions, safety notes, license, GitHub links, and score output
 render correctly before adding secondary directories. The root `glama.json`
 keeps Glama claim metadata public and points maintainer ownership to
-`NavinAgrawal`.
+`${GLAMA_MAINTAINER}`.
 
 Directory copy lives in:
 

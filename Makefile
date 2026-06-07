@@ -1,6 +1,6 @@
 # mcp-broker - central MCP process broker
 
-.PHONY: help
+.PHONY: help print-var
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
@@ -21,5 +21,9 @@ help:
 	@echo "mcp-broker targets"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+print-var: ## Print one Make variable value, for CI config handoff
+	@test -n "$${VAR:-}" || { printf "VAR is required\n" >&2; exit 2; }
+	@$(if $($(VAR)),$(info $($(VAR))),$(error Unknown Make variable: $(VAR)))
 
 -include $(ROOT)/local.mk
