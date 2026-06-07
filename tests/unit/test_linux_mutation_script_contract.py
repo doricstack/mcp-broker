@@ -38,6 +38,7 @@ def test_linux_mutation_script_exports_container_mutants_for_debugging() -> None
     assert '-v "$MUTANTS_EXPORT_DIR:/mutants-output"' in script
     assert 'copy_mutants()' in script
     assert 'trap copy_mutants EXIT' in script
+    assert "mkdir -p /mutants-output" in script
     assert 'cp -a /workspace/mutants/. /mutants-output/' in script
 
 

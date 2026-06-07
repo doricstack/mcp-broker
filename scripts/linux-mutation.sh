@@ -112,6 +112,7 @@ docker run --rm \
     set -euo pipefail
     copy_mutants() {
       if [[ -d /workspace/mutants ]]; then
+        mkdir -p /mutants-output
         rm -rf /mutants-output/*
         cp -a /workspace/mutants/. /mutants-output/
       fi
