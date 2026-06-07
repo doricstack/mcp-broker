@@ -115,6 +115,21 @@
         },
         "allow_mutating_upstreams": {
           "$ref": "#/$defs/stringList"
+        },
+        "client_root_match": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parent", "name_prefix"],
+          "properties": {
+            "parent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name_prefix": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },

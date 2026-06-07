@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+
+  <defs>
+    <linearGradient id="g-primary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0EA5A0"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="g-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#0EA5A0"/>
+    </linearGradient>
+    <style>
+      .word { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 760; letter-spacing: -0.045em; }
+      .label { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 650; letter-spacing: 0.08em; }
+      .caption { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 450; }
+      .mono { font-family: JetBrains Mono, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 500; }
+    </style>
+  </defs>
+
+
+
+<rect width="1200" height="630" rx="32" fill="#0D1117"/>
+<path d="M820 150 C950 150 930 250 1120 250" stroke="#1F2937" stroke-width="8" fill="none"/>
+<path d="M820 250 C980 250 940 380 1120 380" stroke="#1F2937" stroke-width="8" fill="none"/>
+<path d="M820 350 H1120" stroke="#1F2937" stroke-width="8" fill="none"/>
+<g transform="translate(95,130) scale(0.62)">
+<g stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="74" cy="256" r="24" stroke="#FFFFFF" stroke-width="18"/>
+  <path d="M98 256 H172" stroke="#FFFFFF" stroke-width="18"/>
+  <path d="M210 132 H154 C130 132 118 146 118 170 V342 C118 366 130 380 154 380 H210" stroke="#FFFFFF" stroke-width="28"/>
+  <path d="M220 176 H276" stroke="#FFFFFF" stroke-width="24"/>
+  <path d="M220 256 H294" stroke="#FFFFFF" stroke-width="24"/>
+  <path d="M220 336 H276" stroke="#FFFFFF" stroke-width="24"/>
+  <path d="M250 176 H336 C366 176 376 126 414 126" stroke="#FFFFFF" stroke-width="12"/>
+  <path d="M250 256 H414" stroke="#FFFFFF" stroke-width="12"/>
+  <path d="M250 336 H336 C366 336 376 386 414 386" stroke="#FFFFFF" stroke-width="12"/>
+  <path d="M212 226 H260" stroke="#FFFFFF" stroke-width="18"/>
+  <circle cx="436" cy="126" r="22" fill="#FFFFFF"/>
+  <circle cx="436" cy="256" r="22" fill="#FFFFFF"/>
+  <circle cx="436" cy="386" r="22" fill="#FFFFFF"/>
+</g>
+</g>
+<text x="395" y="245" class="word" font-size="94" fill="#FFFFFF">mcp-broker</text>
+<text x="400" y="315" class="caption" font-size="32" fill="#0EA5A0">Local MCP process broker</text>
+<text x="400" y="370" class="caption" font-size="28" fill="#D1D5DB">One ingress. Many servers. Safe by design.</text>
+<line x1="90" y1="472" x2="1110" y2="472" stroke="#334155" stroke-width="2"/>
+<text x="120" y="535" class="label" font-size="24" fill="#0EA5A0">PROFILES</text>
+<text x="330" y="535" class="label" font-size="24" fill="#2563EB">LIFECYCLE</text>
+<text x="570" y="535" class="label" font-size="24" fill="#F59E0B">ALLOWLISTS</text>
+<text x="820" y="535" class="label" font-size="24" fill="#FFFFFF">OPEN SOURCE</text>
+
+</svg>

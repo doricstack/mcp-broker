@@ -4,7 +4,7 @@ import sys
 import pytest
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
 
 
 def test_doctor_main_help_documents_runtime_config(
@@ -49,6 +49,21 @@ def test_doctor_command_available_expands_user_home(
     monkeypatch.setenv("HOME", str(home))
 
     assert _command_available("~/tool.sh") is True
+
+
+def test_doctor_command_available_uses_path_lookup_for_bare_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mcp_broker.doctor as doctor
+
+    monkeypatch.setattr(
+        doctor.shutil,
+        "which",
+        lambda command: "/usr/local/bin/tool" if command == "tool" else None,
+    )
+
+    assert doctor._command_available("tool") is True
+    assert doctor._command_available("missing-tool") is False
 
 
 def test_doctor_command_available_rejects_non_executable_file(tmp_path: Path) -> None:
@@ -104,7 +119,7 @@ def test_doctor_finds_broken_enabled_stdio_commands(tmp_path: Path) -> None:
             ),
             "path-python": UpstreamConfig(
                 name="path-python",
-                command=Path(sys.executable).name,
+                command=sys.executable,
                 transport="stdio",
             ),
         },

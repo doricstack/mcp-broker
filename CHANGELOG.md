@@ -2,6 +2,17 @@
 
 All notable public changes will be recorded here.
 
+## 1.3.0 - 2026-06-06
+
+- Add the production `mcp-broker` brand asset kit, README header, and branding
+  rules contract for public repo surfaces.
+- Add client cwd based profile routing so a broker request can route to the
+  profile that owns the active project root.
+- Add runtime secrets sync before broker startup so LaunchAgent-owned daemons
+  can read configured secret files without inheriting shell environment.
+- Filter selected broker catalog listing by upstream metadata and tool prefix
+  so targeted broker searches avoid listing irrelevant slow upstreams.
+
 ## 1.2.0 - 2026-05-29
 
 - Add per-tool upstream call timeouts so long-running brokered tools can get

@@ -47,16 +47,10 @@ def test_config_init_creates_generic_private_config_in_custom_path(
     assert [marker for marker in private_markers if marker in private_text] == []
 
     loaded = yaml.safe_load(private_text)
+    public_loaded = yaml.safe_load(PUBLIC_CONFIG_FILE.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
-    assert sorted(loaded["upstreams"]) == [
-        "example-env-auth",
-        "example-file-auth",
-        "example-http",
-        "example-mutating",
-        "example-python",
-        "example-request-meta-auth",
-        "example-store",
-    ]
+    assert isinstance(public_loaded, dict)
+    assert sorted(loaded["upstreams"]) == sorted(public_loaded["upstreams"])
     assert all(upstream["enabled"] is False for upstream in loaded["upstreams"].values())
 
     validate_result = subprocess.run(

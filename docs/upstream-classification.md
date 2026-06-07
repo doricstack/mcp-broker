@@ -14,6 +14,7 @@ The public config includes these disabled examples to show the contract shape:
 - `example-file-auth`
 - `example-request-meta-auth`
 - `example-http`
+- `github`
 - `example-mutating`
 
 ## Shared Candidates

@@ -97,11 +97,15 @@ def _read_if_exists(path: Path) -> str:
 class _BytesPipe:
     def __init__(self, chunks: list[bytes]) -> None:
         self._chunks = chunks
+        self._eof_reads = 0
         self.closed = False
 
     def readline(self) -> bytes:
         if self._chunks:
             return self._chunks.pop(0)
+        self._eof_reads += 1
+        if self._eof_reads > 1:
+            raise AssertionError("drainer read after EOF")
         return b""
 
     def close(self) -> None:

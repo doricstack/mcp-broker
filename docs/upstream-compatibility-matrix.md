@@ -20,4 +20,5 @@ browser-state, or OAuth-backed access.
 | `example-file-auth` | `disabled` | `stdio` | secret files | read-only | manual-test |
 | `example-request-meta-auth` | `disabled` | `stdio` | secret files | read-only | manual-test |
 | `example-http` | `disabled` | `http` | environment | read-only | manual-test |
+| `github` | `disabled` | `http` | secret files | mutating | protected |
 | `example-mutating` | `disabled` | `stdio` | none | mutating | protected |

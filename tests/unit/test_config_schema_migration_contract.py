@@ -230,6 +230,7 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "clients.*.mcp_allowed_servers",
         "profiles.*.allow_mutating_upstreams",
         "profiles.*.broker_tool_name_style",
+        "profiles.*.client_root_match",
         "profiles.*.compact_tools_enabled",
         "profiles.*.max_tools",
         "profiles",

@@ -44,4 +44,5 @@ def test_linux_mutation_script_exports_container_mutants_for_debugging() -> None
 def test_mutmut_copies_public_listing_metadata_into_mutant_workspaces() -> None:
     setup_cfg = (ROOT / "setup.cfg").read_text(encoding="utf-8")
 
+    assert "    brand" in setup_cfg
     assert "glama.json" in setup_cfg

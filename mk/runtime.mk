@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -9,7 +9,10 @@ doctor: deps runtime-layout broker-reap ## Verify runtime directories and report
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.doctor --config "$(CONFIG_PATH)"
 	$(call log_success,"Runtime layout ready at $(RUNTIME_ROOT)")
 
-broker-start: runtime-layout ## Start broker daemon in the foreground
+broker-secrets-sync: runtime-layout ## Import every store-managed upstream secret from the current environment
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.secrets_sync --config "$(CONFIG_PATH)"
+
+broker-start: runtime-layout broker-secrets-sync ## Start broker daemon in the foreground
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.daemon serve --runtime-root "$(RUNTIME_ROOT)" --socket-path "$(SOCKET_PATH)" --config "$(CONFIG_PATH)"
 
 broker-stop: runtime-layout ## Request broker daemon shutdown

@@ -55,7 +55,7 @@ class BrokerCatalogFacade:
     def _search_tools(self, arguments: dict[str, Any]) -> dict[str, Any]:
         query = str(arguments.get("query", "")).strip()
         limit = int(arguments.get("limit", 20))
-        entries, skipped_upstreams = self._catalog_entries()
+        entries, skipped_upstreams = self._catalog_entries(query=query, tool_name="")
         matches = [
             entry
             for entry in entries
@@ -70,7 +70,7 @@ class BrokerCatalogFacade:
         tool_name = arguments.get("name")
         if not isinstance(tool_name, str):
             raise ValueError("broker.describe_tool requires string name")
-        entries, _skipped_upstreams = self._catalog_entries()
+        entries, _skipped_upstreams = self._catalog_entries(query="", tool_name=tool_name)
         for entry in entries:
             if entry["name"] == tool_name:
                 return structured_tool_result({"tool": entry})
@@ -149,10 +149,21 @@ class BrokerCatalogFacade:
             and not self._profile.allows_mutating_upstream(upstream_name)
         )
 
-    def _catalog_entries(self) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    def _catalog_entries(
+        self,
+        query: str,
+        tool_name: str,
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        if not isinstance(query, str) or not isinstance(tool_name, str):
+            raise TypeError("query and tool_name must be strings")
+        if query and tool_name:
+            raise ValueError("use query or tool_name, not both")
         entries = []
         skipped_upstreams = {}
-        for upstream_name, upstream in self._catalog_upstreams().items():
+        for upstream_name, upstream in self._catalog_upstreams(
+            query=query,
+            tool_name=tool_name,
+        ).items():
             try:
                 tools = self._list_upstream(upstream_name, upstream.health.call_timeout_seconds)
             except Exception as exc:
@@ -169,7 +180,11 @@ class BrokerCatalogFacade:
             )
         return entries, skipped_upstreams
 
-    def _catalog_upstreams(self) -> dict[str, UpstreamConfig]:
+    def _catalog_upstreams(
+        self,
+        query: str,
+        tool_name: str,
+    ) -> dict[str, UpstreamConfig]:
         upstreams = {}
         for upstream_name, upstream in self._broker_config.upstreams.items():
             if not upstream.enabled or upstream.mode == "disabled":
@@ -183,7 +198,26 @@ class BrokerCatalogFacade:
             ):
                 continue
             upstreams[upstream_name] = upstream
-        return upstreams
+        if tool_name:
+            matched_by_tool_name = {
+                name: upstream
+                for name, upstream in upstreams.items()
+                if upstream_owns_tool_name(
+                    upstream,
+                    tool_name,
+                    self._broker_config.broker.tool_namespace_separator,
+                )
+            }
+            if matched_by_tool_name:
+                return matched_by_tool_name
+        if not _specific_query_can_select_upstream(query):
+            return upstreams
+        matched = {
+            name: upstream
+            for name, upstream in upstreams.items()
+            if upstream_metadata_matches(upstream, query)
+        }
+        return matched or upstreams
 
 
 def _snapshot_int(snapshot: dict[str, object], *keys: str) -> int:
@@ -291,6 +325,30 @@ def catalog_entry_matches(entry: dict[str, Any], query: str) -> bool:
         ]
     ).lower()
     return all(token in haystack for token in query.lower().split())
+
+
+def upstream_metadata_matches(upstream: UpstreamConfig, query: str) -> bool:
+    smoke_query = upstream.smoke.query if upstream.smoke is not None else ""
+    smoke_tool = upstream.smoke.tool if upstream.smoke is not None else ""
+    prefix = upstream.tool_prefix or upstream.name
+    return catalog_entry_matches(
+        {
+            "name": f"{upstream.name} {prefix} {smoke_tool}",
+            "description": smoke_query,
+            "purpose": upstream.purpose,
+            "tags": list(upstream.tags),
+        },
+        query,
+    )
+
+
+def upstream_owns_tool_name(upstream: UpstreamConfig, tool_name: str, separator: str) -> bool:
+    prefix = upstream.tool_prefix or upstream.name
+    return tool_name.startswith(f"{prefix}{separator}")
+
+
+def _specific_query_can_select_upstream(query: str) -> bool:
+    return len(query.split()) >= 2
 
 
 def structured_tool_result(structured_content: dict[str, Any]) -> dict[str, Any]:

@@ -29,6 +29,7 @@ def test_public_landing_surface_exists_and_is_generic() -> None:
         ".github/ISSUE_TEMPLATE/upstream_compatibility.md",
         ".github/pull_request_template.md",
         "docs/context-reduction-measurement.md",
+        "docs/branding.md",
         "docs/add-profile.md",
         "docs/comparison.md",
         "docs/adoption-guide.md",
@@ -100,6 +101,7 @@ def test_packaged_chat_profiles_use_client_safe_broker_tool_names() -> None:
 def test_readme_public_first_screen_has_adoption_content() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     required_terms = [
+        "brand/assets/readme-header.svg",
         "one local MCP entry",
         "609",
         "43",
@@ -124,6 +126,100 @@ def test_readme_public_first_screen_has_adoption_content() -> None:
 
     assert [term for term in required_terms if term not in readme] == []
     assert [term for term in forbidden_terms if term in readme] == []
+
+
+def test_branding_rules_document_locked_assets_and_enforcement() -> None:
+    branding = (ROOT / "docs" / "branding.md").read_text(encoding="utf-8")
+    brand_readme = (ROOT / "brand" / "README.md").read_text(encoding="utf-8")
+    asset_usage = (ROOT / "brand" / "assets" / "USAGE.md").read_text(encoding="utf-8")
+    token_css = (ROOT / "brand" / "assets" / "tokens.css").read_text(encoding="utf-8")
+    token_json = json.loads((ROOT / "brand" / "assets" / "tokens.json").read_text(encoding="utf-8"))
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+    allowlist = allowlist_path.read_text(encoding="utf-8") if allowlist_path.exists() else ""
+
+    required_assets = [
+        "brand/assets/readme-header.svg",
+        "brand/assets/github-social-preview.svg",
+        "brand/assets/app-icon-1024.png",
+        "brand/assets/favicon-32.png",
+        "brand/assets/mark.svg",
+        "brand/assets/mark-favicon.svg",
+        "brand/assets/horizontal.svg",
+        "brand/assets/tokens.css",
+        "brand/assets/tokens.json",
+    ]
+    required_rule_ids = [
+        "BRAND-1",
+        "BRAND-2",
+        "BRAND-3",
+        "BRAND-4",
+        "BRAND-5",
+        "BRAND-6",
+        "BRAND-7",
+    ]
+    required_enforcement_terms = [
+        "A brand rule with no named gate is a comment, not a standard.",
+        "make test-journey",
+        "make public-export-check",
+        "make release-check",
+        "tests/journey/test_public_adoption_contract.py",
+        "public-export/allowlist.txt",
+        "no alternate concept folders",
+        "no generated-set folder names",
+        "no \"manual review\" enforcement",
+        "single source of truth",
+    ]
+    required_tokens = {
+        "ink": "#0D1117",
+        "midnight": "#111827",
+        "slate": "#334155",
+        "steel": "#64748B",
+        "fog": "#F6F7F9",
+        "primary": "#0EA5A0",
+        "secondary": "#2563EB",
+        "accent": "#F59E0B",
+    }
+    forbidden_brand_path_terms = [
+        "set-",
+        "production-vector",
+        "generated",
+        "concept",
+        "downloads",
+    ]
+
+    assert [asset for asset in required_assets if asset not in branding] == []
+    assert [asset for asset in required_assets if not (ROOT / asset).is_file()] == []
+    assert [rule for rule in required_rule_ids if rule not in branding] == []
+    assert [term for term in required_enforcement_terms if term not in branding] == []
+    assert [
+        f"brand/{path.name}"
+        for path in (ROOT / "brand").iterdir()
+        if path.is_dir() and path.name != "assets"
+    ] == []
+    assert [
+        str(path.relative_to(ROOT))
+        for path in (ROOT / "brand").rglob("*")
+        if any(term in str(path.relative_to(ROOT)).lower() for term in forbidden_brand_path_terms)
+    ] == []
+    assert token_json["colors"] == required_tokens
+    assert [
+        token
+        for token, hex_value in required_tokens.items()
+        if f"--mcp-{token}: {hex_value};" not in token_css or hex_value not in branding
+    ] == []
+    assert "routing backbone" in branding
+    assert "one ingress. many servers. safe by profile." in branding
+    assert "/Users/" not in branding
+    assert "CloudStorage" not in branding
+    assert "brand/assets/readme-header.svg" in readme
+    if allowlist_path.exists():
+        assert "docs/branding.md" in allowlist
+        assert "brand/**" in allowlist
+    else:
+        assert (ROOT / "brand").is_dir()
+    assert "Do not reintroduce alternate concept folders into the public repo." in brand_readme
+    assert "Routing backbone - MCP Broker brand direction" in asset_usage
 
 
 def test_public_metadata_docs_are_ready_for_first_release() -> None:

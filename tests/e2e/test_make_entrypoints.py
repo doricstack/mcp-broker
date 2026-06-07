@@ -203,6 +203,7 @@ def test_mutation_target_uses_venv_console_script() -> None:
     also_copy = setup_cfg.split("also_copy=\n", maxsplit=1)[1].split("tests_dir=", maxsplit=1)[0]
     copied_paths = {line.strip() for line in also_copy.splitlines() if line.strip()}
     assert {
+        "brand",
         "config",
         "docs",
         "docker",
@@ -417,6 +418,7 @@ def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> 
     )
 
     assert live_timeout is not None
+    assert int(live_timeout.group("seconds")) >= 300
     assert coverage_timeout is not None
     assert int(live_timeout.group("seconds")) > 60
     assert "PYTEST_LIVE_COMMON" in makefile

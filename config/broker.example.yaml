@@ -71,6 +71,7 @@ profiles:
     compact_tools_enabled: false
     allow_mutating_upstreams:
       - example-mutating
+      - github
   compatibility:
     max_tools: 50
     compact_tools_enabled: true
@@ -338,6 +339,39 @@ upstreams:
       http_retry_backoff_seconds: 0
     env:
       AUTHORIZATION: EXAMPLE_HTTP_AUTHORIZATION
+
+  # Pattern: remote SaaS MCP endpoint with write-capable tools.
+  # Keep disabled until the token and write policy are configured. Expose only
+  # through a profile that explicitly allowlists this mutating upstream.
+  github:
+    enabled: false
+    mode: disabled
+    transport: http
+    mutating: true
+    purpose: GitHub repositories, issues, pull requests, and code search.
+    tags:
+      - github
+      - repo
+      - issue
+      - pull-request
+      - code-search
+    tool_prefix: github
+    command: https://api.githubcopilot.com/mcp/
+    state_dir: upstreams/github
+    profiles:
+      - protected
+    env_files:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "{runtime.secrets_dir}/GITHUB_PERSONAL_ACCESS_TOKEN"
+    health:
+      ready_timeout_seconds: 10
+      call_timeout_seconds: 60
+      http_retry_attempts: 1
+      http_retry_backoff_seconds: 1
+    smoke:
+      query: authenticated GitHub user profile
+      tool: github.get_me
+      arguments: {}
+      call: true
 
   # Pattern: mutating upstream gated by profile allowlist.
   example-mutating:

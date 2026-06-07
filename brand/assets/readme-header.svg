@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" fill="none">
+
+  <defs>
+    <linearGradient id="g-primary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0EA5A0"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="g-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#0EA5A0"/>
+    </linearGradient>
+    <style>
+      .word { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 760; letter-spacing: -0.045em; }
+      .label { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 650; letter-spacing: 0.08em; }
+      .caption { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; font-weight: 450; }
+      .mono { font-family: JetBrains Mono, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 500; }
+    </style>
+  </defs>
+
+
+
+<rect width="1600" height="420" rx="30" fill="#FFFFFF" stroke="#DDE6EF" stroke-width="2"/>
+<g transform="translate(150,88) scale(0.45)">
+<g stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="74" cy="256" r="24" stroke="#0EA5A0" stroke-width="18"/>
+  <path d="M98 256 H172" stroke="#0EA5A0" stroke-width="18"/>
+  <path d="M210 132 H154 C130 132 118 146 118 170 V342 C118 366 130 380 154 380 H210" stroke="#0D1117" stroke-width="28"/>
+  <path d="M220 176 H276" stroke="#0D1117" stroke-width="24"/>
+  <path d="M220 256 H294" stroke="#0D1117" stroke-width="24"/>
+  <path d="M220 336 H276" stroke="#0D1117" stroke-width="24"/>
+  <path d="M250 176 H336 C366 176 376 126 414 126" stroke="#0D1117" stroke-width="12"/>
+  <path d="M250 256 H414" stroke="#0D1117" stroke-width="12"/>
+  <path d="M250 336 H336 C366 336 376 386 414 386" stroke="#0D1117" stroke-width="12"/>
+  <path d="M212 226 H260" stroke="#0EA5A0" stroke-width="18"/>
+  <circle cx="436" cy="126" r="22" fill="#0EA5A0"/>
+  <circle cx="436" cy="256" r="22" fill="#2563EB"/>
+  <circle cx="436" cy="386" r="22" fill="#F59E0B"/>
+</g>
+</g>
+<text x="405" y="172" class="word" font-size="96" fill="#0D1117">mcp-broker</text>
+<text x="410" y="230" class="caption" font-size="34" fill="#0EA5A0">PgBouncer for MCP</text>
+<text x="410" y="290" class="caption" font-size="26" fill="#334155">One local entry  -  Profile gates  -  Allowlisted tools  -  Full lifecycle</text>
+<path d="M1320 80 C1410 80 1405 118 1500 118 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="118" r="5" fill="#DDE6EF"/><path d="M1320 130 C1410 130 1405 168 1500 168 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="168" r="5" fill="#DDE6EF"/><path d="M1320 180 C1410 180 1405 218 1500 218 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="218" r="5" fill="#DDE6EF"/><path d="M1320 230 C1410 230 1405 268 1500 268 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="268" r="5" fill="#DDE6EF"/><path d="M1320 280 C1410 280 1405 318 1500 318 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="318" r="5" fill="#DDE6EF"/><path d="M1320 330 C1410 330 1405 368 1500 368 H1560" stroke="#DDE6EF" stroke-width="3" fill="none"/><circle cx="1560" cy="368" r="5" fill="#DDE6EF"/>
+
+</svg>

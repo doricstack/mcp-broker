@@ -1,6 +1,8 @@
 # mcp-broker
 <!-- mcp-name: io.github.NavinAgrawal/mcp-broker -->
 
+![mcp-broker routing backbone brand header](brand/assets/readme-header.svg)
+
 `mcp-broker` is a local Model Context Protocol process broker for MCP clients.
 
 Think PgBouncer for MCP: one stable local endpoint in front of many upstream MCP servers. The broker owns upstream startup, reuse, cleanup, profile exposure, status, and safe tool routing.

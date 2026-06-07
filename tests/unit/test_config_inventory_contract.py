@@ -16,6 +16,16 @@ PRIVATE_CONFIG_FILE = ROOT / "config" / "broker.private.yaml"
 
 REQUIRED_CLIENT_PROFILES = {"codex", "claude", "gemini", "manual-test", "maintenance"}
 LLM_PROFILES = ("codex", "claude", "gemini")
+PUBLIC_EXAMPLE_UPSTREAMS = [
+    "example-env-auth",
+    "example-file-auth",
+    "example-http",
+    "example-mutating",
+    "example-python",
+    "example-request-meta-auth",
+    "example-store",
+    "github",
+]
 
 
 def test_makefile_defaults_to_private_config_not_public_example() -> None:
@@ -31,15 +41,7 @@ def test_public_example_config_has_no_private_upstream_inventory() -> None:
     upstreams = loaded.get("upstreams")
     assert isinstance(upstreams, dict)
 
-    assert sorted(upstreams) == [
-        "example-env-auth",
-        "example-file-auth",
-        "example-http",
-        "example-mutating",
-        "example-python",
-        "example-request-meta-auth",
-        "example-store",
-    ]
+    assert sorted(upstreams) == PUBLIC_EXAMPLE_UPSTREAMS
     assert all(upstream["enabled"] is False for upstream in upstreams.values())
 
 
@@ -154,15 +156,7 @@ def test_public_config_loads_without_private_files() -> None:
 
     config = BrokerConfig.from_file(PUBLIC_CONFIG_FILE)
 
-    assert sorted(config.upstreams) == [
-        "example-env-auth",
-        "example-file-auth",
-        "example-http",
-        "example-mutating",
-        "example-python",
-        "example-request-meta-auth",
-        "example-store",
-    ]
+    assert sorted(config.upstreams) == PUBLIC_EXAMPLE_UPSTREAMS
     assert config.runtime.socket_path == ROOT.home() / "mcp/mcp-broker/sockets/broker.sock"
 
 
@@ -186,6 +180,7 @@ def test_public_example_config_is_comment_rich_and_teaches_common_mcp_patterns()
         "# auth_repair runs a configured upstream auth tool after matching auth errors.",
         "# auth_probe can inspect broker-owned OAuth token JSON passively.",
         "# Pattern: HTTP or SSE MCP endpoint.",
+        "# Pattern: remote SaaS MCP endpoint with write-capable tools.",
         "# Pattern: mutating upstream gated by profile allowlist.",
     ]
     required_contract_fields = [

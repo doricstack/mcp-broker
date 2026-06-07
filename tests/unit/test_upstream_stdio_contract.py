@@ -151,7 +151,7 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.echo", {}, timeout_seconds=1) == {"name": "fake.echo"}
+        assert client.call_tool("fake.echo", {}, timeout_seconds=3) == {"name": "fake.echo"}
         running_events = list(events)
     finally:
         client.stop()
@@ -161,7 +161,7 @@ for line in sys.stdin:
         "upstream": "fake",
         "method": "tools/call",
         "tool_name": "fake.echo",
-        "timeout_seconds": 1,
+        "timeout_seconds": 3,
     }
     assert running_events[1] == {
         "event": "upstream.start",
@@ -2180,6 +2180,10 @@ def test_stdio_jsonrpc_payload_ids_increment_and_omit_absent_params(tmp_path: Pa
 
     first_id, first_payload = client._jsonrpc_payload("tools/list", None)
     second_id, second_payload = client._jsonrpc_payload("tools/call", {})
+    third_id, third_payload = client._jsonrpc_payload(
+        "tools/call",
+        {"name": "fake.echo"},
+    )
 
     assert first_id == 0
     assert first_payload == {"jsonrpc": "2.0", "id": 0, "method": "tools/list"}
@@ -2190,6 +2194,71 @@ def test_stdio_jsonrpc_payload_ids_increment_and_omit_absent_params(tmp_path: Pa
         "method": "tools/call",
         "params": {},
     }
+    assert third_id == 2
+    assert third_payload == {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {"name": "fake.echo"},
+    }
+    assert client._next_id == 3
+
+
+def test_stdio_tools_list_initializes_before_first_roundtrip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    fake_process = object()
+    client._process = cast(Any, fake_process)
+    calls: list[str] = []
+
+    monkeypatch.setattr(client, "_start", lambda: calls.append("start"))
+
+    def initialize(process: object, *, timeout_seconds: int) -> None:
+        assert process is fake_process
+        assert timeout_seconds == 7
+        calls.append("initialize")
+        client._initialized = True
+
+    def payload(method: str, params: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        assert method == "tools/list"
+        assert params is None
+        calls.append("payload")
+        return 41, {"jsonrpc": "2.0", "id": 41, "method": method}
+
+    def roundtrip(
+        process: object,
+        request: dict[str, Any],
+        *,
+        timeout_seconds: int,
+        expected_id: int,
+    ) -> dict[str, Any]:
+        assert process is fake_process
+        assert request == {"jsonrpc": "2.0", "id": 41, "method": "tools/list"}
+        assert timeout_seconds == 7
+        assert expected_id == 41
+        calls.append("roundtrip")
+        return {"result": {"tools": []}}
+
+    def result(response: dict[str, Any], request_id: int) -> dict[str, Any]:
+        assert response == {"result": {"tools": []}}
+        assert request_id == 41
+        calls.append("result")
+        return {"tools": []}
+
+    monkeypatch.setattr(client, "_initialize_upstream", initialize)
+    monkeypatch.setattr(client, "_jsonrpc_payload", payload)
+    monkeypatch.setattr(client, "_roundtrip", roundtrip)
+    monkeypatch.setattr(client, "_result_from_response", result)
+
+    assert client._jsonrpc_request_locked("tools/list", None, timeout_seconds=7) == {
+        "tools": []
+    }
+    assert calls == ["start", "initialize", "payload", "roundtrip", "result"]
 
 
 def test_stdio_read_stdout_line_returns_buffered_line_without_select(

@@ -654,6 +654,7 @@ def test_parser_contract_includes_required_options_and_defaults(tmp_path: Path) 
     assert parsed.example_limit == 0
     assert parsed.include_mutants is None
     include_action = next(action for action in parser._actions if "--include-mutants" in action.option_strings)
+    assert include_action.nargs == "+"
     assert include_action.help == "Optional mutant names to grade; unselected mutants are ignored."
 
 

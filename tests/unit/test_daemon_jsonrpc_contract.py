@@ -67,6 +67,43 @@ def test_daemon_connection_does_not_respond_to_jsonrpc_notifications(tmp_path: P
     assert connection.sent == b""
 
 
+def test_daemon_notification_request_log_does_not_restart_upstreams(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerSettings, RuntimeConfig, UpstreamConfig
+    from mcp_broker.daemon import BrokerDaemon
+
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path / "runtime",
+            socket_path=tmp_path / "broker.sock",
+            log_dir=tmp_path / "runtime" / "logs",
+            state_dir=tmp_path / "runtime" / "state",
+            secrets_dir=tmp_path / "runtime" / "secrets",
+        ),
+        broker=BrokerSettings(),
+        upstreams={
+            "research-notes": UpstreamConfig(
+                name="research-notes",
+                command="research-notes",
+                mode="shared",
+                tool_prefix="research-notes",
+            )
+        },
+    )
+    daemon = BrokerDaemon(
+        runtime_root=config.runtime.root,
+        socket_path=config.runtime.socket_path,
+        broker_config=config,
+    )
+    client = RecoverableExitedClient()
+    daemon._stdio_upstreams["research-notes"] = client
+    connection = BufferConnection(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
+
+    daemon._handle_connection(connection)
+
+    assert connection.sent == b""
+    assert client.ensure_running_calls == 0
+
+
 def test_daemon_serve_loop_does_not_let_one_connection_block_next_request(
     tmp_path: Path,
 ) -> None:
@@ -1762,6 +1799,34 @@ def test_daemon_rejects_relative_client_cwd(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="broker_client_cwd must be an absolute path"):
         daemon._session_context_from_params({"broker_client_cwd": "relative/project"})
+
+
+def test_daemon_effective_profile_name_returns_resolved_profile(tmp_path: Path) -> None:
+    from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig
+    from mcp_broker.daemon import BrokerDaemon
+    from mcp_broker.profiles import ToolExposureProfile
+
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path / "runtime",
+            socket_path=tmp_path / "broker.sock",
+            log_dir=tmp_path / "runtime" / "logs",
+            state_dir=tmp_path / "runtime" / "state",
+            secrets_dir=tmp_path / "runtime" / "secrets",
+        ),
+        broker=BrokerSettings(),
+        upstreams={},
+        profiles={
+            "claude": ToolExposureProfile(name="claude", max_tools=80, compact_tools_enabled=True)
+        },
+    )
+    daemon = BrokerDaemon(
+        runtime_root=config.runtime.root,
+        socket_path=config.runtime.socket_path,
+        broker_config=config,
+    )
+
+    assert daemon._effective_profile_name({"params": {"profile": "claude"}}) == "claude"
 
 
 def test_daemon_health_aggregates_per_session_stdio_clients(tmp_path: Path) -> None:

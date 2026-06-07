@@ -6,13 +6,16 @@ import pytest
 from mcp_broker.broker import BrokerToolError
 from mcp_broker.catalog import (
     BrokerCatalogFacade,
+    _specific_query_can_select_upstream,
     catalog_entries_for_upstream,
     catalog_entry_matches,
     catalog_unavailable_entry_for_upstream,
     profile_allows_upstream,
     structured_tool_result,
+    upstream_metadata_matches,
+    upstream_owns_tool_name,
 )
-from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, UpstreamConfig
+from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, SmokeProbe, UpstreamConfig
 from mcp_broker.profiles import ToolExposureProfile
 
 
@@ -59,6 +62,78 @@ def test_catalog_entry_matching_does_not_index_missing_field_defaults() -> None:
         {"tags": ["epsilon-tag", "zeta-tag"]},
         "epsilon-tag xx zeta-tag",
     )
+
+
+def test_upstream_metadata_matching_indexes_identity_prefix_smoke_purpose_and_tags() -> None:
+    upstream = UpstreamConfig(
+        name="repo-index",
+        command="repo-index",
+        tool_prefix="repo",
+        purpose="Architecture graph exploration",
+        tags=("codebase", "tracing"),
+        smoke=SmokeProbe(
+            query="list indexed projects",
+            tool="repo.list_projects",
+            arguments={},
+        ),
+    )
+
+    assert upstream_metadata_matches(upstream, "repo-index architecture")
+    assert upstream_metadata_matches(upstream, "repo list_projects")
+    assert upstream_metadata_matches(upstream, "indexed tracing")
+    assert not upstream_metadata_matches(upstream, "repo missing")
+
+
+def test_upstream_metadata_matching_handles_missing_smoke_and_prefix_fallback() -> None:
+    upstream = UpstreamConfig(
+        name="notes-cache",
+        command="notes-cache",
+        tool_prefix=None,
+        purpose="Persistent notes",
+        tags=("context",),
+    )
+
+    assert upstream_metadata_matches(upstream, "notes-cache context")
+    assert upstream_metadata_matches(upstream, "persistent notes")
+    assert not upstream_metadata_matches(upstream, "list projects")
+    assert not upstream_metadata_matches(upstream, "xxxx")
+
+
+def test_upstream_metadata_matching_indexes_custom_prefix_without_smoke() -> None:
+    upstream = UpstreamConfig(
+        name="repo-index",
+        command="repo-index",
+        tool_prefix="codegraph",
+        purpose="",
+        tags=(),
+    )
+
+    assert upstream_metadata_matches(upstream, "codegraph")
+
+
+def test_upstream_tool_name_matching_requires_prefix_and_separator() -> None:
+    prefixed = UpstreamConfig(name="repo-index", command="repo-index", tool_prefix="repo")
+    fallback = UpstreamConfig(name="notes-cache", command="notes-cache", tool_prefix=None)
+
+    assert upstream_owns_tool_name(prefixed, "repo.list_projects", ".")
+    assert upstream_owns_tool_name(fallback, "notes-cache__search", "__")
+    assert not upstream_owns_tool_name(prefixed, "repo-index.list_projects", ".")
+    assert not upstream_owns_tool_name(prefixed, "repo-list_projects", ".")
+    assert not upstream_owns_tool_name(prefixed, "xrepo.list_projects", ".")
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("", False),
+        ("github", False),
+        (" github ", False),
+        ("github issue", True),
+        ("  github   issue  ", True),
+    ],
+)
+def test_specific_query_requires_at_least_two_tokens(query: str, expected: bool) -> None:
+    assert _specific_query_can_select_upstream(query) is expected
 
 
 def test_catalog_entries_use_prefix_schema_metadata_and_skip_nameless_tools() -> None:
@@ -203,6 +278,57 @@ def test_search_tools_returns_limited_matches_and_skipped_upstreams(tmp_path: Pa
     assert json.loads(result["content"][0]["text"]) == result["structuredContent"]
 
 
+def test_catalog_entries_requires_explicit_query_or_tool_name(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["default-llm"],
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    with pytest.raises(TypeError):
+        facade._catalog_entries()  # type: ignore[call-arg]
+
+
+def test_catalog_entries_rejects_invalid_selector_modes(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["default-llm"],
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    with pytest.raises(TypeError) as query_type_error:
+        facade._catalog_entries(query="record", tool_name=None)  # type: ignore[arg-type]
+    assert str(query_type_error.value) == "query and tool_name must be strings"
+
+    with pytest.raises(TypeError) as tool_name_type_error:
+        facade._catalog_entries(query=None, tool_name="read.find_record")  # type: ignore[arg-type]
+    assert str(tool_name_type_error.value) == "query and tool_name must be strings"
+
+    with pytest.raises(ValueError) as double_selector_error:
+        facade._catalog_entries(query="record", tool_name="read.find_record")
+    assert str(double_selector_error.value) == "use query or tool_name, not both"
+
+
+def test_catalog_upstreams_requires_explicit_query_or_tool_name(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["default-llm"],
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    with pytest.raises(TypeError):
+        facade._catalog_upstreams()  # type: ignore[call-arg]
+
+
 def test_search_tools_defaults_to_empty_query_and_twenty_results(tmp_path: Path) -> None:
     config = BrokerConfig(
         runtime=_runtime(tmp_path),
@@ -233,6 +359,135 @@ def test_search_tools_defaults_to_empty_query_and_twenty_results(tmp_path: Path)
     assert names == [f"read.tool_{index:02d}" for index in range(20)]
 
 
+def test_search_tools_uses_upstream_metadata_to_avoid_slow_irrelevant_listing(
+    tmp_path: Path,
+) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=80)},
+        upstreams={
+            "notes-cache": UpstreamConfig(
+                name="notes-cache",
+                command="notes-cache",
+                tool_prefix="notes-cache",
+                profiles=("codex",),
+                purpose="Persistent project notes and cross-session context.",
+                tags=("notes", "context", "project-context"),
+            ),
+            "repo-index": UpstreamConfig(
+                name="repo-index",
+                command="repo-index",
+                tool_prefix="repo-index",
+                profiles=("codex",),
+                purpose="Codebase graph exploration, architecture lookup, and call tracing.",
+                tags=("codebase", "graph", "architecture", "tracing"),
+                smoke=SmokeProbe(
+                    query="list indexed codebase projects",
+                    tool="repo-index.list_projects",
+                    arguments={},
+                ),
+            ),
+        },
+    )
+    list_calls: list[str] = []
+
+    def list_upstream(upstream_name: str, _timeout: int) -> list[dict[str, object]]:
+        list_calls.append(upstream_name)
+        if upstream_name == "notes-cache":
+            raise RuntimeError("notes-cache should not be listed for this query")
+        return [{"name": "list_projects", "description": "List indexed projects"}]
+
+    result = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=list_upstream,
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    ).call_tool("broker.search_tools", {"query": "list indexed codebase projects"})
+
+    assert list_calls == ["repo-index"]
+    assert [match["name"] for match in result["structuredContent"]["matches"]] == [
+        "repo-index.list_projects"
+    ]
+
+
+def test_search_tools_keeps_all_upstreams_for_single_token_queries(tmp_path: Path) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=80)},
+        upstreams={
+            "notes-cache": UpstreamConfig(
+                name="notes-cache",
+                command="notes-cache",
+                tool_prefix="notes",
+                profiles=("codex",),
+                purpose="Persistent project notes",
+                tags=("context",),
+            ),
+            "repo-index": UpstreamConfig(
+                name="repo-index",
+                command="repo-index",
+                tool_prefix="repo",
+                profiles=("codex",),
+                purpose="Codebase graph exploration",
+                tags=("codebase",),
+            ),
+        },
+    )
+    list_calls: list[str] = []
+
+    BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=lambda name, _timeout: list_calls.append(name) or [{"name": "search"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    ).call_tool("broker.search_tools", {"query": "codebase"})
+
+    assert list_calls == ["notes-cache", "repo-index"]
+
+
+def test_search_tools_falls_back_to_all_upstreams_when_metadata_has_no_match(
+    tmp_path: Path,
+) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=80)},
+        upstreams={
+            "notes-cache": UpstreamConfig(
+                name="notes-cache",
+                command="notes-cache",
+                tool_prefix="notes",
+                profiles=("codex",),
+                purpose="Persistent project notes",
+                tags=("context",),
+            ),
+            "repo-index": UpstreamConfig(
+                name="repo-index",
+                command="repo-index",
+                tool_prefix="repo",
+                profiles=("codex",),
+                purpose="Codebase graph exploration",
+                tags=("codebase",),
+            ),
+        },
+    )
+    list_calls: list[str] = []
+
+    BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=lambda name, _timeout: list_calls.append(name) or [{"name": "search"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    ).call_tool("broker.search_tools", {"query": "calendar event"})
+
+    assert list_calls == ["notes-cache", "repo-index"]
+
+
 def test_describe_tool_returns_exact_catalog_entry_and_rejects_bad_names(tmp_path: Path) -> None:
     config = _catalog_config(tmp_path)
     facade = BrokerCatalogFacade(
@@ -251,6 +506,86 @@ def test_describe_tool_returns_exact_catalog_entry_and_rejects_bad_names(tmp_pat
         facade.call_tool("broker.describe_tool", {"name": 123})
     with pytest.raises(ValueError, match="broker tool not found"):
         facade.call_tool("broker.describe_tool", {"name": "read.missing"})
+
+
+def test_describe_tool_uses_tool_prefix_to_avoid_slow_irrelevant_listing(
+    tmp_path: Path,
+) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=80)},
+        upstreams={
+            "notes-cache": UpstreamConfig(
+                name="notes-cache",
+                command="notes-cache",
+                tool_prefix="notes-cache",
+                profiles=("codex",),
+            ),
+            "repo-index": UpstreamConfig(
+                name="repo-index",
+                command="repo-index",
+                tool_prefix="repo-index",
+                profiles=("codex",),
+            ),
+        },
+    )
+    list_calls: list[str] = []
+
+    def list_upstream(upstream_name: str, _timeout: int) -> list[dict[str, object]]:
+        list_calls.append(upstream_name)
+        if upstream_name == "notes-cache":
+            raise RuntimeError("notes-cache should not be listed for this tool")
+        return [{"name": "list_projects", "description": "List indexed projects"}]
+
+    result = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=list_upstream,
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    ).call_tool("broker.describe_tool", {"name": "repo-index.list_projects"})
+
+    assert list_calls == ["repo-index"]
+    assert result["structuredContent"]["tool"]["name"] == "repo-index.list_projects"
+
+
+def test_describe_tool_falls_back_to_all_upstreams_for_unknown_prefix(
+    tmp_path: Path,
+) -> None:
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=80)},
+        upstreams={
+            "notes-cache": UpstreamConfig(
+                name="notes-cache",
+                command="notes-cache",
+                tool_prefix="notes",
+                profiles=("codex",),
+            ),
+            "repo-index": UpstreamConfig(
+                name="repo-index",
+                command="repo-index",
+                tool_prefix="repo",
+                profiles=("codex",),
+            ),
+        },
+    )
+    list_calls: list[str] = []
+
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=lambda name, _timeout: list_calls.append(name) or [{"name": "search"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    with pytest.raises(ValueError, match="broker tool not found"):
+        facade.call_tool("broker.describe_tool", {"name": "unknown.search"})
+
+    assert list_calls == ["notes-cache", "repo-index"]
 
 
 def test_call_tool_accepts_profile_snake_aliases(tmp_path: Path) -> None:
