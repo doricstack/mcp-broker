@@ -2,6 +2,10 @@
 
 All notable public changes will be recorded here.
 
+## 1.3.1 - 2026-06-07
+
+- Synchronize release metadata through the Makefile release path.
+
 ## 1.3.0 - 2026-06-06
 
 - Add the production `mcp-broker` brand asset kit, README header, and branding

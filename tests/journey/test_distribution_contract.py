@@ -520,11 +520,6 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "scripts/update_homebrew_formula.py" in makefile
     assert "scripts/public-surface-smoke.sh" in makefile
     assert "scripts/verify_public_release.py" in makefile
-    allowlist_path = ROOT / "public-export" / "allowlist.txt"
-    if allowlist_path.exists():
-        assert "scripts/verify_public_release.py" in allowlist_path.read_text(
-            encoding="utf-8"
-        )
     assert "pipx run --spec \"mcp-broker==$" in makefile
     assert '"$(UVX)" --from "mcp-broker==$' in makefile
     assert "PUBLIC_SURFACE_REQUIRE_NPM=1" in makefile
@@ -593,6 +588,16 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
         assert "publish-mcp-registry" not in distribution_plan
         assert "fallbacks only" not in distribution_plan
         assert "Push `1.0.0` and semver aliases" not in distribution_plan
+
+
+def test_public_export_includes_public_release_verifier_when_export_rules_exist() -> None:
+    allowlist_path = ROOT / "public-export" / "allowlist.txt"
+    if not allowlist_path.exists():
+        return
+
+    assert "scripts/verify_public_release.py" in allowlist_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
