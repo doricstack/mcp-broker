@@ -129,7 +129,19 @@ def render_formula_update(text: str, update: FormulaUpdate) -> str:
     )
     if sha_count != 1:
         raise ValueError("formula sha256 line was not found")
+    text = ensure_build_version_env(text)
     return text
+
+
+def ensure_build_version_env(text: str) -> str:
+    env_line = '    ENV["MCP_BROKER_VERSION"] = version.to_s'
+    if env_line in text:
+        return text
+    return text.replace(
+        "    virtualenv_install_with_resources",
+        f"{env_line}\n    virtualenv_install_with_resources",
+        1,
+    )
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

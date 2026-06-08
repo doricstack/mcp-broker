@@ -54,6 +54,50 @@ def test_homebrew_formula_update_is_idempotent_when_already_current() -> None:
     assert render_formula_update(FORMULA_TEXT, update) == FORMULA_TEXT
 
 
+def test_homebrew_formula_update_sets_package_version_for_sdist_build() -> None:
+    formula = """class McpBroker < Formula
+  include Language::Python::Virtualenv
+
+  url "__OLD_SDIST_URL__"
+  sha256 "oldsha"
+
+  def install
+    virtualenv_install_with_resources
+  end
+end
+""".replace("__OLD_SDIST_URL__", OLD_SDIST_URL)
+    update = FormulaUpdate(
+        url=NEW_SDIST_URL,
+        sha256="b559c8a09cdb17142cb30b30649ec6d5b1a41f8a8ad4d803aae71144ddcac877",
+    )
+
+    rendered = render_formula_update(formula, update)
+
+    assert 'ENV["MCP_BROKER_VERSION"] = version.to_s' in rendered
+    assert (
+        '    ENV["MCP_BROKER_VERSION"] = version.to_s\n'
+        "    virtualenv_install_with_resources"
+    ) in rendered
+
+
+def test_homebrew_formula_update_keeps_package_version_env_idempotent() -> None:
+    formula = """class McpBroker < Formula
+  include Language::Python::Virtualenv
+
+  url "__OLD_SDIST_URL__"
+  sha256 "oldsha"
+
+  def install
+    ENV["MCP_BROKER_VERSION"] = version.to_s
+    virtualenv_install_with_resources
+  end
+end
+""".replace("__OLD_SDIST_URL__", OLD_SDIST_URL)
+    update = FormulaUpdate(url=OLD_SDIST_URL, sha256="oldsha")
+
+    assert render_formula_update(formula, update) == formula
+
+
 def test_homebrew_formula_update_rejects_formula_without_sdist_url() -> None:
     update = FormulaUpdate(url=EXAMPLE_SDIST_URL, sha256="sha")
 
