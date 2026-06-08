@@ -1,4 +1,4 @@
-.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke public-release-live-verify npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-resolve release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-required-env-check _publish-everywhere-live-verify-registries _publish-everywhere-github-release _publish-everywhere-live-verify-github-release _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
+.PHONY: release-smoke package-build package-check package-install-smoke public-stable-surface-smoke public-release-surface-smoke public-release-live-verify npm-account-check npm-package-check npm-smoke npm-release-smoke docker-build docker-smoke docker-buildx docker-mcp-catalog-smoke docker-hub-public-ensure docker-publish-check docker-release-smoke mcpb-validate mcpb-pack mcpb-smoke mcpb-stdio-smoke smithery-payload-check smithery-publish directory-submission-check release-version-resolve release-version-sync release-version-check release-check _release-check-impl release _release-impl publish-version-check publish-everywhere-check _publish-everywhere-check-impl publish-everywhere _publish-everywhere-impl _publish-everywhere-preflight _publish-check-docker-smoke _publish-check-docker-buildx _publish-everywhere-required-env-check _publish-everywhere-docker-hub-public _publish-everywhere-live-verify-registries _publish-everywhere-github-release _publish-everywhere-live-verify-github-release _publish-everywhere-pypi _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew
 
 release-smoke: ## Run clean-tree public setup smoke from tracked files
 	@"$(ROOT)/scripts/release-smoke.sh"
@@ -149,6 +149,19 @@ docker-mcp-catalog-smoke: ## Verify Docker MCP Toolkit can create a custom catal
 	@trap 'docker mcp catalog remove "$(DOCKER_MCP_CATALOG_REF)" >/dev/null 2>&1 || true' EXIT; \
 		docker mcp catalog server ls "$(DOCKER_MCP_CATALOG_REF)" --format json | grep -q '"mcp-broker"'
 	$(call log_success,"Docker MCP custom catalog smoke passed: $(DOCKER_MCP_CATALOG_REF)")
+
+docker-hub-public-ensure: ## Ensure Docker Hub repository exists with public visibility
+	@test -n "$${DOCKERHUB_USERNAME:-}" || { printf "\033[1;31m[ERROR]\033[0m DOCKERHUB_USERNAME is required for docker-hub-public-ensure\n" >&2; exit 2; }
+	@test -n "$${DOCKERHUB_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m DOCKERHUB_TOKEN is required for docker-hub-public-ensure\n" >&2; exit 2; }
+	@$(PYTHON_BIN) "$(ROOT)/scripts/ensure_docker_hub_public.py" \
+		--username "$${DOCKERHUB_USERNAME}" \
+		--token "$${DOCKERHUB_TOKEN}" \
+		--namespace "$(DOCKER_NAMESPACE)" \
+		--repository "$(DOCKER_IMAGE_NAME)" \
+		--registry "$(DOCKER_REGISTRY_HOST)" \
+		--login-url "$(DOCKER_HUB_LOGIN_URL)" \
+		--namespace-repositories-url "$(DOCKER_HUB_API_NAMESPACE_BASE_URL)" \
+		--legacy-repositories-url "$(DOCKER_HUB_LEGACY_REPOSITORY_BASE_URL)"
 
 docker-publish-check: ## Verify published Docker manifests
 	@for image in $(DOCKER_PUBLISH_IMAGES); do \
@@ -306,6 +319,7 @@ _publish-everywhere-impl:
 	@test "$(PUBLISH_EVERYWHERE_APPLY)" = "1" || { printf "\033[1;31m[ERROR]\033[0m Set PUBLISH_EVERYWHERE_APPLY=1 to publish\n" >&2; exit 2; }
 	$(call timed_make,"publish-everywhere: preflight checks",_publish-everywhere-preflight)
 	$(call timed_make,"publish-everywhere: required env",_publish-everywhere-required-env-check)
+	$(call timed_make,"publish-everywhere: docker hub public repository",_publish-everywhere-docker-hub-public)
 	$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)
 	$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)
 	$(call timed_make,"publish-everywhere: live registry verification",_publish-everywhere-live-verify-registries)
@@ -322,7 +336,12 @@ _publish-everywhere-preflight:
 
 _publish-everywhere-required-env-check:
 	@test -n "$${HOMEBREW_TAP_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m HOMEBREW_TAP_TOKEN is required before publish-everywhere starts\n" >&2; exit 2; }
+	@test -n "$${DOCKERHUB_USERNAME:-}" || { printf "\033[1;31m[ERROR]\033[0m DOCKERHUB_USERNAME is required before publish-everywhere starts\n" >&2; exit 2; }
+	@test -n "$${DOCKERHUB_TOKEN:-}" || { printf "\033[1;31m[ERROR]\033[0m DOCKERHUB_TOKEN is required before publish-everywhere starts\n" >&2; exit 2; }
 	$(call log_success,"Publish-everywhere required environment is present")
+
+_publish-everywhere-docker-hub-public:
+	$(call timed_make,"publish-everywhere: docker hub public ensure",docker-hub-public-ensure)
 
 _publish-everywhere-live-verify-registries:
 	@$(PYTHON_BIN) "$(ROOT)/scripts/verify_public_release.py" \

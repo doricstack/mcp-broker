@@ -108,4 +108,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: make release RELEASE_APPLY=1 RELEASE_VERSION="$RELEASE_VERSION" RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"

@@ -642,6 +642,9 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
         "DOCKER_HUB_RELEASE_TAG_URL",
         "DOCKER_HUB_MINOR_TAG_URL",
         "DOCKER_HUB_API_REPOSITORY_BASE_URL",
+        "DOCKER_HUB_API_NAMESPACE_BASE_URL",
+        "DOCKER_HUB_LEGACY_REPOSITORY_BASE_URL",
+        "DOCKER_HUB_LOGIN_URL",
         "DOCKER_REGISTRY_HOST",
         "DOCKER_REGISTRY_SERVICE",
         "DOCKER_REGISTRY_AUTH_URL",
@@ -684,7 +687,9 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     publish_check_fanout_index = check_section.index("npm-package-check npm-smoke _publish-check-docker-smoke _publish-check-docker-buildx")
     assert "_publish-check-docker-smoke:" in makefile
     assert "_publish-check-docker-buildx:" in makefile
+    assert "docker-hub-public-ensure:" in makefile
     assert "_publish-everywhere-required-env-check:" in makefile
+    assert "_publish-everywhere-docker-hub-public:" in makefile
     assert "_publish-everywhere-live-verify-registries:" in makefile
     assert "_publish-everywhere-github-release:" in makefile
     assert "_publish-everywhere-live-verify-github-release:" in makefile
@@ -694,8 +699,12 @@ def test_publish_everywhere_orchestration_is_sequenced_and_parallel() -> None:
     assert 'docker-smoke DOCKER_IMAGE="mcp-broker:publish-check"' in makefile
     assert 'docker-buildx DOCKER_IMAGE="mcp-broker:buildx-check" DOCKER_PLATFORMS="$(DOCKER_LOCAL_PLATFORM)"' in makefile
     assert '$(call timed_make,"publish-everywhere: required env",_publish-everywhere-required-env-check)' in publish_section
+    assert '$(call timed_make,"publish-everywhere: docker hub public repository",_publish-everywhere-docker-hub-public)' in publish_section
     assert publish_section.index("_publish-everywhere-required-env-check") < pypi_index
+    assert publish_section.index("_publish-everywhere-docker-hub-public") < pypi_index
     assert "HOMEBREW_TAP_TOKEN is required before publish-everywhere starts" in makefile
+    assert "DOCKERHUB_USERNAME is required before publish-everywhere starts" in makefile
+    assert "DOCKERHUB_TOKEN is required before publish-everywhere starts" in makefile
     assert '$(call timed_make,"publish-everywhere: pypi",_publish-everywhere-pypi)' in publish_section
     assert '$(call timed_make,"publish-everywhere: parallel registries",-j $(PUBLISH_EVERYWHERE_JOBS) _publish-everywhere-npm _publish-everywhere-docker _publish-everywhere-mcp-registry _publish-everywhere-homebrew)' in publish_section
     assert '$(call timed_make,"publish-everywhere: live registry verification",_publish-everywhere-live-verify-registries)' in publish_section
@@ -787,6 +796,8 @@ def test_public_release_live_verification_proves_registry_truth_before_github_la
         "VAR=MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL)"
     ) in workflow
     assert "${MCP_PUBLISHER_RELEASE_DOWNLOAD_BASE_URL}/mcp-publisher_" in workflow
+    assert "DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}" in workflow
+    assert "DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}" in workflow
     assert "public live verification" in distribution
     assert "GitHub Release is created only after registry verification passes" in normalized_distribution
 

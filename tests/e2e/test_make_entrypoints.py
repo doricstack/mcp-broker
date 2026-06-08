@@ -399,6 +399,8 @@ def test_hidden_maintainer_violations_target_is_public_safe() -> None:
     assert "GRADE_REPORT_JSON ?= $(QUALITY_DIR)/grade_quality_report.json" in makefile
     assert "VIOLATIONS_JSON   ?= $(QUALITY_DIR)/violations.json" in makefile
     assert "VIOLATIONS_LOG    ?= $(QUALITY_DIR)/violations.log" in makefile
+    assert "VIOLATIONS_FLAGS  ?= --no-cache" in makefile
+    assert "$(VIOLATIONS_FLAGS) \\" in makefile
     assert '--log-file "$(VIOLATIONS_LOG)"' in makefile
     assert '--json-file "$(VIOLATIONS_JSON)"' in makefile
     assert '--violations-json "$(VIOLATIONS_JSON)"' in makefile

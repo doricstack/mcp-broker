@@ -16,6 +16,7 @@ maintainer-violations: require-violations-tool
 	@"$(CHECK_VIOLATIONS)" \
 		--repo-root "$(ROOT)" \
 		--jobs "$(VIOLATIONS_JOBS)" \
+		$(VIOLATIONS_FLAGS) \
 		--log --log-file "$(VIOLATIONS_LOG)" \
 		--json --json-file "$(VIOLATIONS_JSON)"
 

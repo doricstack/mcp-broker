@@ -100,17 +100,21 @@ It refuses to run without an explicit version unless GitHub Actions supplied a
 preflight, and checks directory, MCPB, and Smithery metadata before a release
 tag or GitHub release is created.
 
-The release transaction publishes PyPI first, then fans out NPM, Docker Hub,
-GHCR, MCP Registry metadata, and the Homebrew tap formula in one CI run. Public
-live verification runs after that fan-out. The GitHub Release is created only
-after registry verification passes, then the release object is verified through
-the GitHub API. Tag pushes do not publish. There are no per-registry publish
+The release transaction validates the Docker Hub repository visibility before
+the first registry write, publishes PyPI, then fans out NPM, Docker Hub, GHCR,
+MCP Registry metadata, and the Homebrew tap formula in one CI run. Public live
+verification runs after that fan-out. The GitHub Release is created only after
+registry verification passes, then the release object is verified through the
+GitHub API. Tag pushes do not publish. There are no per-registry publish
 workflows. Recovery runs the same `publish-everywhere` workflow with the same
 Makefile orchestrator.
 
 The Makefile validates required publication environment before the first
 registry write. For the current surface set, `HOMEBREW_TAP_TOKEN` must exist in
-GitHub Actions before PyPI publication starts.
+GitHub Actions before PyPI publication starts. `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` must also exist so `make docker-hub-public-ensure` can create
+or update the Docker Hub repository as public before the image push and before
+PyPI can be written.
 
 The orchestrator is retry-aware for partially completed releases. It checks the
 PyPI package version, NPM package version, MCP Registry metadata, and Homebrew
@@ -252,6 +256,13 @@ Docker Hub is the primary image for Docker MCP Catalog work:
 ```text
 ${DOCKER_REPOSITORY_IMAGE}
 ```
+
+Before the publish fan-out, `make docker-hub-public-ensure` authenticates to
+Docker Hub, creates the repository as public when it is missing, attempts to
+flip an existing private repository to public through the Docker Hub API, and
+then verifies anonymous repository visibility. If Docker Hub refuses the
+visibility update, the release blocks before PyPI publication instead of
+creating a partially public release.
 
 GHCR is a mirror:
 
