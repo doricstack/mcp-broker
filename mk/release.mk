@@ -50,4 +50,4 @@ _release-gate-smoke:
 
 _release-gate-mutation:
 	@mkdir -p "$(RELEASE_GATE_LOG_DIR)"
-	$(call timed_make,"release-gate child: $(RELEASE_MUTATION_TARGET)",$(RELEASE_MUTATION_TARGET),"$(RELEASE_GATE_LOG_DIR)/$(RELEASE_MUTATION_TARGET).log")
+	$(call timed_make,"release-gate child: $(RELEASE_MUTATION_TARGET)",MUTATION_MAX_CHILDREN="$(MUTATION_RELEASE_CHILDREN)" $(RELEASE_MUTATION_TARGET),"$(RELEASE_GATE_LOG_DIR)/$(RELEASE_MUTATION_TARGET).log")

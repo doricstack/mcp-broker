@@ -478,8 +478,10 @@ Run the release gate when preparing a tag:
 make release-gate
 ```
 
-`release-gate` runs package, smoke, and mutation checks. Mutation
-runs public unit and journey tests last and writes
+`release-gate` runs package, smoke, and mutation checks. Mutation receives a
+release-scoped child count derived from `LOCAL_CPU_BUDGET` and
+`RELEASE_GATE_JOBS`, so it does not take the full CPU budget while other
+release children run. Mutation runs public unit and journey tests last and writes
 `var/quality/mutation_stats.json` with total counts, score, and ranked
 `blocked_by_file` entries. On macOS, the release gate runs mutation inside a
 Linux container to avoid local mutmut fork failures. E2E tests remain in `make

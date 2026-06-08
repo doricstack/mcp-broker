@@ -18,9 +18,11 @@ LOCAL_CPU_BUDGET=4
 ```
 
 That budget feeds pytest workers, release-gate fanout workers, and mutmut
-children. Raise it in CI or on a spare machine, for example
-`make release-gate LOCAL_CPU_BUDGET=8`; lower it when you need the workstation
-to stay responsive.
+children. During `release-gate`, mutation receives a release-scoped child count
+divided by `RELEASE_GATE_JOBS` so it does not consume the full workstation
+budget while the other release children run. Raise the budget in CI or on a
+spare machine, for example `make release-gate LOCAL_CPU_BUDGET=8`; lower it
+when you need the workstation to stay responsive.
 
 The private source repo also has `make maintainer-release-gate`, which runs the
 public export dry run alongside the public release checks.

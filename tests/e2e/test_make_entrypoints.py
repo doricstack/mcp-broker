@@ -174,7 +174,19 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert '$(if $(MUTATION_ARGS),--include-mutants $(MUTATION_ARGS),)' in mutation_section
     assert "CPU_COUNT ?=" in makefile
     assert "LOCAL_CPU_BUDGET ?= 4" in makefile
-    assert "MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)" in makefile
+    mutation_children_default = re.search(r"^MUTATION_MAX_CHILDREN \?= (.+)$", makefile, re.M)
+    assert mutation_children_default is not None
+    assert mutation_children_default.group(1) == "$(LOCAL_CPU_BUDGET)"
+    release_mutation_children_default = re.search(
+        r"^MUTATION_RELEASE_CHILDREN \?= (.+)$", makefile, re.M
+    )
+    assert release_mutation_children_default is not None
+    assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in (
+        release_mutation_children_default.group(1)
+    )
+    assert 'MUTATION_MAX_CHILDREN="$(MUTATION_RELEASE_CHILDREN)" $(RELEASE_MUTATION_TARGET)' in (
+        makefile
+    )
     assert "mutation-linux:" in makefile
     assert "scripts/linux-mutation.sh" in makefile
     assert "MUTATION_LOG ?= $(QUALITY_DIR)/mutation-linux.log" in makefile
@@ -268,7 +280,19 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     assert "TEST_JOBS ?= 4" in makefile
     assert "PRECOMMIT_JOBS ?= 2" in makefile
     assert "RELEASE_GATE_JOBS ?= 2" in makefile
-    assert "MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)" in makefile
+    mutation_children_default = re.search(r"^MUTATION_MAX_CHILDREN \?= (.+)$", makefile, re.M)
+    assert mutation_children_default is not None
+    assert mutation_children_default.group(1) == "$(LOCAL_CPU_BUDGET)"
+    release_mutation_children_default = re.search(
+        r"^MUTATION_RELEASE_CHILDREN \?= (.+)$", makefile, re.M
+    )
+    assert release_mutation_children_default is not None
+    assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in (
+        release_mutation_children_default.group(1)
+    )
+    assert 'MUTATION_MAX_CHILDREN="$(MUTATION_RELEASE_CHILDREN)" $(RELEASE_MUTATION_TARGET)' in (
+        makefile
+    )
     assert "XDIST_BENCHMARK_TARGETS ?= $(PY_UNIT_DIR) $(PY_JOURNEY_DIR)" in makefile
     assert "xdist-benchmark:" in makefile
     assert "PYTEST_XDIST_DIST=load" in makefile

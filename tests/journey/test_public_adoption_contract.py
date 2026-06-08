@@ -386,6 +386,7 @@ def test_docker_packaging_contract_is_public_safe() -> None:
 
     assert "ARG PYTHON_IMAGE=python:3-slim" in dockerfile
     assert "COPY src /app/src" in dockerfile
+    assert "COPY npm/package.json /app/npm/package.json" in dockerfile
     assert "COPY config/broker.example.yaml /app/config/broker.example.yaml" in dockerfile
     assert "ENTRYPOINT [\"/usr/local/bin/mcp-broker-docker\"]" in dockerfile
     assert "MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker" in dockerfile

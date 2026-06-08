@@ -17,6 +17,49 @@ def test_source_tree_version_reads_npm_package_version():
     assert mcp_broker._source_tree_version() == package_version
 
 
+def test_source_tree_version_uses_package_json_under_source_root(monkeypatch, tmp_path):
+    import mcp_broker
+
+    source_root = tmp_path / "checkout"
+    source_init = source_root / "src" / "mcp_broker" / "__init__.py"
+    source_init.parent.mkdir(parents=True)
+    source_init.write_text("", encoding="utf-8")
+    (source_root / "npm").mkdir()
+    (source_root / "npm" / "package.json").write_text('{"version": "7.8.9"}', encoding="utf-8")
+    (tmp_path / "npm").mkdir()
+    (tmp_path / "npm" / "package.json").write_text('{"version": "0.0.0"}', encoding="utf-8")
+    monkeypatch.setattr(mcp_broker, "__file__", str(source_init))
+
+    assert mcp_broker._source_tree_version() == "7.8.9"
+
+
+def test_source_tree_version_reads_package_json_as_utf8(monkeypatch, tmp_path):
+    import mcp_broker
+
+    source_root = tmp_path / "checkout"
+    source_init = source_root / "src" / "mcp_broker" / "__init__.py"
+    source_init.parent.mkdir(parents=True)
+    source_init.write_text("", encoding="utf-8")
+    expected_package_json = source_root / "npm" / "package.json"
+    expected_package_json.parent.mkdir()
+    expected_package_json.write_text('{"version": "7.8.9"}', encoding="utf-8")
+    monkeypatch.setattr(mcp_broker, "__file__", str(source_init))
+
+    calls = []
+    original_read_text = Path.read_text
+
+    def read_text_with_encoding_check(path, *args, **kwargs):
+        if path == expected_package_json:
+            calls.append(kwargs)
+            assert kwargs == {"encoding": "utf-8"}
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text_with_encoding_check)
+
+    assert mcp_broker._source_tree_version() == "7.8.9"
+    assert calls == [{"encoding": "utf-8"}]
+
+
 def test_source_tree_version_requires_source_package_metadata(monkeypatch, tmp_path):
     import mcp_broker
 
@@ -25,8 +68,9 @@ def test_source_tree_version_requires_source_package_metadata(monkeypatch, tmp_p
     source_init.write_text("", encoding="utf-8")
     monkeypatch.setattr(mcp_broker, "__file__", str(source_init))
 
-    with pytest.raises(RuntimeError, match="MCP_BROKER_VERSION is required"):
+    with pytest.raises(RuntimeError) as exc_info:
         mcp_broker._source_tree_version()
+    assert str(exc_info.value) == "MCP_BROKER_VERSION is required outside installed packages"
 
 
 def test_resolve_version_prefers_mcp_broker_version_environment(monkeypatch):

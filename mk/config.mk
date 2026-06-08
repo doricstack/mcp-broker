@@ -233,6 +233,7 @@ PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --ti
 PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
 BROKER_WAIT_SECONDS ?= 10
 MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)
+MUTATION_RELEASE_CHILDREN ?= $(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.write(str(max(1, int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)"))))' 2>/dev/null || printf 1)
 MUTATION_ARGS    ?=
 MUTATION_IMAGE   ?= python:3.11-bookworm
 MUTATION_STATS_JSON ?= $(QUALITY_DIR)/mutation_stats.json

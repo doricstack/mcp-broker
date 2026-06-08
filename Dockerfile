@@ -26,6 +26,7 @@ ENV MCP_BROKER_RUNTIME_ROOT=/var/lib/mcp-broker \
 WORKDIR /app
 
 COPY pyproject.toml README.md LICENSE ./
+COPY npm/package.json /app/npm/package.json
 COPY src /app/src
 COPY config/broker.example.yaml /app/config/broker.example.yaml
 COPY docker/docker-entrypoint.sh /usr/local/bin/mcp-broker-docker
