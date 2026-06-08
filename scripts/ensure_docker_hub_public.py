@@ -177,6 +177,7 @@ def _patch_private_repository(
             raise
         if payload.get("is_private") is False:
             return
+        failures.append(f"{url} returned is_private={payload.get('is_private')!r}")
     raise DockerHubPublicError(
         "Docker Hub could not make repository public through the API; "
         "set the repository visibility to public in Docker Hub and rerun verification"

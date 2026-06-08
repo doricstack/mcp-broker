@@ -156,3 +156,30 @@ def test_ensure_docker_hub_public_fails_when_repository_remains_private() -> Non
 
     with pytest.raises(DockerHubPublicError, match="could not make repository public"):
         ensure_docker_hub_public(_config(), fake.request)
+
+
+def test_ensure_docker_hub_public_reports_successful_patch_that_stays_private() -> None:
+    fake = FakeDockerHub(
+        {
+            ("POST", "https://hub.example/v2/users/login"): {"token": "jwt-token"},
+            ("GET", "https://hub.example/v2/namespaces/example/repositories/broker"): {
+                "name": "broker",
+                "is_private": True,
+            },
+            ("PATCH", "https://hub.example/v2/namespaces/example/repositories/broker"): {
+                "name": "broker",
+                "is_private": True,
+            },
+            ("PATCH", "https://hub.example/v2/repositories/example/broker/"): {
+                "name": "broker",
+                "is_private": True,
+            },
+        }
+    )
+
+    with pytest.raises(DockerHubPublicError) as excinfo:
+        ensure_docker_hub_public(_config(), fake.request)
+
+    assert "returned is_private=True" in str(excinfo.value)
+    assert "v2/namespaces/example/repositories/broker" in str(excinfo.value)
+    assert "v2/repositories/example/broker/" in str(excinfo.value)
