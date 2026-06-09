@@ -118,8 +118,47 @@ upstreams:
 ```
 
 Use `mode: shared` plus `serialize_calls: true` for shared local-user auth
-where parallel calls could fight over the same browser profile, token refresh,
-or draft state. Use `mode: per_session` when each LLM session needs its own
+state.
+
+When one CLI can manage multiple accounts, create one upstream per account and
+give each upstream its own state directory. If the CLI chooses the account from
+an environment variable, feed that value through `env_files:` so a LaunchAgent
+daemon gets the same account selection as an interactive shell.
+
+Example for a second Google Workspace account:
+
+```yaml
+upstreams:
+  google-workspace-business:
+    enabled: true
+    mode: shared
+    transport: stdio
+    mutating: true
+    serialize_calls: true
+    tool_prefix: google-workspace-business
+    command: gws
+    args:
+      - mcp
+      - --services
+      - drive,docs,sheets,calendar,gmail
+      - --tool-mode
+      - compact
+    state_dir: upstreams/google-workspace-business
+    env_files:
+      GOOGLE_WORKSPACE_CLI_CONFIG_DIR: "{runtime.secrets_dir}/GWS_BUSINESS_CONFIG_DIR"
+```
+
+`GWS_BUSINESS_CONFIG_DIR` should contain the path to that account's GWS config
+directory, for example
+`$HOME/mcp/mcp-broker/state/upstreams/google-workspace-business/gws`.
+
+Shell tokens and API keys follow a different rule: import the token into
+`{runtime.secrets_dir}` with `make secret-import-env SECRET_NAME=<name>` and map
+the upstream's child variable to that file with `env_files:`.
+
+Use `mode: shared` plus `serialize_calls: true` for shared local-user auth
+state where parallel calls could fight over the same browser profile, token
+refresh, or draft state. Use `mode: per_session` when each LLM session needs its own
 process-local state.
 
 ## Session Context Environment

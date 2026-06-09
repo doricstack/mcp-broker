@@ -63,6 +63,10 @@ If smoke fails, install exits with the smoke status and writes nothing.
 Dry-run writes the candidate plist under `~/mcp/mcp-broker/renders/`.
 Apply mode writes `~/Library/LaunchAgents/com.mcp-broker.agent.plist` only after smoke passes.
 The label is generic and the ProgramArguments include `--config` with the central broker config path.
+The plist includes `AssociatedBundleIdentifiers` for `com.mcp-broker.agent`.
+Apply mode also creates and registers a runtime app bundle at
+`~/mcp/mcp-broker/launchagent/mcp-broker.app` so macOS Background Items can show
+`mcp-broker` instead of the shell or Python interpreter name.
 If a LaunchAgent plist already exists, apply mode backs it up under `~/mcp/mcp-broker/backups/launchagent/` before writing the replacement.
 
 ## Client Profiles

@@ -58,6 +58,8 @@ def test_install_dry_run_writes_launchagent_preview_only_after_smoke_passes(tmp_
     assert "<string>--config</string>" in preview_text
     assert str(ROOT / "config" / "broker.private.yaml") in preview_text
     assert "<key>WorkingDirectory</key>" in preview_text
+    assert "<key>AssociatedBundleIdentifiers</key>" in preview_text
+    assert "<string>com.mcp-broker.agent</string>" in preview_text
     assert "<key>PYTHONPATH</key>" in preview_text
     assert "<key>PATH</key>" in preview_text
     assert f"<string>{env['PATH']}</string>" in preview_text
@@ -112,6 +114,14 @@ def test_install_apply_backs_up_existing_launchagent_before_write(tmp_path: Path
     assert "<string>mcp_broker.daemon</string>" in launchagent_text
     assert "<string>--config</string>" in launchagent_text
     assert str(ROOT / "config" / "broker.private.yaml") in launchagent_text
+    assert _launchagent_app_bundle(tmp_path).is_dir()
+    app_info = (_launchagent_app_bundle(tmp_path) / "Contents" / "Info.plist").read_text(
+        encoding="utf-8"
+    )
+    assert "<key>CFBundleIdentifier</key>" in app_info
+    assert "<string>com.mcp-broker.agent</string>" in app_info
+    assert "<key>CFBundleDisplayName</key>" in app_info
+    assert "<string>mcp-broker</string>" in app_info
 
 
 def test_systemd_install_dry_run_writes_service_preview_after_smoke_passes(tmp_path: Path) -> None:
@@ -217,6 +227,10 @@ def _env_with_controlled_make(tmp_path: Path, *, exit_code: int) -> dict[str, st
 
 def _launchagent_path(tmp_path: Path) -> Path:
     return tmp_path / "home" / "Library" / "LaunchAgents" / PLIST_NAME
+
+
+def _launchagent_app_bundle(tmp_path: Path) -> Path:
+    return tmp_path / "runtime" / "launchagent" / "mcp-broker.app"
 
 
 def _systemd_service_path(tmp_path: Path) -> Path:
