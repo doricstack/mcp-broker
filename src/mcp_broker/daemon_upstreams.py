@@ -2,21 +2,68 @@
 
 from __future__ import annotations
 
+import threading
+from typing import TYPE_CHECKING
+
 from mcp_broker.broker import BrokerToolError
 from mcp_broker.daemon_helpers import result_matches_auth_repair, stdio_client_key
 from mcp_broker.upstream_http import (
-    HttpUpstreamClient,
     HttpUpstreamError,
     HttpUpstreamTimeout,
 )
 from mcp_broker.upstream_stdio import (
     StdioUpstreamError,
-    StdioUpstreamProcess,
     StdioUpstreamTimeout,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from mcp_broker.config import BrokerConfig, UpstreamConfig
+    from mcp_broker.runtime_reaper import RuntimePaths
+    from mcp_broker.upstream_protocols import (
+        HttpUpstreamClientProtocol,
+        StdioUpstreamClientProtocol,
+    )
+    from mcp_broker.upstream_stdio import UpstreamEventLogger
+
 
 class BrokerDaemonUpstreamMixin:
+    # Host members provided by the concrete BrokerDaemon; declared for the type
+    # checker only (never executed at runtime). The registries and factories are
+    # typed against the upstream-client Protocols, so the concrete clients and the
+    # unit-test fakes both satisfy the contract structurally.
+    if TYPE_CHECKING:
+        broker_config: BrokerConfig | None
+        _stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamClientProtocol]
+        _stdio_upstreams_lock: threading.Lock
+        _http_upstreams: dict[str, HttpUpstreamClientProtocol]
+        _paths: RuntimePaths
+
+        def _create_stdio_upstream_process(
+            self,
+            upstream: UpstreamConfig,
+            *,
+            runtime_state_dir: Path,
+            session_context: dict[str, str] | None = ...,
+            event_logger: UpstreamEventLogger | None = ...,
+            runtime_paths: RuntimePaths | None = ...,
+        ) -> StdioUpstreamClientProtocol: ...
+
+        def _create_http_upstream_client(
+            self, upstream: UpstreamConfig
+        ) -> HttpUpstreamClientProtocol: ...
+
+        def _write_upstream_event(
+            self, event: str, upstream_name: str, fields: dict[str, object]
+        ) -> None: ...
+
+        def _record_auth_repair_attempt(self, upstream_name: str) -> None: ...
+
+        def _record_auth_repair_success(self, upstream_name: str) -> None: ...
+
+        def _record_auth_repair_failure(self, upstream_name: str) -> None: ...
+
     def _call_upstream(
         self,
         upstream_name: str,
@@ -79,6 +126,7 @@ class BrokerDaemonUpstreamMixin:
         session_id: str | None,
         session_context: dict[str, str] | None,
     ) -> dict[str, object]:
+        assert self.broker_config is not None
         client = self._stdio_client(
             upstream_name,
             session_id=session_id,
@@ -134,23 +182,28 @@ class BrokerDaemonUpstreamMixin:
         *,
         session_id: str | None,
         session_context: dict[str, str] | None = None,
-    ) -> StdioUpstreamProcess:
+    ) -> "StdioUpstreamClientProtocol":
         assert self.broker_config is not None
         upstream = self.broker_config.upstreams[upstream_name]
         if upstream.session_env:
             upstream.resolve_session_environment(session_context or {})
         client_key = stdio_client_key(upstream, session_id=session_id)
-        client = self._stdio_upstreams.get(client_key)
-        if client is None:
-            client = self._create_stdio_upstream_process(
-                upstream,
-                runtime_state_dir=self.broker_config.runtime.state_dir,
-                session_context=session_context,
-                event_logger=self._write_upstream_event,
-                runtime_paths=self._paths,
-            )
-            self._stdio_upstreams[client_key] = client
-        return client
+        # Atomic get-or-create under the registry lock: prevents two connection
+        # threads double-creating the same key, and prevents the idle janitor from
+        # evicting a key mid-creation. Construction does not spawn the subprocess
+        # (that happens lazily on first call), so the lock is held only briefly.
+        with self._stdio_upstreams_lock:
+            client = self._stdio_upstreams.get(client_key)
+            if client is None:
+                client = self._create_stdio_upstream_process(
+                    upstream,
+                    runtime_state_dir=self.broker_config.runtime.state_dir,
+                    session_context=session_context,
+                    event_logger=self._write_upstream_event,
+                    runtime_paths=self._paths,
+                )
+                self._stdio_upstreams[client_key] = client
+            return client
 
     def _call_http_upstream(
         self,
@@ -196,7 +249,7 @@ class BrokerDaemonUpstreamMixin:
             session_context=session_context,
         )
 
-    def _http_client(self, upstream_name: str) -> HttpUpstreamClient:
+    def _http_client(self, upstream_name: str) -> "HttpUpstreamClientProtocol":
         assert self.broker_config is not None
         upstream = self.broker_config.upstreams[upstream_name]
         client = self._http_upstreams.get(upstream_name)

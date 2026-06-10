@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
-from typing import Mapping
+from typing import Mapping, Protocol, runtime_checkable
 
 from mcp_broker.broker import BrokerToolError
 from mcp_broker.config import UpstreamConfig
-from mcp_broker.upstream_stdio import StdioUpstreamProcess
+from mcp_broker.upstream_protocols import StdioUpstreamClientProtocol
 
 
 SENSITIVE_LOG_KEY_PARTS = (
@@ -83,16 +83,16 @@ def _passive_configured_auth_probe(
 ) -> dict[str, object]:
     probe = upstream.auth_probe
     assert probe is not None
-    if not _secret_file_has_value(probe.token_file):
+    raw = _read_secret_text(probe.token_file)
+    if raw is None or not any(char not in "\r\n" for char in raw):
         return {
             "auth_probe": "credentials_missing",
             "auth_state": "unauthenticated",
             "last_error": f"missing OAuth token file for upstream {upstream.name}",
         }
     try:
-        raw = probe.token_file.read_text(encoding="utf-8")
         token_data = json.loads(raw)
-    except (AttributeError, OSError, json.JSONDecodeError):
+    except json.JSONDecodeError:
         return {
             "auth_probe": "credentials_missing",
             "auth_state": "unauthenticated",
@@ -165,14 +165,23 @@ def merge_passive_auth_probe(
     return merged
 
 
-def _secret_file_has_value(secret_path: object) -> bool:
-    if not hasattr(secret_path, "read_text"):
-        return False
+@runtime_checkable
+class _ReadableTextFile(Protocol):
+    def read_text(self, *, encoding: str) -> str: ...
+
+
+def _read_secret_text(secret_path: object) -> str | None:
+    if not isinstance(secret_path, _ReadableTextFile):
+        return None
     try:
-        value = secret_path.read_text(encoding="utf-8")
+        return secret_path.read_text(encoding="utf-8")
     except OSError:
-        return False
-    return any(char not in "\r\n" for char in value)
+        return None
+
+
+def _secret_file_has_value(secret_path: object) -> bool:
+    value = _read_secret_text(secret_path)
+    return value is not None and any(char not in "\r\n" for char in value)
 
 
 def stdio_client_key(upstream: UpstreamConfig, *, session_id: str | None) -> str | tuple[str, str]:
@@ -193,7 +202,9 @@ def stdio_client_name(key: str | tuple[str, str]) -> str:
     return key
 
 
-def per_session_health_snapshot(clients: list[StdioUpstreamProcess]) -> dict[str, object]:
+def per_session_health_snapshot(
+    clients: list[StdioUpstreamClientProtocol],
+) -> dict[str, object]:
     snapshots = [client.health_snapshot() for client in clients]
     states = [snapshot.get("state") for snapshot in snapshots]
     errors = [

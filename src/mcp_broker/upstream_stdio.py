@@ -10,7 +10,7 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Any, BinaryIO, Callable, cast
+from typing import IO, Any, Callable, cast
 
 from mcp_broker import __version__
 from mcp_broker.config import UpstreamConfig
@@ -54,6 +54,11 @@ class StdioUpstreamProcess:
         self._process_metadata_path: Path | None = None
         self._stderr_drainer: threading.Thread | None = None
         self._lock = threading.Lock()
+        # Dedicated tiny lock for the activity timestamp. NEVER the call lock
+        # (self._lock) - that one is held for a full upstream round-trip, and the
+        # idle janitor must read the timestamp without stalling behind a slow call.
+        self._activity_lock = threading.Lock()
+        self._last_activity_monotonic = time.monotonic()
         self._next_id = 0
         self._restart_count = 0
         self._last_error: str | None = None
@@ -74,6 +79,18 @@ class StdioUpstreamProcess:
             return path
         return self.runtime_state_dir / path
 
+    def record_activity(self, *, monotonic_seconds: float | None = None) -> None:
+        """Stamp client-driven activity (call/list). Read by the idle janitor."""
+        stamp = time.monotonic() if monotonic_seconds is None else monotonic_seconds
+        with self._activity_lock:
+            self._last_activity_monotonic = stamp
+
+    def idle_seconds(self, *, now: float | None = None) -> float:
+        """Seconds since the last client-driven activity."""
+        current = time.monotonic() if now is None else now
+        with self._activity_lock:
+            return current - self._last_activity_monotonic
+
     def call_tool(
         self,
         tool_name: str,
@@ -82,6 +99,7 @@ class StdioUpstreamProcess:
         timeout_seconds: int,
     ) -> dict[str, Any]:
         with self._lock:
+            self.record_activity()
             self._emit_event(
                 "upstream.call",
                 method="tools/call",
@@ -112,6 +130,7 @@ class StdioUpstreamProcess:
 
     def list_tools(self, *, timeout_seconds: int) -> list[dict[str, Any]]:
         with self._lock:
+            self.record_activity()
             self._emit_event(
                 "upstream.call",
                 method="tools/list",
@@ -477,7 +496,7 @@ class StdioUpstreamProcess:
 
     def _read_stdout_line(
         self,
-        stdout: BinaryIO,
+        stdout: IO[bytes],
         *,
         deadline: float,
     ) -> bytes:
@@ -499,7 +518,7 @@ class StdioUpstreamProcess:
         self._event_logger(event, self.upstream.name, fields)
 
 
-def _start_stderr_drainer(stream: BinaryIO, path: Path) -> threading.Thread:
+def _start_stderr_drainer(stream: IO[bytes], path: Path) -> threading.Thread:
     def drain() -> None:
         with path.open("ab") as handle:
             while chunk := _read_stderr_chunk(stream):
@@ -512,7 +531,7 @@ def _start_stderr_drainer(stream: BinaryIO, path: Path) -> threading.Thread:
     return thread
 
 
-def _read_stderr_chunk(stream: BinaryIO | None) -> bytes:
+def _read_stderr_chunk(stream: IO[bytes] | None) -> bytes:
     if stream is None:
         return b""
     try:

@@ -4,8 +4,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_ROOT="${MCP_BROKER_RUNTIME_ROOT:-$HOME/mcp/mcp-broker}"
 SOCKET_PATH="${MCP_BROKER_SOCKET:-$RUNTIME_ROOT/sockets/broker.sock}"
-CONFIG_PATH="${MCP_BROKER_CONFIG:-$ROOT/config/broker.example.yaml}"
+# Prefer the private runtime config when it exists (the normal installed state);
+# fall back to the shipped public template for a fresh clone that has not run
+# `make config-init` yet.
+DEFAULT_CONFIG_PATH="$ROOT/config/broker.private.yaml"
+[ -f "$DEFAULT_CONFIG_PATH" ] || DEFAULT_CONFIG_PATH="$ROOT/config/broker.example.yaml"
+CONFIG_PATH="${MCP_BROKER_CONFIG:-$DEFAULT_CONFIG_PATH}"
 BROKER_RUNTIME_PATH="${MCP_BROKER_RUNTIME_PATH:-${PATH:-/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin}}"
+# File-descriptor ceiling for the daemon (see install-launchagent.sh for rationale).
+# systemd user services inherit a low default; the broker needs headroom for many
+# upstream subprocess pipes across concurrent LLM clients.
+BROKER_MAX_OPEN_FILES="${MCP_BROKER_MAX_OPEN_FILES:-8192}"
 SERVICE_NAME="${MCP_BROKER_SYSTEMD_SERVICE:-mcp-broker.service}"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SERVICE_PATH="$SYSTEMD_USER_DIR/$SERVICE_NAME"
@@ -64,6 +73,7 @@ Environment=MCP_BROKER_CONFIG=$CONFIG_PATH
 ExecStart=$command_line serve --runtime-root $RUNTIME_ROOT --socket-path $SOCKET_PATH --config $CONFIG_PATH
 Restart=on-failure
 RestartSec=3
+LimitNOFILE=$BROKER_MAX_OPEN_FILES
 StandardOutput=append:$RUNTIME_ROOT/logs/systemd.out.log
 StandardError=append:$RUNTIME_ROOT/logs/systemd.err.log
 

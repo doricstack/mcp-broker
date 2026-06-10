@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+# Raise the file-descriptor soft limit before launching. The broker multiplexes
+# many upstream subprocess pipes across clients; the container default can be too
+# low and surfaces as "Too many open files" / dropped transports. Best-effort:
+# skip silently if the container's hard limit is below the requested value.
+ulimit -n "${MCP_BROKER_MAX_OPEN_FILES:-8192}" 2>/dev/null || true
+
 if [ "$#" -gt 0 ]; then
   exec "$@"
 fi

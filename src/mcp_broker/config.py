@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
 
@@ -532,7 +532,15 @@ def _parse_request_meta(
     return parsed
 
 
-def _parse_upstream_policies(name: str, data: dict[str, Any]) -> dict[str, object]:
+class _UpstreamPolicies(TypedDict):
+    startup_timeout_seconds: int
+    restart: RestartPolicy
+    health: HealthPolicy
+    tool_timeouts: dict[str, int]
+    resources: ResourcePolicy
+
+
+def _parse_upstream_policies(name: str, data: dict[str, Any]) -> _UpstreamPolicies:
     return {
         "startup_timeout_seconds": parse_startup_timeout(
             f"upstreams.{name}.startup_timeout_seconds",

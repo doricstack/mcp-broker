@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import subprocess
 import threading
 import time
 from typing import Sequence
@@ -34,7 +35,53 @@ from mcp_broker.protocol import McpProtocolHandler
 from mcp_broker.profiles import ToolExposureProfile, select_profile_for_cwd
 from mcp_broker.runtime_reaper import RuntimePaths, write_socket_metadata
 from mcp_broker.upstream_http import HttpUpstreamClient, HttpUpstreamError
-from mcp_broker.upstream_stdio import StdioUpstreamError, StdioUpstreamProcess
+from mcp_broker.upstream_protocols import (
+    HttpUpstreamClientProtocol,
+    StdioUpstreamClientProtocol,
+)
+from mcp_broker.upstream_stdio import (
+    StdioUpstreamError,
+    StdioUpstreamProcess,
+    UpstreamEventLogger,
+)
+
+
+# Fixed cadence for the idle-upstream janitor sweep. Deliberately NOT derived
+# from per-upstream idle_timeout_seconds - a small configured timeout would turn
+# a derived cadence into a hot loop. Each client is compared against its own
+# idle_timeout_seconds; the worst case is an upstream living one interval past
+# its timeout, which is irrelevant against the FD leak this reaper closes.
+JANITOR_SWEEP_INTERVAL_SECONDS = 30
+
+
+def _git_sha(source_dir: Path) -> str | None:
+    """Best-effort short git SHA of the source tree, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(source_dir), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha = result.stdout.strip()
+    return sha or None
+
+
+def _source_provenance() -> dict[str, str]:
+    """Identify which source tree and version this daemon is running.
+
+    Logged once at startup so a session can tell, at a glance, which checkout is
+    live (e.g. private dev tree vs the deployed public export) without guessing.
+    """
+    source_path = Path(__file__).resolve().parent
+    provenance = {"source_path": str(source_path), "version": __version__}
+    sha = _git_sha(source_path)
+    if sha is not None:
+        provenance["git_sha"] = sha
+    return provenance
 
 
 class BrokerDaemonError(Exception):
@@ -55,8 +102,14 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
         self._connection_threads_lock = threading.Lock()
         self._stop_requested = threading.Event()
         self._protocol = McpProtocolHandler(server_name="mcp-broker", server_version=__version__)
-        self._stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamProcess] = {}
-        self._http_upstreams: dict[str, HttpUpstreamClient] = {}
+        self._stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamClientProtocol] = {}
+        # Guards every mutation/iteration of _stdio_upstreams (insert in
+        # _stdio_client, pop in _shutdown_session_upstreams, clear in
+        # _shutdown_upstreams, the health read, and the idle janitor sweep).
+        self._stdio_upstreams_lock = threading.Lock()
+        self._janitor_thread: threading.Thread | None = None
+        self._janitor_stop = threading.Event()
+        self._http_upstreams: dict[str, HttpUpstreamClientProtocol] = {}
         self._upstream_call_locks: dict[str, threading.Lock] = {}
         self._cleanup_lock = threading.Lock()
         self._cleanup_done = False
@@ -99,10 +152,16 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
             "daemon.started",
             runtime_root=str(self.runtime_root),
             socket_path=str(self.socket_path),
+            **_source_provenance(),
         )
         self._write_status_snapshot("running")
         self._thread = threading.Thread(target=self._serve_loop, name="mcp-broker-daemon")
         self._thread.start()
+        self._janitor_stop.clear()
+        self._janitor_thread = threading.Thread(
+            target=self._idle_janitor_loop, name="mcp-broker-janitor", daemon=True
+        )
+        self._janitor_thread.start()
 
     def serve_forever(self) -> None:
         self.start()
@@ -116,9 +175,14 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
 
     def join(self, *, timeout: float) -> None:
         deadline = time.monotonic() + timeout
+        self._janitor_stop.set()
+        janitor = self._janitor_thread
+        if janitor is not None:
+            janitor.join(timeout=max(0.0, deadline - time.monotonic()))
+            self._janitor_thread = None
         thread = self._thread
         if thread is not None:
-            thread.join(timeout=timeout)
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
         self._join_connection_threads(max(0.0, deadline - time.monotonic()))
         self._cleanup()
 
@@ -399,11 +463,21 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
     def _create_stdio_upstream_process(
         self,
         upstream: UpstreamConfig,
-        **kwargs: object,
-    ) -> StdioUpstreamProcess:
-        return StdioUpstreamProcess(upstream, **kwargs)
+        *,
+        runtime_state_dir: Path,
+        session_context: dict[str, str] | None = None,
+        event_logger: UpstreamEventLogger | None = None,
+        runtime_paths: RuntimePaths | None = None,
+    ) -> StdioUpstreamClientProtocol:
+        return StdioUpstreamProcess(
+            upstream,
+            runtime_state_dir=runtime_state_dir,
+            session_context=session_context,
+            event_logger=event_logger,
+            runtime_paths=runtime_paths,
+        )
 
-    def _create_http_upstream_client(self, upstream: UpstreamConfig) -> HttpUpstreamClient:
+    def _create_http_upstream_client(self, upstream: UpstreamConfig) -> HttpUpstreamClientProtocol:
         return HttpUpstreamClient(upstream)
 
     def _health_result(self, request: dict[str, object]) -> dict[str, object]:
@@ -436,9 +510,11 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
     ) -> dict[str, dict[str, object]]:
         if self.broker_config is None:
             return {}
+        with self._stdio_upstreams_lock:
+            stdio_snapshot = dict(self._stdio_upstreams)
         snapshots: dict[str, dict[str, object]] = {}
         for name, upstream in sorted(self.broker_config.upstreams.items()):
-            client = self._stdio_upstreams.get(name)
+            client = stdio_snapshot.get(name)
             if client is not None:
                 snapshots[name] = self._upstream_health_with_auth(
                     name,
@@ -451,7 +527,7 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
             elif upstream.mode == "per_session":
                 session_clients = [
                     active_client
-                    for key, active_client in self._stdio_upstreams.items()
+                    for key, active_client in stdio_snapshot.items()
                     if isinstance(key, tuple) and key[0] == name
                 ]
                 snapshot = (
@@ -475,7 +551,7 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
     def _shared_stdio_health_snapshot(
         self,
         upstream_name: str,
-        client: StdioUpstreamProcess,
+        client: StdioUpstreamClientProtocol,
         *,
         restart_allowed: bool,
     ) -> dict[str, object]:
@@ -538,10 +614,12 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
     def _shutdown_upstreams(self) -> dict[str, object]:
         stopped_upstreams: list[str] = []
         remaining_broker_processes: list[int] = []
-        for key, client in sorted(self._stdio_upstreams.items(), key=lambda item: str(item[0])):
+        with self._stdio_upstreams_lock:
+            clients = sorted(self._stdio_upstreams.items(), key=lambda item: str(item[0]))
+            self._stdio_upstreams.clear()
+        for key, client in clients:
             remaining_broker_processes.extend(client.stop())
             stopped_upstreams.append(_stdio_client_name(key))
-        self._stdio_upstreams.clear()
         self._http_upstreams.clear()
         return {
             "stopped_upstreams": stopped_upstreams,
@@ -551,19 +629,70 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
     def _shutdown_session_upstreams(self, session_id: str) -> dict[str, object]:
         stopped_upstreams: list[str] = []
         remaining_broker_processes: list[int] = []
-        keys = [
-            key
-            for key in self._stdio_upstreams
-            if isinstance(key, tuple) and key[1] == session_id
-        ]
-        for key in sorted(keys, key=str):
-            client = self._stdio_upstreams.pop(key)
+        with self._stdio_upstreams_lock:
+            keys = sorted(
+                (
+                    key
+                    for key in self._stdio_upstreams
+                    if isinstance(key, tuple) and key[1] == session_id
+                ),
+                key=str,
+            )
+            clients = [(key, self._stdio_upstreams.pop(key)) for key in keys]
+        for key, client in clients:
             remaining_broker_processes.extend(client.stop())
             stopped_upstreams.append(_stdio_client_name(key))
         return {
             "stopped_upstreams": stopped_upstreams,
             "remaining_broker_processes": sorted(set(remaining_broker_processes)),
         }
+
+    def _idle_janitor_loop(self) -> None:
+        while not self._janitor_stop.wait(JANITOR_SWEEP_INTERVAL_SECONDS):
+            try:
+                self._reap_idle_upstreams()
+            except Exception as exc:  # never let the janitor thread die
+                self._write_log("upstream.reap_error", error=str(exc))
+
+    def _reap_idle_upstreams(
+        self,
+        *,
+        now: float | None = None,
+    ) -> list[tuple[str | tuple[str, str], StdioUpstreamClientProtocol, tuple[int, ...]]]:
+        """Stop and evict per-session stdio upstreams idle past their timeout.
+
+        Per-session only (tuple keys); shared upstreams are long-lived by design.
+        Snapshot under the registry lock, stop OUTSIDE it (stop() SIGKILLs a
+        process group and can be slow), then re-acquire to pop - but only the exact
+        client we stopped, so a session that re-created the upstream under the same
+        key during the stop window is not evicted.
+        """
+        current = time.monotonic() if now is None else now
+        with self._stdio_upstreams_lock:
+            snapshot = [
+                (key, client)
+                for key, client in self._stdio_upstreams.items()
+                if isinstance(key, tuple)
+            ]
+        reaped: list[
+            tuple[str | tuple[str, str], StdioUpstreamClientProtocol, tuple[int, ...]]
+        ] = []
+        for key, client in snapshot:
+            timeout = client.upstream.resources.idle_timeout_seconds
+            if timeout <= 0 or client.idle_seconds(now=current) < timeout:
+                continue
+            remaining = client.stop()
+            with self._stdio_upstreams_lock:
+                if self._stdio_upstreams.get(key) is client:
+                    self._stdio_upstreams.pop(key, None)
+                    reaped.append((key, client, remaining))
+        for key, _client, remaining in reaped:
+            self._write_log(
+                "upstream.reaped_idle",
+                upstream=_stdio_client_name(key),
+                remaining_broker_processes=sorted(set(remaining)),
+            )
+        return reaped
 
     def _wake_server(self) -> None:
         if not self.socket_path.exists():

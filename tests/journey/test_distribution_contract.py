@@ -1051,3 +1051,19 @@ def test_config_schema_has_public_distribution_metadata() -> None:
     assert schema["title"] == "mcp-broker config"
     assert schema["type"] == "object"
     assert "runtime" in schema["properties"]
+
+
+def test_install_manifests_raise_the_file_descriptor_limit() -> None:
+    # The daemon multiplexes many upstream subprocess pipes across concurrent LLM
+    # clients; every install surface must lift the platform default FD ceiling or
+    # the broker hits "Too many open files" and drops client transports.
+    launchagent = (ROOT / "scripts" / "install-launchagent.sh").read_text(encoding="utf-8")
+    assert "BROKER_MAX_OPEN_FILES" in launchagent
+    assert "<key>SoftResourceLimits</key>" in launchagent
+    assert "<key>NumberOfFiles</key>" in launchagent
+
+    systemd = (ROOT / "scripts" / "install-systemd-user.sh").read_text(encoding="utf-8")
+    assert "LimitNOFILE=$BROKER_MAX_OPEN_FILES" in systemd
+
+    entrypoint = (ROOT / "docker" / "docker-entrypoint.sh").read_text(encoding="utf-8")
+    assert "ulimit -n" in entrypoint

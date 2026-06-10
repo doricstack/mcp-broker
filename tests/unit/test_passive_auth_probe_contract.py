@@ -203,6 +203,64 @@ def test_passive_auth_probe_reports_invalid_oauth_token_file_without_path(
     assert str(token_file) not in repr(probe)
 
 
+def test_passive_auth_probe_treats_single_char_token_file_as_present_but_invalid(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import AuthProbePolicy, UpstreamConfig
+    from mcp_broker.daemon_helpers import passive_auth_probe
+
+    # A single non-newline character is content, not emptiness: the probe must
+    # treat it as a present-but-unparseable token ("invalid"), not "missing".
+    token_file = tmp_path / "oauth.json"
+    token_file.write_text("X", encoding="utf-8")
+    upstream = UpstreamConfig(
+        name="oauth",
+        command="oauth",
+        auth_probe=AuthProbePolicy(
+            type="oauth_token_file",
+            token_file=token_file,
+            required_fields=("access_token",),
+        ),
+    )
+
+    probe = passive_auth_probe(upstream, environ={})
+
+    assert probe == {
+        "auth_probe": "credentials_missing",
+        "auth_state": "unauthenticated",
+        "last_error": "invalid OAuth token file for upstream oauth",
+    }
+
+
+def test_passive_auth_probe_treats_newline_only_token_file_as_missing(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import AuthProbePolicy, UpstreamConfig
+    from mcp_broker.daemon_helpers import passive_auth_probe
+
+    # A file containing only newlines has no token value: it must read as
+    # "missing", not "invalid" (which is what a non-empty unparseable file gives).
+    token_file = tmp_path / "oauth.json"
+    token_file.write_text("\n\n", encoding="utf-8")
+    upstream = UpstreamConfig(
+        name="oauth",
+        command="oauth",
+        auth_probe=AuthProbePolicy(
+            type="oauth_token_file",
+            token_file=token_file,
+            required_fields=("access_token",),
+        ),
+    )
+
+    probe = passive_auth_probe(upstream, environ={})
+
+    assert probe == {
+        "auth_probe": "credentials_missing",
+        "auth_state": "unauthenticated",
+        "last_error": "missing OAuth token file for upstream oauth",
+    }
+
+
 def test_passive_auth_probe_reports_missing_oauth_token_file_without_path(
     tmp_path: Path,
 ) -> None:

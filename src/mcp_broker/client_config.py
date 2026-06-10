@@ -5,9 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from mcp_broker.codex_app_policy import CodexAppConnectorPolicy, ConnectorSelector
+
+# Parametrizes the opaque "runtime" threaded through config expansion so a caller
+# passing a concrete runtime plus an expander typed for that runtime type-checks
+# without widening the expander to accept "object".
+_RuntimeT = TypeVar("_RuntimeT")
 
 
 CLIENT_KEYS = frozenset(
@@ -52,9 +57,9 @@ class ClientRenderConfig:
         name: str,
         data: dict[str, Any],
         *,
-        runtime: object,
+        runtime: _RuntimeT,
         parse_path: Callable[[str, Any], Path],
-        expand_config_text: Callable[[str | Path, object], str],
+        expand_config_text: Callable[[str | Path, _RuntimeT], str],
         validate_keys: Callable[[str, dict[str, Any], frozenset[str]], None],
     ) -> "ClientRenderConfig":
         validate_keys(f"clients.{name}", data, CLIENT_KEYS)
@@ -111,8 +116,8 @@ def _parse_codex_apps_policy(
     path: str,
     value: Any,
     *,
-    runtime: object,
-    expand_config_text: Callable[[str | Path, object], str],
+    runtime: _RuntimeT,
+    expand_config_text: Callable[[str | Path, _RuntimeT], str],
     validate_keys: Callable[[str, dict[str, Any], frozenset[str]], None],
 ) -> CodexAppConnectorPolicy | None:
     if value is None:
@@ -168,8 +173,8 @@ def _parse_config_strings(
     path: str,
     value: Any,
     *,
-    runtime: object,
-    expand_config_text: Callable[[str | Path, object], str],
+    runtime: _RuntimeT,
+    expand_config_text: Callable[[str | Path, _RuntimeT], str],
 ) -> tuple[str, ...]:
     return tuple(expand_config_text(str(item), runtime) for item in _parse_list(path, value))
 

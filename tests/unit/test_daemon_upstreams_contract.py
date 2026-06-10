@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,10 @@ from mcp_broker.daemon_upstreams import (
 from mcp_broker.runtime_reaper import RuntimePaths
 from mcp_broker.schema import AuthRepairPolicy
 from mcp_broker.upstream_http import HttpUpstreamError, HttpUpstreamTimeout
+from mcp_broker.upstream_protocols import (
+    HttpUpstreamClientProtocol,
+    StdioUpstreamClientProtocol,
+)
 from mcp_broker.upstream_stdio import StdioUpstreamError, StdioUpstreamTimeout
 
 
@@ -504,8 +509,9 @@ class UpstreamHarness(BrokerDaemonUpstreamMixin):
             upstreams=upstreams,
         )
         self._paths = RuntimePaths.from_root(tmp_path)
-        self._stdio_upstreams: dict[str | tuple[str, str], FakeStdioClient] = {}
-        self._http_upstreams: dict[str, FakeHttpClient] = {}
+        self._stdio_upstreams: dict[str | tuple[str, str], StdioUpstreamClientProtocol] = {}
+        self._stdio_upstreams_lock = threading.Lock()
+        self._http_upstreams: dict[str, HttpUpstreamClientProtocol] = {}
         self.stdio_clients_to_create: list[FakeStdioClient] = []
         self.http_clients_to_create: list[FakeHttpClient] = []
         self.stdio_creates: list[dict[str, object]] = []
@@ -552,12 +558,16 @@ class FakeStdioClient:
         call_exception: Exception | None = None,
         list_result: list[dict[str, object]] | None = None,
     ) -> None:
-        self.call_result = {"content": []} if call_result is None else call_result
+        self.call_result: dict[str, object] = (
+            {"content": []} if call_result is None else call_result
+        )
         self.call_results = [] if call_results is None else call_results
         self.call_exception = call_exception
         self.list_result = [] if list_result is None else list_result
         self.calls: list[tuple[str, dict[str, object], int]] = []
         self.lists: list[int] = []
+        # Satisfies StdioUpstreamClientProtocol; tests do not exercise these.
+        self.upstream = UpstreamConfig(name="fake", command="fake")
 
     def call_tool(
         self,
@@ -577,6 +587,18 @@ class FakeStdioClient:
         self.lists.append(timeout_seconds)
         return self.list_result
 
+    def stop(self) -> tuple[int, ...]:
+        return ()
+
+    def idle_seconds(self, *, now: float | None = None) -> float:
+        return 0.0
+
+    def health_snapshot(self) -> dict[str, object]:
+        return {"state": "running"}
+
+    def ensure_running(self) -> None:
+        return None
+
 
 class FakeHttpClient:
     def __init__(
@@ -586,7 +608,9 @@ class FakeHttpClient:
         call_exception: Exception | None = None,
         list_result: list[dict[str, object]] | None = None,
     ) -> None:
-        self.call_result = {"content": []} if call_result is None else call_result
+        self.call_result: dict[str, object] = (
+            {"content": []} if call_result is None else call_result
+        )
         self.call_exception = call_exception
         self.list_result = [] if list_result is None else list_result
         self.calls: list[tuple[str, dict[str, object], int]] = []
@@ -607,6 +631,9 @@ class FakeHttpClient:
     def list_tools(self, *, timeout_seconds: int) -> list[dict[str, object]]:
         self.lists.append(timeout_seconds)
         return self.list_result
+
+    def health_snapshot(self) -> dict[str, object]:
+        return {"state": "running"}
 
 
 def _upstream(
