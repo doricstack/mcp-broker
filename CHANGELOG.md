@@ -4,11 +4,26 @@ All notable public changes will be recorded here.
 
 ## 1.4.1 - 2026-06-10
 
-- Synchronize release metadata through the Makefile release path.
+- Rank `broker_search_tools` results by relevance instead of requiring every
+  query token to match. Natural-language queries such as
+  `fly app status logs ssh postgres deploy` now return the best-matching
+  upstreams ordered by score, weighting name and tag matches over purpose and
+  description matches, rather than returning an empty list when no single tool
+  contains all tokens.
 
 ## 1.4.0 - 2026-06-10
 
-- Synchronize release metadata through the Makefile release path.
+- Add an idle-upstream janitor that periodically reaps stdio upstreams left idle
+  past their configured timeout, guarded by a registry lock and an identity
+  check so an upstream reused between sweeps is not evicted mid-use.
+- Harden open-file-descriptor limits across the macOS LaunchAgent, the Linux
+  systemd user service, and the Docker entrypoint, driven by
+  `BROKER_MAX_OPEN_FILES` (default 8192), to prevent file-descriptor exhaustion
+  under many concurrent client sessions.
+- Add structural upstream-client Protocols so the daemon's stdio and HTTP
+  upstream registries are statically typed.
+- Record source provenance (git SHA and source path) in the `daemon.started`
+  structured log event.
 
 ## 1.3.1 - 2026-06-07
 
