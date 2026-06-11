@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/NavinAgrawal/mcp-broker#readme",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-broker",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "transport": {
         "type": "stdio"
       }

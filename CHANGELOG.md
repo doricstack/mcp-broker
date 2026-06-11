@@ -2,6 +2,10 @@
 
 All notable public changes will be recorded here.
 
+## 1.4.1 - 2026-06-10
+
+- Synchronize release metadata through the Makefile release path.
+
 ## 1.4.0 - 2026-06-10
 
 - Synchronize release metadata through the Makefile release path.

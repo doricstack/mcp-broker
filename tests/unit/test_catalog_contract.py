@@ -22,7 +22,7 @@ from mcp_broker.profiles import ToolExposureProfile
 pytestmark = pytest.mark.unit
 
 
-def test_catalog_entry_matching_requires_every_query_token() -> None:
+def test_catalog_entry_matching_uses_any_token_relevance() -> None:
     entry = {
         "name": "work-store.search_items",
         "upstream": "work-store",
@@ -34,8 +34,36 @@ def test_catalog_entry_matching_requires_every_query_token() -> None:
     assert catalog_entry_matches(entry, "")
     assert catalog_entry_matches(entry, "work-store records")
     assert catalog_entry_matches(entry, "SEARCH project")
-    assert not catalog_entry_matches(entry, "work-store missing")
+    # A partial natural-language query still matches on its present tokens, instead
+    # of returning nothing the moment one word ("missing") is absent.
+    assert catalog_entry_matches(entry, "work-store missing")
     assert not catalog_entry_matches(entry, "unknown")
+
+
+def test_catalog_entry_score_weights_name_over_purpose_over_description() -> None:
+    from mcp_broker.catalog import (
+        _SCORE_DESCRIPTION,
+        _SCORE_NAME,
+        _SCORE_PURPOSE,
+        catalog_entry_score,
+    )
+
+    assert _SCORE_NAME > _SCORE_PURPOSE > _SCORE_DESCRIPTION
+    assert catalog_entry_score({"name": "deploy"}, "deploy") == _SCORE_NAME
+    assert catalog_entry_score({"tags": ["deploy"]}, "deploy") == _SCORE_NAME
+    assert catalog_entry_score({"purpose": "deploy"}, "deploy") == _SCORE_PURPOSE
+    assert catalog_entry_score({"description": "deploy"}, "deploy") == _SCORE_DESCRIPTION
+    # Each token counts its single strongest field, not every field it appears in.
+    assert catalog_entry_score({"name": "deploy", "description": "deploy"}, "deploy") == _SCORE_NAME
+    # Scores accumulate across matching tokens; absent tokens add nothing.
+    assert catalog_entry_score({"name": "fly deploy"}, "fly deploy nonsense") == 2 * _SCORE_NAME
+    # Different tiers accumulate (a prior token's score is added to, not overwritten).
+    tiered = {"name": "alpha", "purpose": "bravo", "description": "charlie"}
+    assert catalog_entry_score(tiered, "alpha bravo") == _SCORE_NAME + _SCORE_PURPOSE
+    assert catalog_entry_score(tiered, "alpha charlie") == _SCORE_NAME + _SCORE_DESCRIPTION
+    # Empty query is a uniform non-zero score (full catalog passes the filter).
+    assert catalog_entry_score({"name": "x"}, "") == _SCORE_NAME
+    assert catalog_entry_score({}, "missing") == 0
 
 
 @pytest.mark.parametrize(
@@ -58,30 +86,38 @@ def test_catalog_entry_matching_does_not_index_missing_field_defaults() -> None:
     assert not catalog_entry_matches({}, "none")
     assert not catalog_entry_matches({}, "xxxx")
     assert not catalog_entry_matches({"tags": ["read-only"]}, "xx")
-    assert not catalog_entry_matches(
+    # Present tokens match even when other tokens ("xx") are absent.
+    assert catalog_entry_matches(
         {"tags": ["epsilon-tag", "zeta-tag"]},
         "epsilon-tag xx zeta-tag",
     )
 
 
 def test_upstream_metadata_matching_indexes_identity_prefix_smoke_purpose_and_tags() -> None:
+    # Distinct tokens per field so a single-token query isolates exactly one field;
+    # if any field stops being indexed, its query stops matching.
     upstream = UpstreamConfig(
-        name="repo-index",
-        command="repo-index",
-        tool_prefix="repo",
-        purpose="Architecture graph exploration",
-        tags=("codebase", "tracing"),
+        name="alphaname",
+        command="alphaname",
+        tool_prefix="bravoprefix",
+        purpose="charliepurpose graph",
+        tags=("deltatag", "echotag"),
         smoke=SmokeProbe(
-            query="list indexed projects",
-            tool="repo.list_projects",
+            query="foxtrotquery indexed",
+            tool="golftool",
             arguments={},
         ),
     )
 
-    assert upstream_metadata_matches(upstream, "repo-index architecture")
-    assert upstream_metadata_matches(upstream, "repo list_projects")
-    assert upstream_metadata_matches(upstream, "indexed tracing")
-    assert not upstream_metadata_matches(upstream, "repo missing")
+    assert upstream_metadata_matches(upstream, "alphaname")  # upstream name
+    assert upstream_metadata_matches(upstream, "bravoprefix")  # tool prefix
+    assert upstream_metadata_matches(upstream, "golftool")  # smoke tool name
+    assert upstream_metadata_matches(upstream, "foxtrotquery")  # smoke query (description)
+    assert upstream_metadata_matches(upstream, "charliepurpose")  # purpose
+    assert upstream_metadata_matches(upstream, "deltatag")  # tag
+    assert upstream_metadata_matches(upstream, "echotag")  # tag
+    # A query whose tokens hit no field does not match.
+    assert not upstream_metadata_matches(upstream, "nonexistent")
 
 
 def test_upstream_metadata_matching_handles_missing_smoke_and_prefix_fallback() -> None:
@@ -604,7 +640,43 @@ def test_call_tool_accepts_profile_snake_aliases(tmp_path: Path) -> None:
         call_locks={},
     ).call_tool("broker_search_tools", {"query": "find"})
 
-    assert result["structuredContent"]["matches"][0]["name"] == "read.find_record"
+    match_names = [match["name"] for match in result["structuredContent"]["matches"]]
+    assert "read.find_record" in match_names
+
+
+def test_search_tools_ranks_name_matches_above_description_matches(tmp_path: Path) -> None:
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path,
+            socket_path=tmp_path / "s.sock",
+            log_dir=tmp_path / "logs",
+            state_dir=tmp_path / "state",
+            secrets_dir=tmp_path / "secrets",
+        ),
+        broker=BrokerSettings(),
+        profiles={"llm": ToolExposureProfile(name="llm", max_tools=20)},
+        upstreams={
+            "alpha": UpstreamConfig(name="alpha", command="alpha", tool_prefix="a", profiles=("llm",)),
+            "beta": UpstreamConfig(name="beta", command="beta", tool_prefix="b", profiles=("llm",)),
+        },
+    )
+
+    def list_upstream(name: str, _timeout: int) -> list[dict[str, object]]:
+        if name == "alpha":
+            return [{"name": "deploy_app", "description": "unrelated text"}]  # name hit -> high score
+        return [{"name": "run", "description": "deploy the app"}]  # description hit -> low score
+
+    result = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["llm"],
+        list_upstream=list_upstream,
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    ).call_tool("broker.search_tools", {"query": "deploy"})
+
+    names = [match["name"] for match in result["structuredContent"]["matches"]]
+    # Name match (a.deploy_app) outranks the description-only match (b.run).
+    assert names == ["a.deploy_app", "b.run"]
 
 
 def test_call_tool_unknown_broker_tool_raises_contract_error(tmp_path: Path) -> None:
@@ -989,9 +1061,10 @@ def test_catalog_listing_continues_after_profile_hidden_upstream(tmp_path: Path)
     ).call_tool("broker.search_tools", {"query": ""})
 
     assert calls == ["write-store", "read-store"]
+    # Empty query scores all entries equally, so matches are ordered by name (asc).
     assert [match["name"] for match in result["structuredContent"]["matches"]] == [
-        "write.tool",
         "read.tool",
+        "write.tool",
     ]
 
 

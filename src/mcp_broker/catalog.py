@@ -56,10 +56,16 @@ class BrokerCatalogFacade:
         query = str(arguments.get("query", "")).strip()
         limit = int(arguments.get("limit", 20))
         entries, skipped_upstreams = self._catalog_entries(query=query, tool_name="")
+        # Every catalog entry carries a "name" (tool entries and unavailable stubs
+        # both set it), so index it directly - a default here would be dead code.
+        scored = [
+            (catalog_entry_score(entry, query), str(entry["name"]), entry)
+            for entry in entries
+        ]
         matches = [
             entry
-            for entry in entries
-            if catalog_entry_matches(entry, query)
+            for score, _name, entry in sorted(scored, key=lambda item: (-item[0], item[1]))
+            if score > 0
         ][:limit]
         result: dict[str, Any] = {"matches": matches}
         if skipped_upstreams:
@@ -312,19 +318,47 @@ def catalog_unavailable_entry_for_upstream(
     }
 
 
+# Relevance weights for tool discovery. A query token in the tool name / upstream /
+# tag is the strongest signal, the purpose is mid, the description is weakest (prose
+# mentions are noisy). Single source of truth so the tests assert against the same
+# constants the code reads.
+_SCORE_NAME = 3
+_SCORE_PURPOSE = 2
+_SCORE_DESCRIPTION = 1
+
+
+def catalog_entry_score(entry: dict[str, Any], query: str) -> int:
+    """Relevance score for an entry against a query (token overlap, weighted by field).
+
+    Each query token contributes its single strongest field hit, summed across
+    tokens. An empty query scores every entry equally (non-zero) so discovery with
+    no filter returns the full catalog. Tokens that match nothing add nothing, so a
+    natural-language query still ranks the relevant tools above the noise instead of
+    returning nothing the moment one word is absent.
+    """
+    tokens = query.lower().split()
+    if not tokens:
+        return _SCORE_NAME
+    name_fields = [
+        str(entry.get("name", "")).lower(),
+        str(entry.get("upstream", "")).lower(),
+    ]
+    name_fields.extend(str(tag).lower() for tag in entry.get("tags", []))
+    purpose = str(entry.get("purpose", "")).lower()
+    description = str(entry.get("description", "")).lower()
+    score = 0
+    for token in tokens:
+        if any(token in field for field in name_fields):
+            score += _SCORE_NAME
+        elif token in purpose:
+            score += _SCORE_PURPOSE
+        elif token in description:
+            score += _SCORE_DESCRIPTION
+    return score
+
+
 def catalog_entry_matches(entry: dict[str, Any], query: str) -> bool:
-    if not query:
-        return True
-    haystack = " ".join(
-        [
-            str(entry.get("name", "")),
-            str(entry.get("upstream", "")),
-            str(entry.get("description", "")),
-            str(entry.get("purpose", "")),
-            " ".join(str(tag) for tag in entry.get("tags", [])),
-        ]
-    ).lower()
-    return all(token in haystack for token in query.lower().split())
+    return catalog_entry_score(entry, query) > 0
 
 
 def upstream_metadata_matches(upstream: UpstreamConfig, query: str) -> bool:
