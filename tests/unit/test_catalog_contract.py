@@ -690,11 +690,13 @@ def test_call_tool_rejects_non_object_projection(tmp_path: Path) -> None:
         call_locks={},
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc:
         facade.call_tool(
             "broker.call_tool",
             {"name": "read.find_record", "arguments": {}, "projection": "id"},
         )
+    # Exact message so the message-string mutations on this raise are killed.
+    assert str(exc.value) == "broker.call_tool projection must be an object"
 
 
 def test_structured_tool_result_returns_exact_mcp_payload_shape() -> None:
