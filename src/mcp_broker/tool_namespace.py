@@ -10,6 +10,37 @@ from mcp_broker.config import BrokerSettings, UpstreamConfig
 from mcp_broker.profiles import BROKER_TOOL_NAME_STYLES, ToolExposureProfile
 
 
+_CALL_TOOL_PROJECTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Optional server-side projection applied to the upstream response before it "
+        "reaches the client, so a verbose result is trimmed to only the fields you need "
+        "and large arrays are capped. This cuts context tokens and latency. Omit it to "
+        "receive the full, unmodified upstream response."
+    ),
+    "properties": {
+        "paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Dotted field paths to keep, such as data.items.id. A path that reaches "
+                "a list is applied to every element. Omit to keep all fields and only "
+                "cap arrays with max_array_items."
+            ),
+        },
+        "max_array_items": {
+            "type": "integer",
+            "minimum": 0,
+            "description": (
+                "Truncate every array in the projected response to at most this many "
+                "items, so a long list returns only its first entries."
+            ),
+        },
+    },
+    "additionalProperties": False,
+}
+
+
 _COMPACT_BROKER_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     "broker.search_tools": {
         "description": (
@@ -113,6 +144,7 @@ _COMPACT_BROKER_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
                     "default": {},
                     "additionalProperties": True,
                 },
+                "projection": _CALL_TOOL_PROJECTION_SCHEMA,
             },
             "required": ["name", "arguments"],
             "additionalProperties": False,

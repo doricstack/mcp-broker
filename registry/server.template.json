@@ -6,12 +6,12 @@
     "url": "https://github.com/example/mcp-broker",
     "source": "github"
   },
-  "version": "1.4.1",
+  "version": "2.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-broker",
-      "version": "1.4.1",
+      "version": "2.0.0",
       "transport": {
         "type": "stdio"
       }

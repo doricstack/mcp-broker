@@ -1,5 +1,5 @@
 # mcp-broker
-<!-- mcp-name: io.github.NavinAgrawal/mcp-broker -->
+<!-- mcp-name: io.github.doricstack/mcp-broker -->
 
 ![mcp-broker routing backbone brand header](brand/assets/readme-header.svg)
 
@@ -324,9 +324,9 @@ The compact facade keeps chat-facing profiles small:
 
 | Tool | Purpose |
 |---|---|
-| `broker_search_tools` | Search configured upstream tools by query. |
+| `broker_search_tools` | Search configured upstream tools by query. Results carry name, description, upstream, purpose, tags, and mutating flag; the heavy `inputSchema` is omitted and fetched on demand from `broker_describe_tool`. |
 | `broker_describe_tool` | Return schema and metadata for one upstream tool. |
-| `broker_call_tool` | Call one upstream tool through broker routing. |
+| `broker_call_tool` | Call one upstream tool through broker routing. Accepts an optional `projection` (`{"paths": [...], "max_array_items": N}`) that trims the response server-side before it reaches the client. |
 | `broker_status` | Show profile-visible upstream state, passive auth probes, and last errors without starting tools. |
 
 Codex `/mcp` shows the single `mcp-broker` entry by design. Per-upstream visibility, status, and socket path come from `broker_status`.

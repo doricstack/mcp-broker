@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+from copy import deepcopy
 from typing import Any, Callable
 
 from mcp_broker.broker import BrokerCore, BrokerToolError
@@ -63,7 +64,7 @@ class BrokerCatalogFacade:
             for entry in entries
         ]
         matches = [
-            entry
+            slim_catalog_entry(entry)
             for score, _name, entry in sorted(scored, key=lambda item: (-item[0], item[1]))
             if score > 0
         ][:limit]
@@ -87,13 +88,19 @@ class BrokerCatalogFacade:
         tool_arguments = arguments.get("arguments", {})
         if not isinstance(tool_name, str) or not isinstance(tool_arguments, dict):
             raise ValueError("broker.call_tool requires name and object arguments")
+        projection = arguments.get("projection")
+        if projection is not None and not isinstance(projection, dict):
+            raise ValueError("broker.call_tool projection must be an object")
         core = BrokerCore(
             settings=self._broker_config.broker,
             upstreams=self._broker_config.upstreams,
             profile=self._profile,
             call_locks=self._call_locks,
         )
-        return core.call_tool(tool_name, tool_arguments, self._call_upstream)
+        response = core.call_tool(tool_name, tool_arguments, self._call_upstream)
+        if projection is None:
+            return response
+        return apply_projection(response, projection)
 
     def _status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         status_arguments = {
@@ -303,6 +310,20 @@ def catalog_entries_for_upstream(
     return entries
 
 
+def slim_catalog_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Search-result view of a catalog entry, without the heavy ``inputSchema``.
+
+    Search exists to let the client pick a tool, which only needs name, upstream,
+    description, purpose, tags, mutating, and availability. The exact ``inputSchema``
+    is the single largest field and is fetched on demand with ``broker_describe_tool``
+    right before a call. Dropping it from search results is the biggest token saving
+    on the discovery path. Relevance scoring runs on the full entry before this slim,
+    so omitting the schema here does not change which tools rank or match. A new dict
+    is returned so the source entry the describe path reuses is never mutated.
+    """
+    return {key: value for key, value in entry.items() if key != "inputSchema"}
+
+
 def catalog_unavailable_entry_for_upstream(
     upstream: UpstreamConfig,
     error: str,
@@ -395,3 +416,121 @@ def structured_tool_result(structured_content: dict[str, Any]) -> dict[str, Any]
         ],
         "structuredContent": structured_content,
     }
+
+
+def project_value(
+    value: Any,
+    paths: list[str] | None,
+    max_array_items: int | None,
+) -> Any:
+    """Prune a JSON value to the requested dotted ``paths`` and array cap.
+
+    A path component walks into a dict by key. When a path reaches a list, the
+    remaining path is applied to every element of that list, so ``items.id`` keeps
+    only ``id`` from each item. A fully consumed path keeps the whole subtree below
+    it. Missing keys are skipped. With no paths, every key is kept; ``max_array_items``
+    still truncates every list anywhere in the result so a caller can cap a large
+    response without naming fields. Scalars and unmatched branches are returned
+    unchanged. The input is never mutated - new containers are built as we descend.
+    """
+    return _project(value, _build_path_tree(paths) if paths else None, max_array_items)
+
+
+def _project(value: Any, tree: dict[str, Any] | None, cap: int | None) -> Any:
+    if isinstance(value, list):
+        projected = [_project(item, tree, cap) for item in value]
+        if cap is not None:
+            return projected[:cap]
+        return projected
+    if isinstance(value, dict):
+        if not tree:
+            return {key: _project(item, tree, cap) for key, item in value.items()}
+        result: dict[str, Any] = {}
+        for key, subtree in tree.items():
+            if key in value:
+                result[key] = _project(value[key], subtree, cap)
+        return result
+    return value
+
+
+def _build_path_tree(paths: list[str]) -> dict[str, Any]:
+    tree: dict[str, Any] = {}
+    for path in paths:
+        node = tree
+        for part in path.split("."):
+            node = node.setdefault(part, {})
+    return tree
+
+
+def apply_projection(response: dict[str, Any], projection: dict[str, Any]) -> dict[str, Any]:
+    """Apply a caller-supplied projection to an upstream tools/call response.
+
+    Returns the response unchanged when the projection selects nothing (no paths and
+    no cap). Otherwise it prunes the structured payload and re-serializes the text
+    block so the trimmed payload is exactly what the client sees, or - when there is
+    no ``structuredContent`` - prunes any JSON-decodable text block while leaving
+    non-JSON text untouched. A ``_meta.projection`` note records what happened. The
+    source response is copied, never mutated.
+    """
+    paths, cap = _normalize_projection(projection)
+    if not paths and cap is None:
+        return response
+    projected = deepcopy(response)
+    applied = False
+    structured = projected.get("structuredContent")
+    if isinstance(structured, (dict, list)):
+        pruned = project_value(structured, paths, cap)
+        projected["structuredContent"] = pruned
+        projected["content"] = [{"type": "text", "text": json.dumps(pruned, sort_keys=True)}]
+        applied = True
+    else:
+        new_content = []
+        for block in projected.get("content", []) if isinstance(projected.get("content"), list) else []:
+            pruned_block = _project_text_block(block, paths, cap)
+            if pruned_block is None:
+                new_content.append(block)
+            else:
+                new_content.append(pruned_block)
+                applied = True
+        projected["content"] = new_content
+    projected.setdefault("_meta", {})["projection"] = {
+        "applied": applied,
+        "paths": list(paths) if paths else [],
+        "max_array_items": cap,
+    }
+    return projected
+
+
+def _project_text_block(
+    block: Any,
+    paths: list[str] | None,
+    cap: int | None,
+) -> dict[str, Any] | None:
+    if not (
+        isinstance(block, dict)
+        and block.get("type") == "text"
+        and isinstance(block.get("text"), str)
+    ):
+        return None
+    try:
+        parsed = json.loads(block["text"])
+    except (ValueError, TypeError):
+        return None
+    return {**block, "text": json.dumps(project_value(parsed, paths, cap), sort_keys=True)}
+
+
+def _normalize_projection(projection: dict[str, Any]) -> tuple[list[str] | None, int | None]:
+    if not isinstance(projection, dict):
+        raise ValueError("projection must be an object")
+    unknown = set(projection) - {"paths", "max_array_items"}
+    if unknown:
+        raise ValueError(f"projection has unknown keys: {sorted(unknown)}")
+    paths = projection.get("paths")
+    if paths is not None:
+        if not isinstance(paths, list) or not all(isinstance(part, str) for part in paths):
+            raise ValueError("projection.paths must be a list of strings")
+        paths = [part for part in paths if part]
+    cap = projection.get("max_array_items")
+    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
+        raise ValueError("projection.max_array_items must be a non-negative integer")
+    return (paths or None, cap)

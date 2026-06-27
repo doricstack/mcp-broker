@@ -228,3 +228,14 @@ def test_compact_broker_tools_default_to_dotted_canonical_names() -> None:
     ]
     assert definitions[0]["inputSchema"]["properties"]["query"]["minLength"] == 1
     assert definitions[2]["inputSchema"]["required"] == ["name", "arguments"]
+    # broker.call_tool exposes an optional projection (not required) so callers can
+    # trim verbose upstream responses server-side before they reach the context.
+    call_properties = definitions[2]["inputSchema"]["properties"]
+    projection_schema = call_properties["projection"]
+    assert projection_schema["type"] == "object"
+    assert len(projection_schema["description"]) >= 60
+    assert projection_schema["properties"]["paths"]["type"] == "array"
+    assert projection_schema["properties"]["paths"]["items"]["type"] == "string"
+    assert projection_schema["properties"]["max_array_items"]["type"] == "integer"
+    assert projection_schema["additionalProperties"] is False
+    assert "projection" not in definitions[2]["inputSchema"]["required"]

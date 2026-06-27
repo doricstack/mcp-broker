@@ -133,6 +133,10 @@ def _find_public_coordinate_offenders(make_vars: dict[str, str]) -> list[str]:
         "mcpb/manifest.json",
         ".well-known/mcp/server-card.json",
         "docker/mcp-catalog/mcp-broker.yaml",
+        # The changelog is a historical record: a release that re-homes the
+        # publishing identity documents the old and new coordinates by name so
+        # users can find the new install path. It is not a coordinate source.
+        "CHANGELOG.md",
     }
     readme_mcp_marker = f"<!-- mcp-name: {expand_make_value(make_vars, make_vars['MCP_REGISTRY_NAME'])} -->"
     offenders: list[str] = []

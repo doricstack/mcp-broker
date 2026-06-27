@@ -247,6 +247,307 @@ def test_unavailable_catalog_entry_keeps_upstream_metadata() -> None:
     }
 
 
+def test_slim_catalog_entry_drops_input_schema_keeps_discovery_signal() -> None:
+    from mcp_broker.catalog import slim_catalog_entry
+
+    entry = {
+        "name": "work.lookup",
+        "upstream": "work-store",
+        "description": "Lookup a record",
+        "inputSchema": {"type": "object", "required": ["id"]},
+        "purpose": "Project records",
+        "tags": ["records"],
+        "mutating": True,
+    }
+
+    slim = slim_catalog_entry(entry)
+
+    assert slim == {
+        "name": "work.lookup",
+        "upstream": "work-store",
+        "description": "Lookup a record",
+        "purpose": "Project records",
+        "tags": ["records"],
+        "mutating": True,
+    }
+    # The schema is the heavy field; it is the only thing dropped.
+    assert "inputSchema" not in slim
+    # The source entry is not mutated - describe still needs the full entry.
+    assert entry["inputSchema"] == {"type": "object", "required": ["id"]}
+
+
+def test_slim_catalog_entry_preserves_unavailable_stub_fields() -> None:
+    from mcp_broker.catalog import slim_catalog_entry
+
+    stub = {
+        "name": "remote-store",
+        "upstream": "remote-store",
+        "description": "upstream unavailable: missing token",
+        "purpose": "Remote records",
+        "tags": ["remote"],
+        "mutating": True,
+        "available": False,
+    }
+
+    assert slim_catalog_entry(stub) == stub
+
+
+def test_describe_tool_returns_full_input_schema_after_search_slims_it(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+
+    def list_upstream(upstream_name: str, timeout: int) -> list[dict[str, object]]:
+        if upstream_name == "read-store":
+            return [
+                {
+                    "name": "find_record",
+                    "description": "Find a record",
+                    "inputSchema": {"type": "object", "required": ["id"]},
+                }
+            ]
+        return []
+
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=ToolExposureProfile(name="default-llm", max_tools=20),
+        list_upstream=list_upstream,
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    search = facade.call_tool("broker.search_tools", {"query": "record"})
+    assert "inputSchema" not in search["structuredContent"]["matches"][0]
+
+    described = facade.call_tool("broker.describe_tool", {"name": "read.find_record"})
+    assert described["structuredContent"]["tool"]["inputSchema"] == {
+        "type": "object",
+        "required": ["id"],
+    }
+
+
+def test_project_value_keeps_only_requested_dotted_paths() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = {
+        "data": {"id": 1, "secret": "x", "nested": {"keep": 9, "drop": 0}},
+        "noise": [1, 2, 3],
+    }
+
+    assert project_value(payload, ["data.id", "data.nested.keep"], None) == {
+        "data": {"id": 1, "nested": {"keep": 9}}
+    }
+
+
+def test_project_value_maps_remaining_path_over_list_elements() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = {"items": [{"id": 1, "big": "a"}, {"id": 2, "big": "b"}], "cursor": "c"}
+
+    assert project_value(payload, ["items.id", "cursor"], None) == {
+        "items": [{"id": 1}, {"id": 2}],
+        "cursor": "c",
+    }
+
+
+def test_project_value_leaf_path_keeps_whole_subtree() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = {"item": {"id": 1, "name": "x"}, "drop": True}
+
+    assert project_value(payload, ["item"], None) == {"item": {"id": 1, "name": "x"}}
+
+
+def test_project_value_skips_missing_keys() -> None:
+    from mcp_broker.catalog import project_value
+
+    assert project_value({"a": 1}, ["a", "missing.deep"], None) == {"a": 1}
+
+
+def test_project_value_caps_arrays_with_max_array_items_keeping_all_keys() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = {"rows": [{"a": 1}, {"a": 2}, {"a": 3}], "total": 3}
+
+    # No paths + a cap keeps every field but truncates lists everywhere.
+    assert project_value(payload, None, 2) == {"rows": [{"a": 1}, {"a": 2}], "total": 3}
+
+
+def test_project_value_cap_applies_to_nested_lists_under_projected_paths() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = {"groups": [{"tags": ["x", "y", "z"]}]}
+
+    assert project_value(payload, ["groups.tags"], 1) == {"groups": [{"tags": ["x"]}]}
+
+
+def test_project_value_returns_scalars_unchanged() -> None:
+    from mcp_broker.catalog import project_value
+
+    assert project_value(7, ["a"], None) == 7
+    assert project_value("text", ["a"], 1) == "text"
+
+
+def test_apply_projection_prunes_structured_content_and_resyncs_text() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {
+        "content": [{"type": "text", "text": json.dumps({"id": 1, "blob": "x" * 100})}],
+        "structuredContent": {"id": 1, "blob": "x" * 100},
+    }
+
+    projected = apply_projection(response, {"paths": ["id"]})
+
+    assert projected["structuredContent"] == {"id": 1}
+    assert json.loads(projected["content"][0]["text"]) == {"id": 1}
+    assert projected["_meta"]["projection"] == {
+        "applied": True,
+        "paths": ["id"],
+        "max_array_items": None,
+    }
+    # The source response is never mutated.
+    assert response["structuredContent"] == {"id": 1, "blob": "x" * 100}
+
+
+def test_apply_projection_is_a_noop_without_paths_or_cap() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {"content": [], "structuredContent": {"id": 1}}
+
+    result = apply_projection(response, {})
+
+    assert result == response
+    assert "_meta" not in result
+
+
+def test_apply_projection_prunes_json_text_block_without_structured_content() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {
+        "content": [
+            {"type": "text", "text": json.dumps({"id": 1, "blob": "x" * 50})},
+            {"type": "text", "text": "not json, left alone"},
+        ]
+    }
+
+    projected = apply_projection(response, {"paths": ["id"]})
+
+    assert json.loads(projected["content"][0]["text"]) == {"id": 1}
+    assert projected["content"][1]["text"] == "not json, left alone"
+    assert projected["_meta"]["projection"]["applied"] is True
+
+
+def test_apply_projection_marks_applied_false_when_nothing_is_json() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {"content": [{"type": "text", "text": "plain text"}]}
+
+    projected = apply_projection(response, {"max_array_items": 1})
+
+    assert projected["content"][0]["text"] == "plain text"
+    assert projected["_meta"]["projection"]["applied"] is False
+
+
+def test_apply_projection_passes_through_non_text_content_blocks() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {"content": [{"type": "image", "data": "base64..."}]}
+
+    projected = apply_projection(response, {"max_array_items": 1})
+
+    assert projected["content"][0] == {"type": "image", "data": "base64..."}
+    assert projected["_meta"]["projection"]["applied"] is False
+
+
+def test_apply_projection_rejects_non_object_projection() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, "not-an-object")  # type: ignore[arg-type]
+
+
+def test_apply_projection_rejects_invalid_projection_shapes() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, {"paths": "id"})
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, {"paths": [1]})
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, {"max_array_items": -1})
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, {"max_array_items": True})
+    with pytest.raises(ValueError):
+        apply_projection({"content": []}, {"unknown": 1})
+
+
+def test_call_tool_applies_projection_to_upstream_response(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    verbose = {"id": 7, "blob": "x" * 500, "items": [{"id": 1, "noise": "n"}]}
+
+    def call_upstream(_name, _tool, _args, _timeout):
+        return {
+            "content": [{"type": "text", "text": json.dumps(verbose)}],
+            "structuredContent": verbose,
+        }
+
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=ToolExposureProfile(name="default-llm", max_tools=20),
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=call_upstream,
+        call_locks={},
+    )
+
+    result = facade.call_tool(
+        "broker.call_tool",
+        {
+            "name": "read.find_record",
+            "arguments": {},
+            "projection": {"paths": ["id", "items.id"]},
+        },
+    )
+
+    assert result["structuredContent"] == {"id": 7, "items": [{"id": 1}]}
+    assert result["_meta"]["projection"]["applied"] is True
+
+
+def test_call_tool_without_projection_returns_full_response(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    full = {"id": 7, "blob": "x" * 50}
+
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=ToolExposureProfile(name="default-llm", max_tools=20),
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {
+            "content": [{"type": "text", "text": json.dumps(full)}],
+            "structuredContent": full,
+        },
+        call_locks={},
+    )
+
+    result = facade.call_tool("broker.call_tool", {"name": "read.find_record", "arguments": {}})
+
+    assert result["structuredContent"] == full
+    assert "_meta" not in result
+
+
+def test_call_tool_rejects_non_object_projection(tmp_path: Path) -> None:
+    config = _catalog_config(tmp_path)
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=ToolExposureProfile(name="default-llm", max_tools=20),
+        list_upstream=lambda _name, _timeout: [{"name": "find_record"}],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+    )
+
+    with pytest.raises(ValueError):
+        facade.call_tool(
+            "broker.call_tool",
+            {"name": "read.find_record", "arguments": {}, "projection": "id"},
+        )
+
+
 def test_structured_tool_result_returns_exact_mcp_payload_shape() -> None:
     payload = {"z": 1, "a": 2}
 
@@ -302,7 +603,6 @@ def test_search_tools_returns_limited_matches_and_skipped_upstreams(tmp_path: Pa
                 "name": "read.find_record",
                 "upstream": "read-store",
                 "description": "Find a record",
-                "inputSchema": {"type": "object"},
                 "purpose": "Read records",
                 "tags": ["records"],
                 "mutating": False,
@@ -310,6 +610,9 @@ def test_search_tools_returns_limited_matches_and_skipped_upstreams(tmp_path: Pa
         ],
         "skipped_upstreams": {"broken-store": "missing runtime token"},
     }
+    # Search results omit inputSchema - the heavy field is fetched on demand via
+    # broker_describe_tool. Every match still carries the discovery signal.
+    assert "inputSchema" not in result["structuredContent"]["matches"][0]
     assert list_calls == [("read-store", 60), ("broken-store", 60)]
     assert json.loads(result["content"][0]["text"]) == result["structuredContent"]
 

@@ -1,14 +1,14 @@
 {
-  "name": "io.github.NavinAgrawal/mcp-broker",
+  "name": "io.github.doricstack/mcp-broker",
   "title": "mcp-broker",
   "description": "Local MCP broker that exposes one compact entry for many upstream servers.",
-  "repository": "https://github.com/NavinAgrawal/mcp-broker",
-  "documentation": "https://github.com/NavinAgrawal/mcp-broker#readme",
+  "repository": "https://github.com/doricstack/mcp-broker",
+  "documentation": "https://github.com/doricstack/mcp-broker#readme",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-broker",
-      "version": "1.4.1",
+      "version": "2.0.0",
       "transport": {
         "type": "stdio"
       }

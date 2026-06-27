@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.NavinAgrawal/mcp-broker",
+  "name": "io.github.doricstack/mcp-broker",
   "title": "mcp-broker",
   "description": "Local MCP broker that exposes one compact entry for many upstream servers.",
   "repository": {
-    "url": "https://github.com/NavinAgrawal/mcp-broker",
+    "url": "https://github.com/doricstack/mcp-broker",
     "source": "github"
   },
-  "websiteUrl": "https://github.com/NavinAgrawal/mcp-broker#readme",
-  "version": "1.4.1",
+  "websiteUrl": "https://github.com/doricstack/mcp-broker#readme",
+  "version": "2.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-broker",
-      "version": "1.4.1",
+      "version": "2.0.0",
       "transport": {
         "type": "stdio"
       }

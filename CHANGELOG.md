@@ -2,6 +2,33 @@
 
 All notable public changes will be recorded here.
 
+## 2.0.0 - 2026-06-27
+
+- BREAKING: the project moved from the personal `NavinAgrawal`/`navinagrawal`
+  identity to the Doric Stack LLC org `doricstack`. Install coordinates change:
+  npm `@navinagrawal/mcp-broker` becomes `@doricstack/mcp-broker`, the container
+  image namespace becomes `doricstack`/`ghcr.io/doricstack`, the Homebrew tap
+  becomes `doricstack/tap` (`brew install doricstack/tap/mcp-broker`), and the MCP
+  Registry name becomes `io.github.doricstack/mcp-broker`. The PyPI project name
+  `mcp-broker` is unchanged. The old `@navinagrawal` package is deprecated and
+  points here. The GitHub repo redirects from the old path automatically.
+- BREAKING: `broker_search_tools` no longer returns each tool's `inputSchema` in
+  search results.
+  Search exists to pick a tool, which only needs the name, description, upstream,
+  purpose, tags, and mutating flag; the exact schema is the single heaviest field
+  and is still returned on demand by `broker_describe_tool` right before a call.
+  In a local measurement a 50-result search dropped from roughly 68,000 to 2,500
+  bytes (about 96 percent smaller) with no loss of discovery signal, since
+  relevance scoring already ran on the full entry before the result was built.
+- `broker_call_tool` accepts an optional `projection` argument
+  (`{"paths": ["data.items.id"], "max_array_items": 5}`) that trims the upstream
+  response server-side before it reaches the client. Dotted paths keep only the
+  fields you name (a path that reaches a list is applied to every element) and
+  `max_array_items` caps long arrays. Omitting `projection` returns the full,
+  unmodified response, so existing callers are unaffected. A verbose 50-item
+  response dropped from roughly 19,800 to 200 bytes (about 99 percent smaller) in
+  local measurement. Both changes reduce context tokens and end-to-end latency.
+
 ## 1.4.1 - 2026-06-10
 
 - Rank `broker_search_tools` results by relevance instead of requiring every
