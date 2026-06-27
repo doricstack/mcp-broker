@@ -110,4 +110,9 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          # npm auth: setup-node wired .npmrc to read NODE_AUTH_TOKEN. The new
+          # @doricstack scope has no OIDC trusted-publisher configured, so the npm
+          # leg authenticates with this scoped automation token. Provenance still
+          # signs via the job's id-token: write permission.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: make release RELEASE_APPLY=1 RELEASE_VERSION="$RELEASE_VERSION" RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
