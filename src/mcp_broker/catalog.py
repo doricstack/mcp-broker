@@ -444,7 +444,10 @@ def _project(value: Any, tree: dict[str, Any] | None, cap: int | None) -> Any:
         return projected
     if isinstance(value, dict):
         if not tree:
-            return {key: _project(item, tree, cap) for key, item in value.items()}
+            # No selector remains below here, so keep every key. Recurse with an
+            # explicit None (not the falsy `tree`) so the cap still applies to nested
+            # lists and there is no equivalent tree-to-None mutation on this line.
+            return {key: _project(item, None, cap) for key, item in value.items()}
         result: dict[str, Any] = {}
         for key, subtree in tree.items():
             if key in value:
@@ -485,7 +488,9 @@ def apply_projection(response: dict[str, Any], projection: dict[str, Any]) -> di
         applied = True
     else:
         new_content = []
-        for block in projected.get("content", []) if isinstance(projected.get("content"), list) else []:
+        existing = projected.get("content")
+        blocks = existing if isinstance(existing, list) else []
+        for block in blocks:
             pruned_block = _project_text_block(block, paths, cap)
             if pruned_block is None:
                 new_content.append(block)

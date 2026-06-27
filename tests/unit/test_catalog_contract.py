@@ -390,21 +390,58 @@ def test_apply_projection_prunes_structured_content_and_resyncs_text() -> None:
     from mcp_broker.catalog import apply_projection
 
     response = {
-        "content": [{"type": "text", "text": json.dumps({"id": 1, "blob": "x" * 100})}],
-        "structuredContent": {"id": 1, "blob": "x" * 100},
+        "content": [{"type": "text", "text": json.dumps({"b": 2, "a": 1, "blob": "x" * 100})}],
+        "structuredContent": {"b": 2, "a": 1, "blob": "x" * 100},
     }
 
-    projected = apply_projection(response, {"paths": ["id"]})
+    projected = apply_projection(response, {"paths": ["b", "a"]})
 
-    assert projected["structuredContent"] == {"id": 1}
-    assert json.loads(projected["content"][0]["text"]) == {"id": 1}
+    assert projected["structuredContent"] == {"b": 2, "a": 1}
+    # Assert the EXACT content block: a wrong "type"/"text" key or value, or losing
+    # sort_keys=True (which would emit {"b":2,"a":1} insertion order), all fail here.
+    assert projected["content"] == [{"type": "text", "text": '{"a": 1, "b": 2}'}]
     assert projected["_meta"]["projection"] == {
         "applied": True,
-        "paths": ["id"],
+        "paths": ["b", "a"],
         "max_array_items": None,
     }
     # The source response is never mutated.
-    assert response["structuredContent"] == {"id": 1, "blob": "x" * 100}
+    assert response["structuredContent"] == {"b": 2, "a": 1, "blob": "x" * 100}
+
+
+def test_apply_projection_text_block_resyncs_sorted_multikey_json() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # No structuredContent: prune the JSON text block. Multi-key + exact string so
+    # the sort_keys=True serialization is asserted (kills sort_keys mutations).
+    response = {"content": [{"type": "text", "text": json.dumps({"b": 2, "a": 1, "drop": 3})}]}
+
+    projected = apply_projection(response, {"paths": ["b", "a"]})
+
+    assert projected["content"][0]["text"] == '{"a": 1, "b": 2}'
+
+
+def test_apply_projection_with_no_structured_content_or_content_list() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # No structuredContent and no content list: the content fallback is the empty
+    # list, projection applies to nothing, and a _meta note is still recorded.
+    projected = apply_projection({}, {"paths": ["id"]})
+
+    assert projected["content"] == []
+    assert projected["_meta"]["projection"]["applied"] is False
+
+
+def test_apply_projection_text_block_applies_cap() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # cap must reach the text-block path (no structuredContent): a dropped cap here
+    # would leave the array untruncated.
+    response = {"content": [{"type": "text", "text": json.dumps({"rows": [1, 2, 3, 4]})}]}
+
+    projected = apply_projection(response, {"max_array_items": 2})
+
+    assert json.loads(projected["content"][0]["text"]) == {"rows": [1, 2]}
 
 
 def test_apply_projection_is_a_noop_without_paths_or_cap() -> None:
@@ -446,6 +483,107 @@ def test_apply_projection_marks_applied_false_when_nothing_is_json() -> None:
     assert projected["_meta"]["projection"]["applied"] is False
 
 
+def test_project_value_cap_zero_empties_arrays() -> None:
+    from mcp_broker.catalog import project_value
+
+    # cap=0 is a valid non-negative cap and must truncate to empty, not be ignored.
+    assert project_value({"rows": [{"a": 1}, {"a": 2}]}, None, 0) == {"rows": []}
+
+
+def test_project_value_cap_keeps_prefix_not_suffix() -> None:
+    from mcp_broker.catalog import project_value
+
+    # Distinguishes projected[:cap] from projected[cap:] / projected[-cap:].
+    assert project_value([10, 20, 30, 40], None, 2) == [10, 20]
+
+
+def test_project_value_maps_over_top_level_list_payload() -> None:
+    from mcp_broker.catalog import project_value
+
+    payload = [{"id": 1, "x": "a"}, {"id": 2, "x": "b"}]
+    assert project_value(payload, ["id"], None) == [{"id": 1}, {"id": 2}]
+
+
+def test_project_value_empty_tree_keeps_all_keys_but_still_caps() -> None:
+    from mcp_broker.catalog import project_value
+
+    # A fully consumed path ("item") keeps the whole subtree, and the cap still
+    # applies to lists inside it.
+    payload = {"item": {"id": 1, "tags": ["a", "b", "c"]}}
+    assert project_value(payload, ["item"], 1) == {"item": {"id": 1, "tags": ["a"]}}
+
+
+def test_normalize_projection_accepts_cap_zero() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # cap=0 must be accepted (boundary: cap < 0 rejects, cap == 0 allowed).
+    out = apply_projection(
+        {"structuredContent": {"rows": [1, 2, 3]}, "content": []},
+        {"max_array_items": 0},
+    )
+    assert out["structuredContent"] == {"rows": []}
+    assert out["_meta"]["projection"]["max_array_items"] == 0
+
+
+def test_normalize_projection_filters_empty_path_strings() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # An empty path string is dropped; the remaining path still selects.
+    out = apply_projection(
+        {"structuredContent": {"id": 1, "drop": 2}, "content": []},
+        {"paths": ["", "id"]},
+    )
+    assert out["structuredContent"] == {"id": 1}
+
+
+def test_normalize_projection_empty_paths_list_is_noop() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # paths=[] normalizes to None; with no cap that is a no-op (response returned as-is).
+    response = {"structuredContent": {"id": 1, "keep": 2}, "content": []}
+    assert apply_projection(response, {"paths": []}) == response
+
+
+def test_apply_projection_handles_list_structured_content() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {"structuredContent": [{"id": 1, "x": "a"}], "content": []}
+    out = apply_projection(response, {"paths": ["id"]})
+    assert out["structuredContent"] == [{"id": 1}]
+    assert out["_meta"]["projection"]["applied"] is True
+
+
+def test_apply_projection_cap_only_truncates_and_marks_applied() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    response = {"structuredContent": {"rows": [1, 2, 3, 4]}, "content": []}
+    out = apply_projection(response, {"max_array_items": 2})
+    assert out["structuredContent"] == {"rows": [1, 2]}
+    assert out["_meta"]["projection"]["applied"] is True
+    assert out["_meta"]["projection"]["paths"] == []
+
+
+def test_project_text_block_ignores_block_whose_text_is_not_a_string() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # type == "text" but text is a number: must be left untouched (not pruned).
+    response = {"content": [{"type": "text", "text": 123}]}
+    out = apply_projection(response, {"paths": ["id"]})
+    assert out["content"][0] == {"type": "text", "text": 123}
+    assert out["_meta"]["projection"]["applied"] is False
+
+
+def test_project_text_block_ignores_non_text_typed_block_with_text_field() -> None:
+    from mcp_broker.catalog import apply_projection
+
+    # A non-"text" type carrying a JSON-looking text field must NOT be pruned -
+    # isolates the type=="text" gate from the text-is-str gate.
+    response = {"content": [{"type": "resource", "text": json.dumps({"id": 1, "drop": 2})}]}
+    out = apply_projection(response, {"paths": ["id"]})
+    assert out["content"][0]["text"] == json.dumps({"id": 1, "drop": 2})
+    assert out["_meta"]["projection"]["applied"] is False
+
+
 def test_apply_projection_passes_through_non_text_content_blocks() -> None:
     from mcp_broker.catalog import apply_projection
 
@@ -457,26 +595,37 @@ def test_apply_projection_passes_through_non_text_content_blocks() -> None:
     assert projected["_meta"]["projection"]["applied"] is False
 
 
-def test_apply_projection_rejects_non_object_projection() -> None:
+def _projection_error_message(projection: object) -> str:
     from mcp_broker.catalog import apply_projection
 
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, "not-an-object")  # type: ignore[arg-type]
+    with pytest.raises(ValueError) as exc:
+        apply_projection({"content": []}, projection)  # type: ignore[arg-type]
+    return str(exc.value)
+
+
+def test_apply_projection_rejects_non_object_projection() -> None:
+    # Exact message (not just the exception type) so message-string mutations die.
+    assert _projection_error_message("not-an-object") == "projection must be an object"
 
 
 def test_apply_projection_rejects_invalid_projection_shapes() -> None:
-    from mcp_broker.catalog import apply_projection
-
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, {"paths": "id"})
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, {"paths": [1]})
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, {"max_array_items": -1})
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, {"max_array_items": True})
-    with pytest.raises(ValueError):
-        apply_projection({"content": []}, {"unknown": 1})
+    assert (
+        _projection_error_message({"paths": "id"})
+        == "projection.paths must be a list of strings"
+    )
+    assert (
+        _projection_error_message({"paths": [1]})
+        == "projection.paths must be a list of strings"
+    )
+    assert (
+        _projection_error_message({"max_array_items": -1})
+        == "projection.max_array_items must be a non-negative integer"
+    )
+    assert (
+        _projection_error_message({"max_array_items": True})
+        == "projection.max_array_items must be a non-negative integer"
+    )
+    assert _projection_error_message({"unknown": 1}) == "projection has unknown keys: ['unknown']"
 
 
 def test_call_tool_applies_projection_to_upstream_response(tmp_path: Path) -> None:
