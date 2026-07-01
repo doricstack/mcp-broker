@@ -161,3 +161,37 @@ make config-rollback CLIENT=codex
 ```
 
 Run rollback before editing client config by hand. That keeps the broker's backup chain usable.
+
+## Layered Config Dry Run
+
+For team or enterprise setup, compose layers before rendering client config:
+
+```bash
+mcp-broker config compose \
+  --org org.yaml \
+  --team team.yaml \
+  --addon audit.yaml \
+  --user user.yaml
+```
+
+The command prints the effective config, SHA-256 digest, layer order,
+provenance, and conflicts. It does not write runtime state or client config.
+
+Use layers this way:
+
+- org: required defaults, approved clients, shared policy
+- team: team-level upstream exposure and tool budgets
+- add-on: optional controls such as audit policy or extra catalog entries
+- user: final local preferences
+
+Secret values stay out of layer files. A layer may reference an environment
+variable name:
+
+```yaml
+env:
+  GITHUB_TOKEN:
+    secret_ref: GITHUB_TOKEN
+```
+
+Do not place token values, passwords, API keys, OAuth state, account names, or
+private filesystem paths in published layers.

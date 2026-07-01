@@ -15,6 +15,7 @@ from mcp_broker.bootstrap_transactions import main as bootstrap_transactions_mai
 from mcp_broker.client import ClientShim, ClientShimError
 from mcp_broker.bundle_loader import main as bundle_loader_main
 from mcp_broker.config import BrokerConfig
+from mcp_broker.config_layers import main as config_layers_main
 from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
 from mcp_broker.deployments import main as deployments_main
@@ -40,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_init_parser(subparsers)
     _add_daemon_parsers(subparsers)
+    _add_config_parser(subparsers)
     _add_render_parser(subparsers)
     _add_bundle_parser(subparsers)
     _add_deployment_parser(subparsers)
@@ -99,6 +101,22 @@ def _add_render_parser(
     render_parser.add_argument("--apply", action="store_true")
     render_parser.add_argument("--target-path", type=Path)
     render_parser.set_defaults(handler=handle_render)
+
+
+def _add_config_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    config_parser = subparsers.add_parser("config", help="Inspect and compose broker config")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+    compose_parser = config_subparsers.add_parser(
+        "compose",
+        help="Compose org, team, add-on, and user config layers without changing runtime state",
+    )
+    compose_parser.add_argument("--org", type=Path)
+    compose_parser.add_argument("--team", type=Path)
+    compose_parser.add_argument("--addon", action="append", default=[], type=Path)
+    compose_parser.add_argument("--user", type=Path)
+    compose_parser.set_defaults(handler=handle_config_compose)
 
 
 def _add_bundle_parser(
@@ -469,6 +487,19 @@ def handle_render(args: argparse.Namespace) -> int:
     if args.target_path is not None:
         argv.extend(["--target-path", str(args.target_path.expanduser())])
     return config_render_main(argv)
+
+
+def handle_config_compose(args: argparse.Namespace) -> int:
+    argv: list[str] = []
+    if args.org is not None:
+        argv.extend(["--org", str(args.org.expanduser())])
+    if args.team is not None:
+        argv.extend(["--team", str(args.team.expanduser())])
+    for add_on in args.addon:
+        argv.extend(["--addon", str(add_on.expanduser())])
+    if args.user is not None:
+        argv.extend(["--user", str(args.user.expanduser())])
+    return config_layers_main(argv)
 
 
 def handle_bundle_validate(args: argparse.Namespace) -> int:

@@ -80,6 +80,49 @@ Phase 2 separates desired state into publishable documents:
 These are publishable documents, not executable packages. They let a team govern
 the local broker without turning the broker into a hosted service.
 
+## Layered Config Composition
+
+Large teams can compose an effective broker config from layered documents before
+anything is applied to runtime state. The merge order is fixed:
+
+```text
+org -> team -> add-on -> user
+```
+
+Maps merge recursively. Lists and scalar values are replaced by the later layer.
+The composer reports:
+
+- `effective_config`: the merged config document
+- `effective_config_digest`: a SHA-256 digest of canonical JSON
+- `layers`: the layer names in merge order
+- `provenance`: the final source layer and file for each leaf path
+- `conflicts`: paths where a later layer replaced an earlier value
+- `changed_runtime_state: false`
+
+Dry-run composition:
+
+```bash
+mcp-broker config compose \
+  --org org.yaml \
+  --team team.yaml \
+  --addon audit.yaml \
+  --user user.yaml
+```
+
+Layer documents may name secrets, but they must not contain secret values. Use
+`secret_ref` with an environment-variable name:
+
+```yaml
+upstreams:
+  github:
+    env:
+      GITHUB_TOKEN:
+        secret_ref: GITHUB_TOKEN
+```
+
+Literal values under token, secret, credential, password, API key, or key fields
+are rejected before a digest is produced.
+
 ## Local Control-Plane Contract
 
 Governance documents are evaluated by the local broker. The contract is:
@@ -98,5 +141,7 @@ See `docs/governance-control-plane.md` for the Phase 2 control-plane contract.
 - P1.2 defines the desired-state schema and helper metadata.
 - P1.3 adds local bundle validation from disk.
 - P1.4 adds transactional deployment state and rollback records.
+- P1.N5 adds dry-run layered config composition with digest, provenance,
+  conflict reporting, and secret-reference validation.
 - P2.1 splits the bundle model into profile, upstream-catalog, policy, rollout,
   and compatibility documents for enterprise governance.

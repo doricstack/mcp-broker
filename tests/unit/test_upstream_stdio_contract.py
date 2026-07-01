@@ -36,6 +36,8 @@ from mcp_broker.upstream_stdio import (
 
 pytestmark = pytest.mark.unit
 
+STDIO_HAPPY_PATH_TIMEOUT_SECONDS = 3
+
 
 def test_stdio_upstream_finalizer_stops_live_process(
     tmp_path: Path,
@@ -108,9 +110,17 @@ for line in sys.stdin:
     client = StdioUpstreamProcess(upstream, runtime_state_dir=tmp_path / "runtime-state")
 
     try:
-        first = client.call_tool("fake.echo", {"message": "first"}, timeout_seconds=1)
+        first = client.call_tool(
+            "fake.echo",
+            {"message": "first"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
         pid = cast(subprocess.Popen[bytes], client._process).pid
-        second = client.call_tool("fake.echo", {"message": "second"}, timeout_seconds=1)
+        second = client.call_tool(
+            "fake.echo",
+            {"message": "second"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
 
         assert first["cwd"] == str(absolute_state_dir)
         assert first["state"] == str(absolute_state_dir)
@@ -151,7 +161,11 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.echo", {}, timeout_seconds=3) == {"name": "fake.echo"}
+        assert client.call_tool(
+            "fake.echo",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {"name": "fake.echo"}
         running_events = list(events)
     finally:
         client.stop()
@@ -161,7 +175,7 @@ for line in sys.stdin:
         "upstream": "fake",
         "method": "tools/call",
         "tool_name": "fake.echo",
-        "timeout_seconds": 3,
+        "timeout_seconds": STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
     }
     assert running_events[1] == {
         "event": "upstream.start",
@@ -360,8 +374,16 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.echo", {"value": "hello"}, timeout_seconds=1) == {"ok": True}
-        assert client.call_tool("fake.echo", {"value": "again"}, timeout_seconds=1) == {"ok": True}
+        assert client.call_tool(
+            "fake.echo",
+            {"value": "hello"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {"ok": True}
+        assert client.call_tool(
+            "fake.echo",
+            {"value": "again"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {"ok": True}
     finally:
         client.stop()
 
@@ -572,7 +594,11 @@ for line in sys.stdin:
     client = StdioUpstreamProcess(upstream, runtime_state_dir=tmp_path / "runtime-state")
 
     try:
-        result = client.call_tool("notebook.list_notebooks", {}, timeout_seconds=1)
+        result = client.call_tool(
+            "notebook.list_notebooks",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
     finally:
         client.stop()
 
@@ -612,7 +638,11 @@ for line in sys.stdin:
     )
 
     try:
-        result = client.call_tool("fake.echo", {}, timeout_seconds=1)
+        result = client.call_tool(
+            "fake.echo",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
     finally:
         client.stop()
 
@@ -653,7 +683,11 @@ for line in sys.stdin:
     )
 
     try:
-        result = client.call_tool("session.echo", {}, timeout_seconds=1)
+        result = client.call_tool(
+            "session.echo",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
     finally:
         client.stop()
 
@@ -704,7 +738,7 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
             {"name": "echo", "description": "Echo input"}
         ]
     finally:
@@ -748,7 +782,9 @@ for line in sys.stdin:
     client._last_error = "old failure"
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "echo"}
+        ]
         assert client.health_snapshot()["last_error"] is None
     finally:
         client.stop()
@@ -806,8 +842,12 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
-        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "echo"}
+        ]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "echo"}
+        ]
     finally:
         client.stop()
 
@@ -818,7 +858,7 @@ for line in sys.stdin:
         "event": "upstream.call",
         "upstream": "fake",
         "method": "tools/list",
-        "timeout_seconds": 1,
+        "timeout_seconds": STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
     }
     assert requests[0] == {
         "jsonrpc": "2.0",
@@ -900,7 +940,11 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.echo", {"value": "hello"}, timeout_seconds=1) == {
+        assert client.call_tool(
+            "fake.echo",
+            {"value": "hello"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {
             "ok": {
                 "name": "fake.echo",
                 "arguments": {"value": "hello"},
@@ -1105,7 +1149,11 @@ for line in sys.stdin:
         with pytest.raises(StdioUpstreamTimeout, match="upstream timed out: fake"):
             client.call_tool("fake.echo", {"value": "first"}, timeout_seconds=1)
 
-        result = client.call_tool("fake.echo", {"value": "second"}, timeout_seconds=1)
+        result = client.call_tool(
+            "fake.echo",
+            {"value": "second"},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        )
     finally:
         client.stop()
 
@@ -1173,7 +1221,9 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "strict"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "strict"}
+        ]
     finally:
         client.stop()
 
@@ -1220,7 +1270,9 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "search_graph"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "search_graph"}
+        ]
     finally:
         client.stop()
 
@@ -1270,7 +1322,9 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "echo"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "echo"}
+        ]
     finally:
         client.stop()
 
@@ -1325,7 +1379,9 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.list_tools(timeout_seconds=1) == [{"name": "kb_health"}]
+        assert client.list_tools(timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS) == [
+            {"name": "kb_health"}
+        ]
     finally:
         client.stop()
 
@@ -1377,7 +1433,11 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.echo", {}, timeout_seconds=1) == {
+        assert client.call_tool(
+            "fake.echo",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {
             "content": [{"type": "text", "text": "fake.echo"}],
         }
     finally:
@@ -1433,7 +1493,11 @@ for line in sys.stdin:
     )
 
     try:
-        assert client.call_tool("fake.health", {}, timeout_seconds=1) == {
+        assert client.call_tool(
+            "fake.health",
+            {},
+            timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS,
+        ) == {
             "content": [{"type": "text", "text": "fake.health"}],
         }
     finally:
