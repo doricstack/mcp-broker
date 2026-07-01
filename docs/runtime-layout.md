@@ -18,6 +18,13 @@ Runtime root:
       previous.json
       rollback-journal.jsonl
       records/
+    runtime-install/
+      active-runtime.json
+      previous-runtime.json
+      versions/
+        2.1.0/
+          2.1.0-abc123def456/
+            runtime-manifest.json
     upstreams/
       example-store/
       example-http/
@@ -76,3 +83,17 @@ make deployment-recover
 
 These commands do not edit client config files. Client rendering and rollback
 remain under `config-render` and `config-rollback`.
+
+Installed runtime manifests are file-backed under `state/runtime-install/`.
+The active runtime pointer lives at `active-runtime.json`, and the previous
+runtime pointer lives at `previous-runtime.json`. Runtime manifests live under
+`state/runtime-install/versions/<version>/<runtime_id>/runtime-manifest.json`.
+
+The installed-runtime manifest records the runtime version, runtime identifier,
+installed runtime path, package entrypoint, artifact digest, and install status.
+This establishes the stable broker-owned manifest layout that plugin setup and
+launcher wiring will consume in later Phase 1 tasks.
+
+Installed runtime manifests do not activate artifacts by themselves. Artifact
+integrity, launcher resolution, bootstrap apply, rollback, and uninstall are
+separate Phase 1 contracts.
