@@ -1186,6 +1186,93 @@ def test_call_managed_tool_defaults_missing_arguments_to_empty_object(tmp_path: 
     assert calls == [("read-store", "find_record", {}, 60)]
 
 
+def test_call_managed_tool_injects_cwd_project_for_configured_upstream(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "Projects" / "apps" / "mcp-broker"
+    (repo / ".git").mkdir(parents=True)
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=20)},
+        upstreams={
+            "memory-index": UpstreamConfig(
+                name="memory-index",
+                command="codebase-memory",
+                tool_prefix="codebase-memory",
+                profiles=("codex",),
+                inject_cwd_project=True,
+                inject_cwd_project_exclude=("list_projects",),
+            ),
+        },
+    )
+    calls: list[tuple[str, str, dict[str, object], int]] = []
+
+    result = BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=lambda _name, _timeout: [],
+        call_upstream=lambda name, tool, args, timeout: calls.append((name, tool, args, timeout))
+        or {"content": []},
+        call_locks={},
+        client_cwd=str(repo / "src" / "mcp_broker"),
+    ).call_tool(
+        "broker.call_tool",
+        {"name": "codebase-memory.search_graph", "arguments": {"query": "BrokerCore"}},
+    )
+
+    assert result == {"content": []}
+    assert calls == [
+        (
+            "memory-index",
+            "search_graph",
+            {
+                "query": "BrokerCore",
+                "project": str(repo).lstrip("/").replace("/", "-"),
+            },
+            60,
+        )
+    ]
+
+
+def test_call_managed_tool_does_not_inject_cwd_project_for_excluded_tool(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "Projects" / "apps" / "mcp-broker"
+    (repo / ".git").mkdir(parents=True)
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        profiles={"codex": ToolExposureProfile(name="codex", max_tools=20)},
+        upstreams={
+            "memory-index": UpstreamConfig(
+                name="memory-index",
+                command="codebase-memory",
+                tool_prefix="codebase-memory",
+                profiles=("codex",),
+                inject_cwd_project=True,
+                inject_cwd_project_exclude=("list_projects",),
+            ),
+        },
+    )
+    calls: list[tuple[str, str, dict[str, object], int]] = []
+
+    BrokerCatalogFacade(
+        broker_config=config,
+        profile=config.profiles["codex"],
+        list_upstream=lambda _name, _timeout: [],
+        call_upstream=lambda name, tool, args, timeout: calls.append((name, tool, args, timeout))
+        or {"content": []},
+        call_locks={},
+        client_cwd=str(repo),
+    ).call_tool(
+        "broker.call_tool",
+        {"name": "codebase-memory.list_projects", "arguments": {}},
+    )
+
+    assert calls == [("memory-index", "list_projects", {}, 60)]
+
+
 def test_call_managed_tool_enforces_profile_and_uses_shared_call_locks(tmp_path: Path) -> None:
     profile = ToolExposureProfile(name="default-llm", max_tools=20)
     config = BrokerConfig(

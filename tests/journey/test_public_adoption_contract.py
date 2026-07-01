@@ -94,11 +94,11 @@ def test_packaged_chat_profiles_use_client_safe_broker_tool_names() -> None:
 
     assert {
         profile_name: config["profiles"][profile_name]["broker_tool_name_style"]
-        for profile_name in ("codex", "claude", "gemini", "docker")
+        for profile_name in ("codex", "claude", "agy", "docker")
     } == {
         "codex": "snake",
         "claude": "snake",
-        "gemini": "snake",
+        "agy": "snake",
         "docker": "snake",
     }
 

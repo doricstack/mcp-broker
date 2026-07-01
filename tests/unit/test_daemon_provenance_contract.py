@@ -7,6 +7,7 @@ import pytest
 
 from mcp_broker import __version__
 from mcp_broker import daemon as daemon_module
+from mcp_broker import daemon_provenance as daemon_provenance_module
 from mcp_broker.daemon import _git_sha, _source_provenance
 
 
@@ -43,17 +44,19 @@ def test_git_sha_resolves_inside_a_repo(tmp_path: Path) -> None:
     assert len(sha) >= 7
 
 
+@pytest.mark.error_simulation
 def test_git_sha_returns_none_when_git_is_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def _raise(*args: object, **kwargs: object) -> object:
         raise OSError("git binary not found")
 
-    monkeypatch.setattr(daemon_module.subprocess, "run", _raise)
+    monkeypatch.setattr(daemon_provenance_module.subprocess, "run", _raise)
 
     assert _git_sha(tmp_path) is None
 
 
+@pytest.mark.error_simulation
 def test_source_provenance_omits_git_sha_when_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -65,6 +68,7 @@ def test_source_provenance_omits_git_sha_when_unavailable(
     assert provenance["version"] == __version__
 
 
+@pytest.mark.error_simulation
 def test_source_provenance_includes_resolved_git_sha_for_the_package_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -83,6 +87,7 @@ def test_source_provenance_includes_resolved_git_sha_for_the_package_path(
     assert seen["source"] == Path(daemon_module.__file__).resolve().parent
 
 
+@pytest.mark.error_simulation
 def test_git_sha_invokes_git_with_exact_arguments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -93,7 +98,7 @@ def test_git_sha_invokes_git_with_exact_arguments(
         captured["kwargs"] = kwargs
         return SimpleNamespace(stdout="abc1234\n")
 
-    monkeypatch.setattr(daemon_module.subprocess, "run", _fake_run)
+    monkeypatch.setattr(daemon_provenance_module.subprocess, "run", _fake_run)
 
     result = _git_sha(tmp_path)
 
@@ -108,11 +113,12 @@ def test_git_sha_invokes_git_with_exact_arguments(
     assert result == "abc1234"
 
 
+@pytest.mark.error_simulation
 def test_git_sha_returns_none_for_whitespace_only_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        daemon_module.subprocess,
+        daemon_provenance_module.subprocess,
         "run",
         lambda cmd, **kwargs: SimpleNamespace(stdout="  \n"),
     )

@@ -317,7 +317,7 @@ def test_render_mcp_settings_json_preserves_settings_and_allowed_policy() -> Non
     rendered = _render_mcp_settings_json(
         "mcp-broker",
         "mcp-broker-client",
-        ["--profile", "gemini"],
+        ["--profile", "agy"],
         json.dumps(
             {
                 "theme": "dark",
@@ -326,7 +326,7 @@ def test_render_mcp_settings_json_preserves_settings_and_allowed_policy() -> Non
             }
         ),
         ClientRenderConfig(
-            name="gemini",
+            name="agy",
             format="mcp-settings-json",
             config_path=Path("settings.json"),
             mcp_allowed_servers=("mcp-broker",),
@@ -338,7 +338,7 @@ def test_render_mcp_settings_json_preserves_settings_and_allowed_policy() -> Non
             "mcp": {"allowed": ["mcp-broker"], "excluded": ["direct"]},
             "mcpServers": {
                 "mcp-broker": {
-                    "args": ["--profile", "gemini"],
+                    "args": ["--profile", "agy"],
                     "command": "mcp-broker-client",
                 }
             },
@@ -356,10 +356,10 @@ def test_render_mcp_settings_json_does_not_create_mcp_policy_without_allowed_ser
     rendered = _render_mcp_settings_json(
         "mcp-broker",
         "mcp-broker-client",
-        ["--profile", "gemini"],
+        ["--profile", "agy"],
         "{}",
         ClientRenderConfig(
-            name="gemini",
+            name="agy",
             format="mcp-settings-json",
             config_path=Path("settings.json"),
         ),
@@ -368,7 +368,7 @@ def test_render_mcp_settings_json_does_not_create_mcp_policy_without_allowed_ser
     assert json.loads(rendered) == {
         "mcpServers": {
             "mcp-broker": {
-                "args": ["--profile", "gemini"],
+                "args": ["--profile", "agy"],
                 "command": "mcp-broker-client",
             }
         }
@@ -644,7 +644,7 @@ def test_mcp_settings_json_render_preserves_client_settings_and_replaces_servers
     }
 
 
-def test_gemini_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: Path) -> None:
+def test_agy_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: Path) -> None:
     import yaml
 
     from mcp_broker.config import BrokerConfig
@@ -672,7 +672,7 @@ def test_gemini_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: P
                     "socket_path": str(runtime_root / "sockets" / "broker.sock"),
                 },
                 "clients": {
-                    "gemini": {
+                    "agy": {
                         "format": "mcp-settings-json",
                         "config_path": str(target_path),
                         "entry_name": "mcp-broker",
@@ -681,7 +681,7 @@ def test_gemini_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: P
                             "--socket-path",
                             "{runtime.socket_path}",
                             "--profile",
-                            "gemini",
+                            "agy",
                         ],
                         "mcp_allowed_servers": ["mcp-broker"],
                     },
@@ -695,12 +695,12 @@ def test_gemini_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: P
 
     result = render_client_config(
         BrokerConfig.from_file(config_path),
-        client_name="gemini",
+        client_name="agy",
         dry_run=False,
         backup_label="20260525T010101Z",
     )
 
-    assert result.backup_path == runtime_root / "backups" / "gemini" / "20260525T010101Z.settings.json"
+    assert result.backup_path == runtime_root / "backups" / "agy" / "20260525T010101Z.settings.json"
     assert json.loads(result.backup_path.read_text(encoding="utf-8"))["mcpServers"] == {
         "legacy-direct": {"command": "legacy-client"}
     }
@@ -713,7 +713,7 @@ def test_gemini_settings_json_apply_writes_allowed_broker_and_backup(tmp_path: P
                     "--socket-path",
                     str(runtime_root / "sockets" / "broker.sock"),
                     "--profile",
-                    "gemini",
+                    "agy",
                 ],
                 "command": "mcp-broker-client",
             }

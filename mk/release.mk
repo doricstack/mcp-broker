@@ -7,7 +7,7 @@ _mutation-impl:
 	$(call log_step,"Mutation tests")
 	@mkdir -p "$(QUALITY_DIR)"
 	@rm -rf "$(ROOT)/.mutmut-cache" "$(ROOT)/mutants" "$(MUTATION_STATS_JSON)"
-	@$(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN) $(MUTATION_ARGS)
+	@$(MUTATION_QOS_PREFIX) $(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN) $(MUTATION_ARGS)
 	@$(MUTMUT) results
 	@$(PYTHON) "$(ROOT)/scripts/check_mutation_stats.py" \
 		--mutants-dir "$(ROOT)/mutants" \
@@ -26,14 +26,21 @@ _mutation-linux-impl:
 		MCP_BROKER_MUTATION_ARGS="$(MUTATION_ARGS)" \
 		MCP_BROKER_MUTATION_LOG="$(MUTATION_LOG)" \
 		MCP_BROKER_MUTATION_MUTANTS_DIR="$(MUTATION_MUTANTS_DIR)" \
-		"$(ROOT)/scripts/linux-mutation.sh"
+		$(MUTATION_QOS_PREFIX) "$(ROOT)/scripts/linux-mutation.sh"
 
-release-gate: ## Run release gates with mutation parallelized with non-mutating checks
+release-gate: ## Run release gates with resource-bounded mutation
 	$(call timed_make,"release-gate: total",_release-gate-impl)
 
 _release-gate-impl:
 	$(call timed_make,"release-gate: deps",deps)
+ifeq ($(RELEASE_GATE_PARALLEL),1)
 	$(call timed_make,"release-gate: parallel children",-j $(RELEASE_GATE_JOBS) _release-gate-quality _release-gate-package _release-gate-smoke _release-gate-mutation)
+else
+	$(call timed_make,"release-gate: sequential quality-gate",_release-gate-quality)
+	$(call timed_make,"release-gate: sequential package-check",_release-gate-package)
+	$(call timed_make,"release-gate: sequential release-smoke",_release-gate-smoke)
+	$(call timed_make,"release-gate: sequential mutation",_release-gate-mutation)
+endif
 	$(call log_success,"Release gate passed")
 
 _release-gate-quality:

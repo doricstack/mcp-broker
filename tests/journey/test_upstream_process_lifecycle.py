@@ -425,6 +425,7 @@ while True:
         supervisor.stop(timeout_seconds=0.01)
 
 
+@pytest.mark.error_simulation
 def test_upstream_process_lifecycle_marks_failed_when_kill_wait_times_out(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -149,13 +149,13 @@ Checks:
 ```bash
 make tools-count PROFILE=codex
 make tools-count PROFILE=claude
-make tools-count PROFILE=gemini
+make tools-count PROFILE=agy
 make tools-count PROFILE=protected
 make profile-validation PROFILE=codex
 make codex-claude-discovery-parity
 ```
 
-Expected result: Codex, Claude, and Gemini default profiles expose compact broker tools and read-heavy shared upstreams only. Protected write-capable upstreams stay behind the protected profile unless the profile allowlist names them.
+Expected result: Codex, Claude, and AGY default profiles expose compact broker tools and read-heavy shared upstreams only. Protected write-capable upstreams stay behind the protected profile unless the profile allowlist names them.
 
 Fix profile exposure in `config/broker.private.yaml` only after confirming:
 - The upstream mode is correct.
@@ -164,24 +164,24 @@ Fix profile exposure in `config/broker.private.yaml` only after confirming:
 - Each enabled profile-visible upstream has a safe `smoke` probe.
 - `make quality-gate` and `make broker-smoke` pass after the change.
 
-## Gemini Shows Broker Disabled
+## AGY Shows Broker Disabled
 
 Symptoms:
-- `gemini mcp list` shows the broker entry as disabled.
+- `agy mcp list` shows the broker entry as disabled.
 - The message says MCP servers are disabled because the folder is untrusted.
 
 Checks:
 
 ```bash
-gemini mcp list
-make gemini-facade-smoke
-make gemini-profile-validation
+agy mcp list
+make agy-facade-smoke
+make agy-profile-validation
 ```
 
 If the Make targets pass, the broker config is valid. Trust the workspace in
-Gemini CLI, restart Gemini, then rerun `gemini mcp list`.
+AGY CLI, restart AGY, then rerun `agy mcp list`.
 
-If Gemini reports the broker as connected but cannot call any broker tools,
-check that the Gemini profile uses `broker_tool_name_style: snake` and that the
-Gemini client block sets `mcp_allowed_servers` to the broker entry name. Gemini
+If AGY reports the broker as connected but cannot call any broker tools,
+check that the AGY profile uses `broker_tool_name_style: snake` and that the
+AGY client block sets `mcp_allowed_servers` to the broker entry name. AGY
 should then call the broker status facade as `mcp_mcp-broker_broker_status`.

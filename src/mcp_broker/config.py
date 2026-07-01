@@ -6,12 +6,22 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-import re
 from typing import Any, TypedDict
 
 import yaml
 
 from mcp_broker.client_config import ClientRenderConfig
+from mcp_broker.config_keys import (
+    BROKER_KEYS,
+    ENV_NAME_PATTERN,
+    PROFILE_KEYS,
+    REMOTE_AUTH_KEYS,
+    RUNTIME_KEYS,
+    SESSION_ENV_ALLOWED_MESSAGE,
+    SESSION_ENV_SOURCES,
+    TOP_LEVEL_KEYS,
+    UPSTREAM_KEYS,
+)
 from mcp_broker.schema import (
     AuthProbePolicy,
     AuthRepairPolicy,
@@ -28,71 +38,6 @@ from mcp_broker.schema import (
     parse_transport,
 )
 from mcp_broker.profiles import ToolExposureProfile
-
-
-ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-SESSION_ENV_SOURCES = frozenset({"client_cwd"})
-SESSION_ENV_ALLOWED_MESSAGE = ", ".join(sorted(SESSION_ENV_SOURCES))
-
-TOP_LEVEL_KEYS = frozenset(
-    {
-        "schema_version",
-        "runtime",
-        "broker",
-        "profiles",
-        "clients",
-        "upstreams",
-    }
-)
-RUNTIME_KEYS = frozenset({"root", "socket_path", "log_dir", "state_dir", "secrets_dir"})
-BROKER_KEYS = frozenset(
-    {
-        "tool_namespace_separator",
-        "idle_timeout_seconds",
-        "cpu_watchdog_percent",
-        "cpu_watchdog_seconds",
-        "remote_auth",
-    }
-)
-REMOTE_AUTH_KEYS = frozenset({"enabled", "required", "token_env", "token_file"})
-PROFILE_KEYS = frozenset(
-    {
-        "max_tools",
-        "compact_tools_enabled",
-        "broker_tool_name_style",
-        "allow_mutating_upstreams",
-        "client_root_match",
-    }
-)
-UPSTREAM_KEYS = frozenset(
-    {
-        "enabled",
-        "mode",
-        "transport",
-        "purpose",
-        "tags",
-        "tool_prefix",
-        "command",
-        "args",
-        "working_dir",
-        "state_dir",
-        "profiles",
-        "env",
-        "env_files",
-        "session_env",
-        "request_meta",
-        "mutating",
-        "serialize_calls",
-        "startup_timeout_seconds",
-        "tool_timeouts",
-        "restart",
-        "health",
-        "resources",
-        "auth_repair",
-        "auth_probe",
-        "smoke",
-    }
-)
 
 
 def _parse_path(path: str, value: Any) -> Path:
@@ -248,6 +193,8 @@ class UpstreamConfig:
     profiles: tuple[str, ...] = ("manual-test",)
     mutating: bool = False
     serialize_calls: bool = False
+    inject_cwd_project: bool = False
+    inject_cwd_project_exclude: tuple[str, ...] = ()
     startup_timeout_seconds: int = 60
     restart: RestartPolicy = field(default_factory=RestartPolicy)
     health: HealthPolicy = field(default_factory=HealthPolicy)
@@ -301,6 +248,14 @@ class UpstreamConfig:
             serialize_calls=_parse_bool(
                 f"upstreams.{name}.serialize_calls",
                 data.get("serialize_calls", False),
+            ),
+            inject_cwd_project=_parse_bool(
+                f"upstreams.{name}.inject_cwd_project",
+                data.get("inject_cwd_project", False),
+            ),
+            inject_cwd_project_exclude=_parse_string_tuple(
+                f"upstreams.{name}.inject_cwd_project_exclude",
+                data.get("inject_cwd_project_exclude", []),
             ),
             **_parse_upstream_policies(name, data),
             auth_repair=AuthRepairPolicy.from_mapping(

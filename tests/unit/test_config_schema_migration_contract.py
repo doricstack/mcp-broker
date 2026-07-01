@@ -135,6 +135,9 @@ upstreams:
       authToken: FILE_TOKEN
     mutating: true
     serialize_calls: true
+    inject_cwd_project: true
+    inject_cwd_project_exclude:
+      - list_projects
     startup_timeout_seconds: 60
     restart:
       max_attempts: 3
@@ -188,6 +191,8 @@ upstreams:
     assert config.clients["codex"].codex_apps_policy.enabled is True
     assert config.clients["codex"].mcp_allowed_servers == ("mcp-broker",)
     assert config.upstreams["writer"].mutating is True
+    assert config.upstreams["writer"].inject_cwd_project is True
+    assert config.upstreams["writer"].inject_cwd_project_exclude == ("list_projects",)
     assert config.upstreams["writer"].auth_repair is not None
     assert config.upstreams["writer"].auth_probe is not None
     assert config.upstreams["writer"].health.http_retry_attempts == 2
@@ -263,6 +268,8 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "upstreams.*.health.http_retry_attempts",
         "upstreams.*.health.http_retry_backoff_seconds",
         "upstreams.*.health.ready_timeout_seconds",
+        "upstreams.*.inject_cwd_project",
+        "upstreams.*.inject_cwd_project_exclude",
         "upstreams.*.mode",
         "upstreams.*.mutating",
         "upstreams.*.profiles",

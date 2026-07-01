@@ -74,13 +74,13 @@ If a LaunchAgent plist already exists, apply mode backs it up under `~/mcp/mcp-b
 Broker config supports client profiles:
 - `codex`
 - `claude`
-- `gemini`
+- `agy`
 - `manual-test`
 - `maintenance`
 
 Profiles can allow or deny tool prefixes and mutating tools.
-Gemini uses the same profile gate as other rendered clients. Its renderer writes
-`.gemini/settings.json` and can include `mcp.allowed` so Gemini exposes the
+AGY uses the same profile gate as other rendered clients. Its renderer writes
+`.gemini/config/mcp_config.json` and can include `mcp.allowed` so AGY exposes the
 broker tools from the configured broker server.
 
 Mutating upstreams must declare `mutating: true` in central config. Any profile that exposes a mutating upstream must list that upstream name under `profiles.<profile>.allow_mutating_upstreams`; config load fails without the allowlist entry. Runtime tool advertisement enforces the same check so hand-built config objects cannot bypass the profile gate.

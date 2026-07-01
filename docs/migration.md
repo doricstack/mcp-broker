@@ -66,7 +66,7 @@ upstreams:
     profiles:
       - codex
       - claude
-      - gemini
+      - agy
 ```
 
 Then dry-run and apply the Codex client render:
@@ -77,7 +77,7 @@ make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
 make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
 ```
 
-Use `CLIENT=claude` or `CLIENT=gemini` for those clients after the matching
+Use `CLIENT=claude` or `CLIENT=agy` for those clients after the matching
 profile validation passes. For another JSON settings client that stores MCP
 servers under top-level `mcpServers`, start with:
 

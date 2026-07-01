@@ -554,8 +554,7 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "contents: write" in workflow
     assert "DOCKERHUB_USERNAME" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
-    assert "NODE_AUTH_TOKEN" not in workflow
-    assert "NPM_TOKEN" not in workflow
+    assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in workflow
     assert 'node-version: "24"' in workflow
     assert "astral-sh/setup-uv" in workflow
     assert "actions/setup-node" in workflow
@@ -573,8 +572,8 @@ def test_publish_everywhere_is_single_release_orchestrator() -> None:
     assert "push:" not in workflow
     assert ".github/workflows/publish-everywhere.yml" in npm_doc
     assert ".github/workflows/publish-npm.yml" not in npm_doc
-    assert "NPM_TOKEN" not in npm_doc
-    assert "NODE_AUTH_TOKEN" not in npm_doc
+    assert "`NPM_TOKEN`" in npm_doc
+    assert "`NODE_AUTH_TOKEN`" in npm_doc
     assert "first publish returned `E404`" not in npm_doc
     assert ".github/workflows/publish-pypi.yml" not in distribution
     assert ".github/workflows/publish-python.yml" not in distribution
@@ -928,19 +927,19 @@ def test_p16_p18_tracking_has_no_stale_repo_owned_pending_rows() -> None:
         assert "uv validation date: 2026-05-27" in maintainer_inputs
         assert "Status: complete for `${PACKAGE_VERSION}`." in maintainer_inputs
         assert "publication pending" not in maintainer_inputs
-        assert "NPM_TOKEN" not in maintainer_inputs
-        assert "NODE_AUTH_TOKEN" not in maintainer_inputs
+        assert "NPM_TOKEN" in maintainer_inputs
+        assert "NODE_AUTH_TOKEN" in maintainer_inputs
         assert "Status: pending for `1.0.0`." not in maintainer_inputs
         assert "Source changes pending" not in maintainer_inputs
         assert "8326 mutants" not in maintainer_inputs
         assert "`8332` mutants" in maintainer_inputs
     if plan:
         assert "## Progress" in plan
-        assert "- [x] Task 4: NPM publication completed through package bootstrap and trusted publishing." in plan
+        assert "- [x] Task 4: NPM publication completed through package bootstrap and scoped token auth." in plan
         assert "- [x] Task 7: Docker images published to Docker Hub and GHCR." in plan
         assert "- [x] Task 8: Docker MCP Catalog custom catalog smoke." in plan
         assert "- [x] Task 9: Docker MCP Registry PR packet staged." in plan
-        assert "NPM_TOKEN" not in plan
+        assert "NPM_TOKEN" in plan
         assert "publication remains external" not in plan
 
 

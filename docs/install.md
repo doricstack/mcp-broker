@@ -236,7 +236,7 @@ make codex-app-policy CLIENT=codex CODEX_APP_POLICY_APPLY=1
 `make config-render CLIENT=codex CONFIG_RENDER_APPLY=1` also applies that
 policy after writing the Codex config.
 
-Use the same targets with `CLIENT=claude` or `CLIENT=gemini` after that profile
+Use the same targets with `CLIENT=claude` or `CLIENT=agy` after that profile
 smoke passes and you intend to wire that client.
 
 For a new client profile, print a starter YAML block:
@@ -256,7 +256,7 @@ make doctor
 ```
 
 Use `CLIENT=claude` to restore the latest Claude backup.
-Use `CLIENT=gemini` to restore the latest Gemini backup.
+Use `CLIENT=agy` to restore the latest AGY backup.
 
 ## Smoke Checks
 
@@ -265,9 +265,9 @@ make config-validate
 make tools-count PROFILE=codex
 make codex-facade-smoke
 make claude-facade-smoke
-make gemini-facade-smoke
+make agy-facade-smoke
 make codex-profile-validation
-make gemini-profile-validation
+make agy-profile-validation
 make codex-claude-discovery-parity
 make codex-deferred-acceptance
 make broker-smoke
@@ -280,9 +280,9 @@ make doctor
 `make claude-facade-smoke` does not write Claude config. It only verifies the
 Claude profile through the broker shim.
 
-For Gemini, `gemini mcp list` can show configured servers as disabled when the
-current folder is not trusted by Gemini CLI. Trust the workspace in Gemini first,
-then restart Gemini and rerun the list command.
+For AGY, `agy mcp list` can show configured servers as disabled when the
+current folder is not trusted by AGY CLI. Trust the workspace in AGY first,
+then restart AGY and rerun the list command.
 
 `make codex-claude-discovery-parity` compares Codex and Claude compact profile
 discovery through the client shim without writing Claude config. It checks

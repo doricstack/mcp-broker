@@ -286,6 +286,12 @@
         "serialize_calls": {
           "type": "boolean"
         },
+        "inject_cwd_project": {
+          "type": "boolean"
+        },
+        "inject_cwd_project_exclude": {
+          "$ref": "#/$defs/stringList"
+        },
         "startup_timeout_seconds": {
           "$ref": "#/$defs/positiveInteger"
         },

@@ -17,5 +17,5 @@ Required smoke coverage:
 - voice/audio/speech: unsupported. The broker routes MCP JSON-RPC and does not capture audio.
 - core/workflow: Makefile entrypoints and config loading are the current executable broker workflow.
 
-Codex, Claude, Gemini, and other client configs stay untouched until a separate
+Codex, Claude, AGY, and other client configs stay untouched until a separate
 wiring task applies the rendered broker shim config.

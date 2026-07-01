@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from mcp_broker.broker import BrokerCore, BrokerToolError
 from mcp_broker.config import BrokerConfig, UpstreamConfig
+from mcp_broker.project_slug import inject_cwd_project
 from mcp_broker.profiles import ToolExposureProfile
 
 
@@ -28,6 +29,7 @@ class BrokerCatalogFacade:
         call_upstream: ToolCaller,
         call_locks: dict[str, threading.Lock],
         status_provider: StatusProvider | None = None,
+        client_cwd: str | None = None,
     ) -> None:
         self._broker_config = broker_config
         self._profile = profile
@@ -35,6 +37,7 @@ class BrokerCatalogFacade:
         self._call_upstream = call_upstream
         self._call_locks = call_locks
         self._status_provider = status_provider or (lambda _visible_upstreams: {})
+        self._client_cwd = client_cwd
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         canonical_name = self._canonical_broker_tool_name(name)
@@ -91,6 +94,7 @@ class BrokerCatalogFacade:
         projection = arguments.get("projection")
         if projection is not None and not isinstance(projection, dict):
             raise ValueError("broker.call_tool projection must be an object")
+        tool_arguments = self._inject_cwd_project_arg(tool_name, tool_arguments)
         core = BrokerCore(
             settings=self._broker_config.broker,
             upstreams=self._broker_config.upstreams,
@@ -101,6 +105,25 @@ class BrokerCatalogFacade:
         if projection is None:
             return response
         return apply_projection(response, projection)
+
+    def _inject_cwd_project_arg(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        if not self._client_cwd:
+            return arguments
+        separator = self._broker_config.broker.tool_namespace_separator or "."
+        for upstream in self._broker_config.upstreams.values():
+            if not upstream.inject_cwd_project:
+                continue
+            arguments = inject_cwd_project(
+                name,
+                arguments,
+                self._client_cwd,
+                tool_prefix=upstream.tool_prefix or upstream.name,
+                separator=separator,
+                exclude=upstream.inject_cwd_project_exclude,
+            )
+        return arguments
 
     def _status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         status_arguments = {

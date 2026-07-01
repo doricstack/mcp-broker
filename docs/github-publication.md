@@ -22,7 +22,7 @@ model-context-protocol
 mcp-client
 codex
 claude
-gemini-cli
+agy-cli
 mcp-server
 mcp-gateway
 developer-tools
@@ -73,7 +73,7 @@ ${PACKAGE_SLUG} ${PACKAGE_VERSION} is the current stable public release.
 
 Highlights:
 - one compact MCP facade for many upstream MCP servers
-- profile gates for MCP client profiles, including Codex, Claude, Gemini, and manual test flows
+- profile gates for MCP client profiles, including Codex, Claude, AGY, and manual test flows
 - YAML config with JSON Schema validation
 - shared and per-session upstream process modes
 - macOS LaunchAgent, Linux systemd user service, and Windows Scheduled Task install flows

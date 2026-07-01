@@ -61,8 +61,9 @@ LINUX_SMOKE_IMAGE ?= $(or $(MCP_BROKER_LINUX_SMOKE_IMAGE),python:3-bookworm)
 LINUX_RELEASE_GATE_IMAGE ?= $(or $(MCP_BROKER_LINUX_RELEASE_GATE_IMAGE),python:3.13-bookworm)
 UNAME_S           := $(shell uname -s)
 CPU_COUNT ?= $(shell "$(PYTHON_BIN)" -c 'import os, sys; sys.stdout.write(str(os.cpu_count() or 4))' 2>/dev/null || printf 4)
-LOCAL_CPU_BUDGET ?= 4
+LOCAL_CPU_BUDGET ?= $(if $(filter Darwin,$(UNAME_S)),2,4)
 RELEASE_MUTATION_TARGET ?= $(if $(filter Darwin,$(UNAME_S)),mutation-linux,mutation)
+MUTATION_QOS_PREFIX ?= $(if $(filter Darwin,$(UNAME_S)),taskpolicy -b,)
 
 PYTEST_MAXFAIL    ?= 1
 PYTEST_TIMEOUT    ?= 30
@@ -78,12 +79,15 @@ PYTEST_XDIST_DIST ?= loadfile
 PYTEST_MARKER_EXPRESSION ?=
 PUBLIC_RELEASE_PYTEST_MARKER_EXPRESSION ?= not private_contract
 RELEASE_GATE_PYTEST_MARKER_EXPRESSION ?= $(if $(wildcard $(ROOT)/local.mk),$(PYTEST_MARKER_EXPRESSION),$(if $(strip $(PYTEST_MARKER_EXPRESSION)),$(PYTEST_MARKER_EXPRESSION),$(PUBLIC_RELEASE_PYTEST_MARKER_EXPRESSION)))
+QUALITY_GATE_PYTEST_MARKER_EXPRESSION ?= $(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)
 PYTEST_MARKER_ARGS ?= $(if $(strip $(PYTEST_MARKER_EXPRESSION)),-m "$(PYTEST_MARKER_EXPRESSION)",)
+PYTEST_COV_MARKER_ARGS ?= $(if $(strip $(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)),-m "$(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)",)
 PYTEST_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_WORKERS)),,-n $(PYTEST_WORKERS) --dist $(PYTEST_XDIST_DIST))
 PYTEST_TARGETED_XDIST_ARGS ?= $(if $(filter 0,$(PYTEST_TARGETED_WORKERS)),,-n $(PYTEST_TARGETED_WORKERS) --dist $(PYTEST_XDIST_DIST))
 TEST_JOBS ?= 4
 PRECOMMIT_JOBS ?= 2
-RELEASE_GATE_JOBS ?= 2
+RELEASE_GATE_JOBS ?= $(if $(filter Darwin,$(UNAME_S)),1,2)
+RELEASE_GATE_PARALLEL ?= $(if $(filter Darwin,$(UNAME_S)),0,1)
 PUBLISH_CHECK_JOBS ?= 2
 PUBLISH_EVERYWHERE_JOBS ?= 4
 XDIST_BENCHMARK_TARGETS ?= $(PY_UNIT_DIR) $(PY_JOURNEY_DIR)
@@ -234,10 +238,10 @@ SMITHERY_PAYLOAD_OUTPUT ?= $(TEST_LOG_DIR)/smithery-payload.json
 PYTEST_COMMON     ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
 PYTEST_TARGETED_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_TARGETED_XDIST_ARGS)
 PYTEST_LIVE_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_LIVE_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
-PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT) $(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
+PYTEST_COV_COMMON ?= --color=yes --force-sugar --maxfail=$(PYTEST_MAXFAIL) --timeout=$(PYTEST_COV_TIMEOUT) $(PYTEST_COV_MARKER_ARGS) $(PYTEST_XDIST_ARGS)
 BROKER_WAIT_SECONDS ?= 10
-MUTATION_MAX_CHILDREN ?= $(LOCAL_CPU_BUDGET)
-MUTATION_RELEASE_CHILDREN ?= $(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.write(str(max(1, int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)"))))' 2>/dev/null || printf 1)
+MUTATION_MAX_CHILDREN ?= $(if $(filter Darwin,$(UNAME_S)),1,$(LOCAL_CPU_BUDGET))
+MUTATION_RELEASE_CHILDREN ?= $(if $(filter Darwin,$(UNAME_S)),1,$(shell "$(PYTHON_BIN)" -c 'import sys; sys.stdout.write(str(max(1, int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)"))))' 2>/dev/null || printf 1))
 MUTATION_ARGS    ?=
 MUTATION_IMAGE   ?= python:3.11-bookworm
 MUTATION_STATS_JSON ?= $(QUALITY_DIR)/mutation_stats.json

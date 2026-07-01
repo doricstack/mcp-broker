@@ -52,7 +52,7 @@ profiles:
     max_tools: 80
     compact_tools_enabled: true
     broker_tool_name_style: snake
-  gemini:
+  agy:
     max_tools: 80
     compact_tools_enabled: true
     broker_tool_name_style: snake
@@ -80,7 +80,7 @@ profiles:
 # CHANGE: edit or add clients only when the repo supports that client's file
 # format. `codex-toml` is for Codex TOML configs. `claude-json` is for Claude
 # JSON configs. `mcp-settings-json` is the generic JSON shape used by clients
-# that keep MCP entries under a top-level `mcpServers` object, such as Gemini.
+# that keep MCP entries under a top-level `mcpServers` object, such as AGY.
 # DEFAULT: run `make profile-snippet NEW_PROFILE=<name>` for a starter block.
 # mcp_allowed_servers renders top-level `mcp.allowed` for clients that require
 # an explicit MCP server allowlist before tools appear in model-facing sessions.
@@ -135,9 +135,9 @@ clients:
       - --profile
       - claude
 
-  gemini:
+  agy:
     format: mcp-settings-json
-    config_path: $HOME/.gemini/settings.json
+    config_path: $HOME/.gemini/config/mcp_config.json
     entry_name: mcp-broker
     command: mcp-broker-client
     mcp_allowed_servers:
@@ -146,7 +146,7 @@ clients:
       - --socket-path
       - "{runtime.socket_path}"
       - --profile
-      - gemini
+      - agy
 
 # Add upstream MCP servers under this mapping.
 # CHANGE: copy one of these patterns and edit name, command, args, and profiles.

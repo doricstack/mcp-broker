@@ -77,7 +77,7 @@ make release-smoke
 
 Required result:
 - The configured YAML passes `config/broker.schema.json` and loader validation.
-- Codex, Claude, and Gemini config renders pass in dry-run mode.
+- Codex, Claude, and AGY config renders pass in dry-run mode.
 - The smoke path does not write client config.
 - The daemon can start, answer, and stop through Makefile targets.
 - The release smoke starts from a clean tree, uses `make config-init`, and proves the public example does not need private paths.
@@ -91,7 +91,7 @@ Dry-run both client renders before any apply step:
 ```bash
 make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
 make config-render CLIENT=claude CONFIG_RENDER_APPLY=0
-make config-render CLIENT=gemini CONFIG_RENDER_APPLY=0
+make config-render CLIENT=agy CONFIG_RENDER_APPLY=0
 make codex-app-policy CLIENT=codex CODEX_APP_POLICY_APPLY=0
 ```
 
@@ -110,7 +110,7 @@ make test-live
 ```
 
 The live migration test must exercise `make config-rollback` against copied
-Codex, Claude, and Gemini fixtures when those client renderers are present.
+Codex, Claude, and AGY fixtures when those client renderers are present.
 
 If a real client apply has already happened, verify the rollback target exists before running:
 
@@ -119,7 +119,7 @@ make config-backup CLIENT=codex
 make config-rollback CLIENT=codex
 ```
 
-Repeat with `CLIENT=claude` or `CLIENT=gemini` only when that client wiring is
+Repeat with `CLIENT=claude` or `CLIENT=agy` only when that client wiring is
 intended.
 
 Required result:

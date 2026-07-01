@@ -95,7 +95,7 @@ Core differentiators:
 
 Use `mcp-broker` if you:
 
-- use Codex, Claude Code, Gemini CLI, or other MCP clients
+- use Codex, Claude Code, AGY CLI, or other MCP clients
 - have more MCP tools than you want in every session
 - need shared local MCP servers without duplicate process startup
 - want one place for OAuth state, browser state, sockets, logs, and cleanup
@@ -115,8 +115,8 @@ Implemented:
 - Tool namespace mapping from configured upstream prefixes.
 - Local upstream subprocess lifecycle management and process-group cleanup.
 - Broker daemon over Unix socket.
-- MCP client shim and renderers for configured MCP client profiles, including Codex, Claude, and Gemini.
-- Gemini profile rendering to `.gemini/settings.json`, including its MCP
+- MCP client shim and renderers for configured MCP client profiles, including Codex, Claude, and AGY.
+- AGY profile rendering to `.gemini/config/mcp_config.json`, including its MCP
   allowed-server policy.
 - Dry-run client config rendering, apply-time backups, and rollback.
 - LaunchAgent render and install scripts with dry-run defaults.
@@ -129,7 +129,7 @@ Wiring status:
 
 - Codex is wired through the broker.
 - Claude is wired through the broker after profile validation and manual `/mcp` acceptance.
-- Gemini is wired through the broker by rendering `.gemini/settings.json`.
+- AGY is wired through the broker by rendering `.gemini/config/mcp_config.json`.
 
 Public release status:
 
@@ -308,7 +308,7 @@ Rollback:
 make config-rollback CLIENT=codex
 ```
 
-Use `CLIENT=claude` or `CLIENT=gemini` after that profile smoke passes and that
+Use `CLIENT=claude` or `CLIENT=agy` after that profile smoke passes and that
 client is intended to use the broker. For new JSON-based MCP clients, generate a
 starter block:
 
@@ -542,11 +542,11 @@ make tools-count
 make facade-smoke
 make codex-facade-smoke
 make claude-facade-smoke
-make gemini-facade-smoke
+make agy-facade-smoke
 make profile-validation
 make codex-profile-validation
 make claude-profile-validation
-make gemini-profile-validation
+make agy-profile-validation
 make discovery-parity
 make codex-claude-discovery-parity
 make codex-deferred-acceptance

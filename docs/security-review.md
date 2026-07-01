@@ -28,7 +28,7 @@ Rules:
 - OAuth-backed upstreams that can mutate external state must use `mutating: true`.
 - Shared OAuth-backed upstreams must use `shared` plus `serialize_calls: true` when concurrent writes can collide.
 - Profiles exposing those upstreams must list them in `allow_mutating_upstreams`.
-- Default Codex, Claude, and Gemini profiles must not expose protected OAuth upstreams.
+- Default Codex, Claude, and AGY profiles must not expose protected OAuth upstreams.
 
 Current protected OAuth surfaces:
 - `workspace-writer`
@@ -56,7 +56,7 @@ Rules:
 - Every filesystem upstream that can write files must use `mutating: true`.
 - Root paths must be file-backed in private config and reviewed before exposure.
 - Public examples must use placeholders or disabled example roots only.
-- Codex, Claude, and Gemini default profiles must not expose filesystem roots.
+- Codex, Claude, and AGY default profiles must not expose filesystem roots.
 
 ## Database Access
 

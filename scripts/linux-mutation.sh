@@ -3,7 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${MCP_BROKER_MUTATION_IMAGE:-python:3.11-bookworm}"
-MAX_CHILDREN="${MCP_BROKER_MUTATION_MAX_CHILDREN:-4}"
+DEFAULT_MAX_CHILDREN=4
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  DEFAULT_MAX_CHILDREN=1
+fi
+MAX_CHILDREN="${MCP_BROKER_MUTATION_MAX_CHILDREN:-$DEFAULT_MAX_CHILDREN}"
 MUTATION_ARGS_VALUE="${MCP_BROKER_MUTATION_ARGS:-}"
 WORK_DIR="${MCP_BROKER_MUTATION_WORK_DIR:-}"
 LOG_PATH="${MCP_BROKER_MUTATION_LOG:-$ROOT/var/quality/mutation-linux.log}"
@@ -19,7 +23,7 @@ archive. The host receives only var/quality/mutation_stats.json.
 
 Environment:
   MCP_BROKER_MUTATION_IMAGE         Container image, default: python:3.11-bookworm
-  MCP_BROKER_MUTATION_MAX_CHILDREN  mutmut worker count, default: 4
+  MCP_BROKER_MUTATION_MAX_CHILDREN  mutmut worker count, default: 1 on macOS, 4 elsewhere
   MCP_BROKER_MUTATION_ARGS          Optional mutant selector
   MCP_BROKER_MUTATION_WORK_DIR      Optional existing work directory
   MCP_BROKER_MUTATION_LOG           Host log path, default: var/quality/mutation-linux.log
@@ -45,6 +49,11 @@ command -v docker >/dev/null 2>&1 || {
   printf "docker is required for linux-mutation\n" >&2
   exit 2
 }
+
+QOS_PREFIX=()
+if [[ "$(uname -s)" == "Darwin" ]] && command -v taskpolicy >/dev/null 2>&1; then
+  QOS_PREFIX=(taskpolicy -b)
+fi
 
 if [[ -z "$WORK_DIR" ]]; then
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mcp-broker-linux-mutation.XXXXXX")"
@@ -101,7 +110,7 @@ rm -f "$LOG_PATH"
 rm -rf "$MUTANTS_EXPORT_DIR"
 mkdir -p "$MUTANTS_EXPORT_DIR"
 
-docker run --rm \
+"${QOS_PREFIX[@]}" docker run --rm \
   -e MCP_BROKER_MUTATION_MAX_CHILDREN="$MAX_CHILDREN" \
   -e MCP_BROKER_MUTATION_ARGS="$MUTATION_ARGS_VALUE" \
   -v "$ARCHIVE_PATH:/tmp/source.tar:ro" \

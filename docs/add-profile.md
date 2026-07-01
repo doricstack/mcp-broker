@@ -93,7 +93,7 @@ upstreams:
     profiles:
       - codex
       - claude
-      - gemini
+      - agy
       - my-llm
 ```
 

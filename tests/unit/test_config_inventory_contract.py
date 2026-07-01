@@ -14,8 +14,8 @@ PUBLIC_CONFIG_FILE = ROOT / "config" / "broker.example.yaml"
 
 PRIVATE_CONFIG_FILE = ROOT / "config" / "broker.private.yaml"
 
-REQUIRED_CLIENT_PROFILES = {"codex", "claude", "gemini", "manual-test", "maintenance"}
-LLM_PROFILES = ("codex", "claude", "gemini")
+REQUIRED_CLIENT_PROFILES = {"codex", "claude", "agy", "manual-test", "maintenance"}
+LLM_PROFILES = ("codex", "claude", "agy")
 PUBLIC_EXAMPLE_UPSTREAMS = [
     "example-env-auth",
     "example-file-auth",
@@ -80,7 +80,7 @@ def test_public_example_client_commands_are_portable_and_runtime_derived() -> No
     clients = loaded.get("clients")
     assert isinstance(clients, dict)
 
-    for client_name in ["codex", "claude", "gemini"]:
+    for client_name in ["codex", "claude", "agy"]:
         client = clients.get(client_name)
         assert isinstance(client, dict), client_name
         assert client["command"] == "mcp-broker-client"
@@ -208,7 +208,7 @@ def test_public_example_config_is_comment_rich_and_teaches_common_mcp_patterns()
     assert [field for field in required_contract_fields if field not in public_text] == []
 
 
-def test_public_example_defines_gemini_profile_and_renderer() -> None:
+def test_public_example_defines_agy_profile_and_renderer() -> None:
     loaded = yaml.safe_load(PUBLIC_CONFIG_FILE.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     profiles = loaded.get("profiles")
@@ -216,17 +216,17 @@ def test_public_example_defines_gemini_profile_and_renderer() -> None:
     assert isinstance(profiles, dict)
     assert isinstance(clients, dict)
 
-    assert profiles["gemini"] == {
+    assert profiles["agy"] == {
         "max_tools": 80,
         "compact_tools_enabled": True,
         "broker_tool_name_style": "snake",
     }
-    assert clients["gemini"]["format"] == "mcp-settings-json"
-    assert clients["gemini"]["config_path"] == "$HOME/.gemini/settings.json"
-    assert clients["gemini"]["mcp_allowed_servers"] == ["mcp-broker"]
+    assert clients["agy"]["format"] == "mcp-settings-json"
+    assert clients["agy"]["config_path"] == "$HOME/.gemini/config/mcp_config.json"
+    assert clients["agy"]["mcp_allowed_servers"] == ["mcp-broker"]
 
 
-def test_private_config_preserves_public_contract_comments_and_gemini_profile() -> None:
+def test_private_config_preserves_public_contract_comments_and_agy_profile() -> None:
     from mcp_broker.config import BrokerConfig
 
     public_text = PUBLIC_CONFIG_FILE.read_text(encoding="utf-8")
@@ -251,17 +251,17 @@ def test_private_config_preserves_public_contract_comments_and_gemini_profile() 
     config = BrokerConfig.from_file(PRIVATE_CONFIG_FILE)
 
     assert [comment for comment in required_comments if comment not in private_text] == []
-    assert "gemini" in config.profiles
-    assert "gemini" in config.clients
-    missing_gemini = sorted(
+    assert "agy" in config.profiles
+    assert "agy" in config.clients
+    missing_agy = sorted(
         name
         for name, upstream in config.upstreams.items()
         if upstream.enabled
         and "codex" in upstream.profiles
         and "claude" in upstream.profiles
-        and "gemini" not in upstream.profiles
+        and "agy" not in upstream.profiles
     )
-    assert missing_gemini == []
+    assert missing_agy == []
 
 
 def test_private_config_keeps_llm_profile_exposure_in_parity() -> None:
@@ -279,7 +279,7 @@ def test_private_config_keeps_llm_profile_exposure_in_parity() -> None:
     }
 
     assert enabled_by_profile["codex"] == enabled_by_profile["claude"]
-    assert enabled_by_profile["codex"] == enabled_by_profile["gemini"]
+    assert enabled_by_profile["codex"] == enabled_by_profile["agy"]
 
 
 def test_private_config_path_is_gitignored() -> None:

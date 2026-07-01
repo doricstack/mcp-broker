@@ -39,7 +39,7 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "facade-smoke",
         "codex-facade-smoke",
         "claude-facade-smoke",
-        "gemini-facade-smoke",
+        "agy-facade-smoke",
         "discovery-parity",
         "codex-claude-discovery-parity",
         "launchagent-install",
@@ -173,14 +173,17 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert "scripts/check_mutation_stats.py" in mutation_section
     assert '$(if $(MUTATION_ARGS),--include-mutants $(MUTATION_ARGS),)' in mutation_section
     assert "CPU_COUNT ?=" in makefile
-    assert "LOCAL_CPU_BUDGET ?= 4" in makefile
+    assert "LOCAL_CPU_BUDGET ?= $(if $(filter Darwin,$(UNAME_S)),2,4)" in makefile
+    assert "MUTATION_QOS_PREFIX ?= $(if $(filter Darwin,$(UNAME_S)),taskpolicy -b,)" in makefile
+    assert "@$(MUTATION_QOS_PREFIX) $(MUTMUT) run" in mutation_section
     mutation_children_default = re.search(r"^MUTATION_MAX_CHILDREN \?= (.+)$", makefile, re.M)
     assert mutation_children_default is not None
-    assert mutation_children_default.group(1) == "$(LOCAL_CPU_BUDGET)"
+    assert mutation_children_default.group(1) == "$(if $(filter Darwin,$(UNAME_S)),1,$(LOCAL_CPU_BUDGET))"
     release_mutation_children_default = re.search(
         r"^MUTATION_RELEASE_CHILDREN \?= (.+)$", makefile, re.M
     )
     assert release_mutation_children_default is not None
+    assert "$(if $(filter Darwin,$(UNAME_S)),1," in release_mutation_children_default.group(1)
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in (
         release_mutation_children_default.group(1)
     )
@@ -199,12 +202,17 @@ def test_mutation_target_uses_venv_console_script() -> None:
         "MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout "
         "check_was_interrupted_by_user segfault not_checked"
     ) in makefile
-    assert "release-gate: ## Run release gates with mutation parallelized with non-mutating checks" in makefile
+    assert "RELEASE_GATE_JOBS ?= $(if $(filter Darwin,$(UNAME_S)),1,2)" in makefile
+    assert "RELEASE_GATE_PARALLEL ?= $(if $(filter Darwin,$(UNAME_S)),0,1)" in makefile
+    assert "release-gate: ## Run release gates with resource-bounded mutation" in makefile
     assert '$(call timed_make,"release-gate: deps",deps)' in makefile
     assert "doctor: deps runtime-layout broker-reap ## Verify runtime directories and report broker-owned leftovers" in makefile
     assert "broker-reap: deps runtime-layout ## Reap stale broker-owned pidfiles, sockets, and orphaned process groups" in makefile
     assert '$(call timed_make,"release-gate: parallel children",-j $(RELEASE_GATE_JOBS) _release-gate-quality _release-gate-package _release-gate-smoke _release-gate-mutation)' in makefile
-    assert '$(call timed_make,"release-gate: mutation",_release-gate-mutation)' not in makefile
+    assert '$(call timed_make,"release-gate: sequential quality-gate",_release-gate-quality)' in makefile
+    assert '$(call timed_make,"release-gate: sequential package-check",_release-gate-package)' in makefile
+    assert '$(call timed_make,"release-gate: sequential release-smoke",_release-gate-smoke)' in makefile
+    assert '$(call timed_make,"release-gate: sequential mutation",_release-gate-mutation)' in makefile
     assert "RELEASE_GATE_LOG_DIR ?= $(QUALITY_DIR)/release-gate" in makefile
     assert '"$(RELEASE_GATE_LOG_DIR)/quality-gate.log"' in makefile
     assert '"$(RELEASE_GATE_LOG_DIR)/package-check.log"' in makefile
@@ -252,16 +260,19 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     makefile = read_combined_makefiles(ROOT)
 
     assert "CPU_COUNT ?=" in makefile
-    assert "LOCAL_CPU_BUDGET ?= 4" in makefile
+    assert "LOCAL_CPU_BUDGET ?= $(if $(filter Darwin,$(UNAME_S)),2,4)" in makefile
     assert "PYTEST_WORKERS ?= $(LOCAL_CPU_BUDGET)" in makefile
     assert "PYTEST_TARGETED_WORKERS ?= 0" in makefile
     assert "PYTEST_FANOUT_WORKERS ?=" in makefile
     assert "PYTEST_PRECOMMIT_WORKERS ?=" in makefile
     assert "PYTEST_RELEASE_WORKERS ?=" in makefile
     assert "PYTEST_MARKER_EXPRESSION ?=" in makefile
+    assert "QUALITY_GATE_PYTEST_MARKER_EXPRESSION ?= $(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" in makefile
     assert 'PYTEST_MARKER_ARGS ?= $(if $(strip $(PYTEST_MARKER_EXPRESSION)),-m "$(PYTEST_MARKER_EXPRESSION)",)' in makefile
+    assert 'PYTEST_COV_MARKER_ARGS ?= $(if $(strip $(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)),-m "$(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)",)' in makefile
     assert "$(PYTEST_MARKER_ARGS) $(PYTEST_XDIST_ARGS)" in makefile
     assert "$(PYTEST_MARKER_ARGS) $(PYTEST_TARGETED_XDIST_ARGS)" in makefile
+    assert "$(PYTEST_COV_MARKER_ARGS) $(PYTEST_XDIST_ARGS)" in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(TEST_JOBS)")' in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(PRECOMMIT_JOBS)")' in makefile
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in makefile
@@ -279,14 +290,16 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     assert "PYTEST_TARGETED_COMMON ?=" in makefile
     assert "TEST_JOBS ?= 4" in makefile
     assert "PRECOMMIT_JOBS ?= 2" in makefile
-    assert "RELEASE_GATE_JOBS ?= 2" in makefile
+    assert "RELEASE_GATE_JOBS ?= $(if $(filter Darwin,$(UNAME_S)),1,2)" in makefile
+    assert "RELEASE_GATE_PARALLEL ?= $(if $(filter Darwin,$(UNAME_S)),0,1)" in makefile
     mutation_children_default = re.search(r"^MUTATION_MAX_CHILDREN \?= (.+)$", makefile, re.M)
     assert mutation_children_default is not None
-    assert mutation_children_default.group(1) == "$(LOCAL_CPU_BUDGET)"
+    assert mutation_children_default.group(1) == "$(if $(filter Darwin,$(UNAME_S)),1,$(LOCAL_CPU_BUDGET))"
     release_mutation_children_default = re.search(
         r"^MUTATION_RELEASE_CHILDREN \?= (.+)$", makefile, re.M
     )
     assert release_mutation_children_default is not None
+    assert "$(if $(filter Darwin,$(UNAME_S)),1," in release_mutation_children_default.group(1)
     assert 'int("$(LOCAL_CPU_BUDGET)") // int("$(RELEASE_GATE_JOBS)")' in (
         release_mutation_children_default.group(1)
     )
@@ -355,6 +368,10 @@ def test_make_parallel_gates_report_child_and_total_elapsed_time() -> None:
         "release-gate: total",
         "release-gate: deps",
         "release-gate: parallel children",
+        "release-gate: sequential quality-gate",
+        "release-gate: sequential package-check",
+        "release-gate: sequential release-smoke",
+        "release-gate: sequential mutation",
         "publish-everywhere-check: total",
         "publish-everywhere-check: version check",
         "publish-everywhere-check: release gate",
@@ -456,6 +473,8 @@ def test_live_tests_use_timeout_budget_that_can_cover_configured_upstreams() -> 
     assert "$(PYTEST_COMMON) $(PYTEST_LIVE_TARGETS)" not in live_section
     assert "$(PYTEST_COV_COMMON)" in coverage_section
     assert "$(PYTEST_COMMON)" not in coverage_section
+    assert "$(PYTEST_MARKER_ARGS)" not in coverage_section
+    assert "$(PYTEST_COV_MARKER_ARGS)" in makefile
 
 
 def test_deps_installs_public_example_for_editable_cli() -> None:

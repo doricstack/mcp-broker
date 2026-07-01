@@ -69,7 +69,7 @@ make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
 make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
 ```
 
-Use the same flow for `CLIENT=claude` or `CLIENT=gemini` after that profile
+Use the same flow for `CLIENT=claude` or `CLIENT=agy` after that profile
 passes validation. For another JSON settings client, generate a starter block:
 
 ```bash

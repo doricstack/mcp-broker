@@ -366,6 +366,68 @@ def test_daemon_session_and_auth_health_ignore_unconfigured_metadata(
     }
 
 
+def test_daemon_cwd_project_injection_returns_arguments_without_config(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+
+    daemon = BrokerDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
+    arguments = {"query": "BrokerCore"}
+
+    assert (
+        daemon._inject_cwd_project_arg(
+            "memory-index.search_graph",
+            arguments,
+            {"client_cwd": str(tmp_path)},
+        )
+        is arguments
+    )
+
+
+def test_daemon_cwd_project_injection_adds_project_for_configured_upstream(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.config import BrokerSettings, RuntimeConfig, UpstreamConfig
+    from mcp_broker.daemon import BrokerDaemon
+
+    repo = tmp_path / "Projects" / "apps" / "demo"
+    (repo / ".git").mkdir(parents=True)
+    config = BrokerConfig(
+        runtime=RuntimeConfig(
+            root=tmp_path / "runtime",
+            socket_path=tmp_path / "broker.sock",
+            log_dir=tmp_path / "runtime" / "logs",
+            state_dir=tmp_path / "runtime" / "state",
+            secrets_dir=tmp_path / "runtime" / "secrets",
+        ),
+        broker=BrokerSettings(),
+        upstreams={
+            "memory-index": UpstreamConfig(
+                name="memory-index",
+                command="memory-index",
+                tool_prefix="memory-index",
+                inject_cwd_project=True,
+            )
+        },
+    )
+    daemon = BrokerDaemon(
+        runtime_root=tmp_path / "runtime",
+        socket_path=tmp_path / "broker.sock",
+        broker_config=config,
+    )
+
+    result = daemon._inject_cwd_project_arg(
+        "memory-index.search_graph",
+        {"query": "BrokerCore"},
+        {"client_cwd": str(repo / "src")},
+    )
+
+    assert result == {
+        "query": "BrokerCore",
+        "project": str(repo).lstrip("/").replace("/", "-"),
+    }
+
+
 def test_daemon_health_reports_passive_missing_auth_without_secret_paths(tmp_path: Path) -> None:
     from mcp_broker.config import BrokerSettings, RuntimeConfig, UpstreamConfig
     from mcp_broker.daemon import BrokerDaemon

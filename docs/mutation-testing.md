@@ -9,20 +9,25 @@ make release-gate
 ```
 
 `release-gate` refreshes dependencies once, then runs repo-local quality checks,
-package checks, release smoke, and mutation testing in parallel.
+package checks, release smoke, and mutation testing. Linux/CI can run those
+children in parallel. macOS runs them sequentially by default so mutation cannot
+fight pytest and Docker for the same cores.
 
 Local parallelism is capped by default:
 
 ```bash
-LOCAL_CPU_BUDGET=4
+LOCAL_CPU_BUDGET=2  # macOS
+LOCAL_CPU_BUDGET=4  # Linux and CI
 ```
 
 That budget feeds pytest workers, release-gate fanout workers, and mutmut
-children. During `release-gate`, mutation receives a release-scoped child count
-divided by `RELEASE_GATE_JOBS` so it does not consume the full workstation
-budget while the other release children run. Raise the budget in CI or on a
-spare machine, for example `make release-gate LOCAL_CPU_BUDGET=8`; lower it
-when you need the workstation to stay responsive.
+children. On macOS, mutmut and the Linux-container mutation path default to one
+child and run through `taskpolicy -b` so the desktop stays responsive. During a
+Linux/CI `release-gate`, mutation receives a release-scoped child count divided
+by `RELEASE_GATE_JOBS` so it does not consume the full runner budget while the
+other release children run. Raise the budget in CI or on a spare machine, for
+example `make release-gate LOCAL_CPU_BUDGET=8`; lower it when you need the
+workstation to stay responsive.
 
 The private source repo also has `make maintainer-release-gate`, which runs the
 public export dry run alongside the public release checks.
@@ -42,6 +47,16 @@ make mutation-linux
 `make release-gate` selects `mutation-linux` on Darwin and `mutation` on Linux.
 This avoids macOS fork-related mutmut failures while still using the same
 source tree, `setup.cfg`, and stats checker.
+
+Direct script runs follow the same macOS guard:
+
+```bash
+scripts/linux-mutation.sh
+```
+
+When `MCP_BROKER_MUTATION_MAX_CHILDREN` is unset, the script uses one child on
+macOS and four elsewhere. The host-side Docker run uses background QoS on
+macOS.
 
 The target runs mutmut against `src/mcp_broker` using public unit and journey
 tests, then reads

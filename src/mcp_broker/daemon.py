@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import socket
-import subprocess
 import threading
 import time
 from typing import Sequence
@@ -18,7 +17,6 @@ from mcp_broker.catalog import BrokerCatalogFacade, profile_allows_upstream
 from mcp_broker.config import BrokerConfig, UpstreamConfig
 from mcp_broker.daemon_helpers import (
     configured_upstream_health as _configured_upstream_health,
-    health_profile as _health_profile,
     merge_passive_auth_probe as _merge_passive_auth_probe,
     passive_auth_probe as _passive_auth_probe,
     per_session_health_snapshot as _per_session_health_snapshot,
@@ -28,11 +26,13 @@ from mcp_broker.daemon_helpers import (
     stdio_client_name as _stdio_client_name,
     utc_timestamp as _utc_timestamp,
 )
+from mcp_broker.daemon_provenance import git_sha as _git_sha_impl
+from mcp_broker.daemon_provenance import source_provenance as _source_provenance_impl
+from mcp_broker.daemon_request_context import BrokerDaemonRequestContextMixin
 from mcp_broker.daemon_status import BrokerDaemonStatusMixin
 from mcp_broker.daemon_upstreams import BrokerDaemonUpstreamMixin
 from mcp_broker.jsonrpc import JsonRpcRequest, JsonRpcResponse
 from mcp_broker.protocol import McpProtocolHandler
-from mcp_broker.profiles import ToolExposureProfile, select_profile_for_cwd
 from mcp_broker.runtime_reaper import RuntimePaths, write_socket_metadata
 from mcp_broker.upstream_http import HttpUpstreamClient, HttpUpstreamError
 from mcp_broker.upstream_protocols import (
@@ -55,33 +55,15 @@ JANITOR_SWEEP_INTERVAL_SECONDS = 30
 
 
 def _git_sha(source_dir: Path) -> str | None:
-    """Best-effort short git SHA of the source tree, or None if unavailable."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(source_dir), "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    sha = result.stdout.strip()
-    return sha or None
+    return _git_sha_impl(source_dir)
 
 
 def _source_provenance() -> dict[str, str]:
-    """Identify which source tree and version this daemon is running.
-
-    Logged once at startup so a session can tell, at a glance, which checkout is
-    live (e.g. private dev tree vs the deployed public export) without guessing.
-    """
-    source_path = Path(__file__).resolve().parent
-    provenance = {"source_path": str(source_path), "version": __version__}
-    sha = _git_sha(source_path)
-    if sha is not None:
-        provenance["git_sha"] = sha
-    return provenance
+    return _source_provenance_impl(
+        Path(__file__).resolve().parent,
+        __version__,
+        git_sha_fn=_git_sha,
+    )
 
 
 class BrokerDaemonError(Exception):
@@ -89,7 +71,11 @@ class BrokerDaemonError(Exception):
 
 
 @dataclass
-class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
+class BrokerDaemon(
+    BrokerDaemonStatusMixin,
+    BrokerDaemonUpstreamMixin,
+    BrokerDaemonRequestContextMixin,
+):
     runtime_root: Path
     socket_path: Path
     broker_config: BrokerConfig | None = None
@@ -370,10 +356,12 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
                     call_upstream=call_upstream,
                     call_locks=self._upstream_call_locks,
                     status_provider=self._upstream_health_for_status,
+                    client_cwd=session_context.get("client_cwd"),
                 ).call_tool(name, arguments)
             except (BrokerToolError, ValueError) as exc:
                 return JsonRpcResponse.error(request.id, -32000, str(exc))
             return JsonRpcResponse.result(request.id, result)
+        arguments = self._inject_cwd_project_arg(name, arguments, session_context)
         core = BrokerCore(
             settings=self.broker_config.broker,
             upstreams=self.broker_config.upstreams,
@@ -386,79 +374,6 @@ class BrokerDaemon(BrokerDaemonStatusMixin, BrokerDaemonUpstreamMixin):
             message = exc.message if isinstance(exc, BrokerToolError) else str(exc)
             return JsonRpcResponse.error(request.id, -32000, message)
         return JsonRpcResponse.result(request.id, result)
-
-    def _profile_from_params(self, params: object) -> ToolExposureProfile | None:
-        if not isinstance(params, dict) or params.get("profile") is None:
-            return None
-        if self.broker_config is None:
-            return None
-        profile_name = params.get("profile")
-        if not isinstance(profile_name, str):
-            raise ValueError("profile must be a string")
-        profile = self.broker_config.profiles.get(profile_name)
-        if profile is None:
-            raise ValueError(f"unknown profile: {profile_name}")
-        return profile
-
-    def _effective_profile(
-        self,
-        params: object,
-        session_context: dict[str, str],
-    ) -> ToolExposureProfile | None:
-        """Resolve the requested profile, then let a client-root rule override it by cwd."""
-        requested = self._profile_from_params(params)
-        if self.broker_config is None:
-            return requested
-        return select_profile_for_cwd(
-            self.broker_config.profiles,
-            requested,
-            session_context.get("client_cwd"),
-        )
-
-    def _effective_profile_name(self, request: dict[str, object]) -> str:
-        params = request.get("params")
-        try:
-            session_context = self._session_context_from_params(params)
-            profile = self._effective_profile(params, session_context)
-        except ValueError:
-            return _health_profile(request)
-        if profile is not None:
-            return profile.name
-        return _health_profile(request)
-
-    def _session_id_from_params(self, params: object) -> str | None:
-        if not isinstance(params, dict):
-            return None
-        session_id = params.get("broker_session_id")
-        if session_id is None:
-            meta = params.get("_meta")
-            if isinstance(meta, dict):
-                broker_meta = meta.get("mcp_broker")
-                if isinstance(broker_meta, dict):
-                    session_id = broker_meta.get("session_id")
-        if session_id is None:
-            return None
-        if not isinstance(session_id, str) or not session_id:
-            raise ValueError("broker_session_id must be a non-empty string")
-        return session_id
-
-    def _session_context_from_params(self, params: object) -> dict[str, str]:
-        if not isinstance(params, dict):
-            return {}
-        client_cwd = params.get("broker_client_cwd")
-        if client_cwd is None:
-            meta = params.get("_meta")
-            if isinstance(meta, dict):
-                broker_meta = meta.get("mcp_broker")
-                if isinstance(broker_meta, dict):
-                    client_cwd = broker_meta.get("client_cwd")
-        if client_cwd is None:
-            return {}
-        if not isinstance(client_cwd, str) or not client_cwd:
-            raise ValueError("broker_client_cwd must be a non-empty string")
-        if not Path(client_cwd).is_absolute():
-            raise ValueError("broker_client_cwd must be an absolute path")
-        return {"client_cwd": client_cwd}
 
     def _create_stdio_upstream_process(
         self,

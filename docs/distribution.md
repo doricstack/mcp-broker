@@ -178,9 +178,10 @@ ${NPM_PACKAGE_NAME}
 Do not publish the unscoped `mcp-broker` package name on NPM. That name already
 belongs to a different project.
 
-NPM trusted publishing is the preferred auth path. The publish workflow should
-use GitHub Actions OIDC from the public repo and should publish only on GitHub
-release `published`, manual dispatch, or repository dispatch events.
+NPM trusted publishing is the preferred auth path. The current workflow uses the
+scoped `NPM_TOKEN` secret through `NODE_AUTH_TOKEN` until the package scope has
+an OIDC trusted publisher configured. The publish workflow should run only on
+GitHub release `published`, manual dispatch, or repository dispatch events.
 
 Details live in `docs/npm-distribution.md`.
 

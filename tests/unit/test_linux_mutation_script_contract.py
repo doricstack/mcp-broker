@@ -17,6 +17,18 @@ def test_linux_mutation_script_streams_container_output_to_host_log() -> None:
     assert 'printf "linux_mutation=true image=%s stats=%s log=%s\\n"' in script
 
 
+def test_linux_mutation_script_uses_mac_safe_default_and_background_qos() -> None:
+    script = (ROOT / "scripts" / "linux-mutation.sh").read_text(encoding="utf-8")
+
+    assert "DEFAULT_MAX_CHILDREN=4" in script
+    assert 'if [[ "$(uname -s)" == "Darwin" ]]; then' in script
+    assert "  DEFAULT_MAX_CHILDREN=1" in script
+    assert 'MAX_CHILDREN="${MCP_BROKER_MUTATION_MAX_CHILDREN:-$DEFAULT_MAX_CHILDREN}"' in script
+    assert "QOS_PREFIX=()" in script
+    assert "QOS_PREFIX=(taskpolicy -b)" in script
+    assert '"${QOS_PREFIX[@]}" docker run --rm' in script
+
+
 def test_linux_mutation_script_preserves_caller_supplied_work_dir() -> None:
     script = (ROOT / "scripts" / "linux-mutation.sh").read_text(encoding="utf-8")
 

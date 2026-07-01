@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke gemini-facade-smoke profile-validation codex-profile-validation claude-profile-validation gemini-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -39,7 +39,7 @@ broker-reap: deps runtime-layout ## Reap stale broker-owned pidfiles, sockets, a
 broker-smoke: runtime-layout ## Run broker wiring safety smoke without writing client configs
 	@$(MAKE) --no-print-directory config-render CLIENT=codex CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	@$(MAKE) --no-print-directory config-render CLIENT=claude CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
-	@$(MAKE) --no-print-directory config-render CLIENT=gemini CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
+	@$(MAKE) --no-print-directory config-render CLIENT=agy CONFIG_RENDER_APPLY=0 RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	@$(MAKE) --no-print-directory broker-reap RUNTIME_ROOT="$(RUNTIME_ROOT)" SOCKET_PATH="$(SOCKET_PATH)"
 	$(call log_success,"Broker smoke passed")
 
@@ -61,8 +61,8 @@ codex-facade-smoke: facade-smoke ## Exercise compact Codex broker facade through
 claude-facade-smoke: PROFILE=claude
 claude-facade-smoke: facade-smoke ## Exercise compact Claude broker facade through the client shim without wiring Claude
 
-gemini-facade-smoke: PROFILE=gemini
-gemini-facade-smoke: facade-smoke ## Exercise compact Gemini broker facade profile
+agy-facade-smoke: PROFILE=agy
+agy-facade-smoke: facade-smoke ## Exercise compact AGY broker facade profile
 
 profile-validation: runtime-layout broker-reap ## Validate all enabled upstreams for PROFILE using YAML smoke probes
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.profile_validation \
@@ -75,8 +75,8 @@ codex-profile-validation: profile-validation ## Validate every configured Codex 
 claude-profile-validation: PROFILE=claude
 claude-profile-validation: profile-validation ## Validate every configured Claude upstream without rendering Claude
 
-gemini-profile-validation: PROFILE=gemini
-gemini-profile-validation: profile-validation ## Validate every configured Gemini upstream through the broker
+agy-profile-validation: PROFILE=agy
+agy-profile-validation: profile-validation ## Validate every configured AGY upstream through the broker
 
 discovery-parity: runtime-layout broker-reap ## Compare broker discovery between PARITY_LEFT_PROFILE and PARITY_RIGHT_PROFILE
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.discovery_parity \
