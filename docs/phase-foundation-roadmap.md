@@ -31,9 +31,9 @@ control plane on day one.
 - [x] Make the public clone-to-running path work through `make setup`, config
       initialization, profile validation, smoke checks, client render, rollback,
       and troubleshooting.
-- [ ] Add installed runtime manifests with active and previous pointers so
+- [x] Add installed runtime manifests with active and previous pointers so
       plugin setup does not depend on a developer checkout path.
-- [ ] Add a plugin-owned launcher that resolves the active installed runtime.
+- [x] Add a plugin-owned launcher that resolves the active installed runtime.
 - [ ] Add runtime artifact metadata, digest verification, archive safety checks,
       and fail-closed activation.
 - [ ] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
@@ -67,7 +67,7 @@ control plane on day one.
 - [ ] Add a minimal reference control plane that exercises governance without
       centralizing tool execution.
 
-## Phase 3: Shared Runtime
+## Phase 3: Shared Runtime Build Sequence
 
 - [x] Document that shared hosted execution is not implemented. Contract:
       `docs/shared-runtime-guardrails.md`.
