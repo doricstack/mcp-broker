@@ -1,0 +1,34 @@
+{
+  "name": "mcp-broker",
+  "version": "2.0.0",
+  "description": "Local MCP broker for sharing upstream MCP servers across MCP clients.",
+  "author": {
+    "name": "mcp-broker maintainers"
+  },
+  "homepage": "https://github.com/doricstack/mcp-broker",
+  "repository": "https://github.com/doricstack/mcp-broker",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "broker",
+    "codex"
+  ],
+  "interface": {
+    "displayName": "mcp-broker",
+    "shortDescription": "Run a local MCP broker from one public package.",
+    "longDescription": "Install, inspect, dry-run client config, apply with approval, and roll back local broker setup.",
+    "developerName": "mcp-broker maintainers",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Check broker status.",
+      "Dry-run Codex config.",
+      "Roll back a config change."
+    ],
+    "brandColor": "#0EA5A0"
+  }
+}

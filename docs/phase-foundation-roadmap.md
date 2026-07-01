@@ -26,7 +26,7 @@ control plane on day one.
 - [x] Add transactional deployment state under the runtime state directory,
       including active and previous pointers, rollback journal, and recovery from
       partial writes.
-- [ ] Add a plugin package contract with repo-owned install, status, dry-run,
+- [x] Add a plugin package contract with repo-owned install, status, dry-run,
       apply, rollback, and smoke checks.
 - [ ] Make the public clone-to-running path work through `make setup`, config
       initialization, profile validation, smoke checks, client render, rollback,

@@ -13,6 +13,7 @@ include $(ROOT)/mk/logging.mk
 include $(ROOT)/mk/bootstrap.mk
 include $(ROOT)/mk/tests.mk
 include $(ROOT)/mk/runtime.mk
+include $(ROOT)/mk/plugin.mk
 include $(ROOT)/mk/distribution.mk
 include $(ROOT)/mk/maintainer.mk
 include $(ROOT)/mk/release.mk
