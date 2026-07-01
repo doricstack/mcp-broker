@@ -34,7 +34,7 @@ control plane on day one.
 - [x] Add installed runtime manifests with active and previous pointers so
       plugin setup does not depend on a developer checkout path.
 - [x] Add a plugin-owned launcher that resolves the active installed runtime.
-- [ ] Add runtime artifact metadata, digest verification, archive safety checks,
+- [x] Add runtime artifact metadata, digest verification, archive safety checks,
       and fail-closed activation.
 - [ ] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
       uninstall transactions.
