@@ -146,6 +146,11 @@ def test_daemon_request_log_records_ok_error_and_notification_snapshots(
     assert daemon._last_request_method is None
     assert daemon._last_request_status == "notification"
     assert snapshot == {
+        "break_glass": {
+            "active_record": None,
+            "degraded": False,
+            "status": "inactive",
+        },
         "identity": {
             "active_profile": None,
             "active_profiles": [],
@@ -234,6 +239,11 @@ def test_daemon_status_snapshot_uses_config_state_dir_and_replaces_temp_file(
         "broker-status.json"
     ]
     assert json.loads(daemon.status_snapshot_path.read_text(encoding="utf-8")) == {
+        "break_glass": {
+            "active_record": None,
+            "degraded": False,
+            "status": "inactive",
+        },
         "identity": {
             "active_profile": None,
             "active_profiles": ["codex", "maintenance"],

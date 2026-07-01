@@ -12,6 +12,7 @@ from threading import Event
 from typing import Callable, Sequence
 
 from mcp_broker.bootstrap_transactions import main as bootstrap_transactions_main
+from mcp_broker.break_glass import main as break_glass_main
 from mcp_broker.client import ClientShim, ClientShimError
 from mcp_broker.bundle_loader import main as bundle_loader_main
 from mcp_broker.config import BrokerConfig
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_render_parser(subparsers)
     _add_bundle_parser(subparsers)
     _add_deployment_parser(subparsers)
+    _add_break_glass_parser(subparsers)
     _add_fleet_status_parser(subparsers)
     _add_rollout_parser(subparsers)
     _add_runtime_parser(subparsers)
@@ -163,6 +165,35 @@ def _add_deployment_parser(
     )
     recover_parser.add_argument("--state-dir", required=True, type=Path)
     recover_parser.set_defaults(handler=handle_deployment)
+
+
+def _add_break_glass_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    break_glass_parser = subparsers.add_parser(
+        "break-glass",
+        help="Manage local break-glass audit records",
+    )
+    break_glass_subparsers = break_glass_parser.add_subparsers(
+        dest="break_glass_command",
+        required=True,
+    )
+    create_parser = break_glass_subparsers.add_parser(
+        "create",
+        help="Create an expiring break-glass audit record",
+    )
+    create_parser.add_argument("--state-dir", required=True, type=Path)
+    create_parser.add_argument("--reason", required=True)
+    create_parser.add_argument("--operator", required=True)
+    create_parser.add_argument("--expires-at", required=True)
+    create_parser.add_argument("--bypass-policy", action="append", required=True, default=[])
+    create_parser.set_defaults(handler=handle_break_glass)
+    status_parser = break_glass_subparsers.add_parser(
+        "status",
+        help="Report active break-glass status",
+    )
+    status_parser.add_argument("--state-dir", required=True, type=Path)
+    status_parser.set_defaults(handler=handle_break_glass)
 
 
 def _add_fleet_status_parser(
@@ -513,6 +544,24 @@ def handle_deployment(args: argparse.Namespace) -> int:
         if args.dry_run:
             argv.append("--dry-run")
     return deployments_main(argv)
+
+
+def handle_break_glass(args: argparse.Namespace) -> int:
+    argv = [args.break_glass_command, "--state-dir", str(args.state_dir.expanduser())]
+    if args.break_glass_command == "create":
+        argv.extend(
+            [
+                "--reason",
+                args.reason,
+                "--operator",
+                args.operator,
+                "--expires-at",
+                args.expires_at,
+            ]
+        )
+        for policy_path in args.bypass_policy:
+            argv.extend(["--bypass-policy", policy_path])
+    return break_glass_main(argv)
 
 
 def handle_fleet_status(args: argparse.Namespace) -> int:

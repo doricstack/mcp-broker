@@ -1,7 +1,7 @@
 # Phase Foundation Roadmap
 
 This roadmap describes the public product sequence for plugin setup, enterprise
-governance, and shared-runtime guardrails. Private local upstream inventory,
+governance, and shared-runtime buildout. Private local upstream inventory,
 operator notes, and maintainer task history stay out of this document.
 
 ## Current Position
@@ -11,8 +11,9 @@ local YAML config, exposes one compact MCP server to clients, and routes calls t
 configured upstream MCP servers. That remains the default execution boundary.
 
 The next work adds contracts around that local runtime so the same repo can serve
-individual users, small teams, and larger enterprises without requiring a hosted
-control plane on day one.
+individual users, small teams, and larger enterprises. Shared runtime work is in
+scope for Phase 3, but local execution remains the default until the isolation,
+quota, audit, rollback, and E2E gates pass.
 
 ## Phase 1: Plugin And Local Deployment Foundation
 
@@ -40,7 +41,7 @@ control plane on day one.
       uninstall transactions.
 - [x] Add layered configuration composition with deterministic merge, digest,
       provenance, and secret-reference validation.
-- [ ] Add break-glass audit records and degraded status.
+- [x] Add break-glass audit records and degraded status.
 - [ ] Add cross-platform bootstrap tests for macOS, Linux, and Windows service
       setup without mutating host state by default.
 

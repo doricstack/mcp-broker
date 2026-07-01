@@ -141,6 +141,27 @@ upstreams:
 
 Use this for slow mutating operations instead of raising the entire upstream timeout. Small status and discovery calls should still fail fast.
 
+## Active Break-Glass Mode
+
+Symptoms:
+- `make broker-status` or `broker_status` reports `status: degraded`.
+- The status payload contains `break_glass.degraded: true`.
+- Operators need to see which policy paths are bypassed before continuing.
+
+Checks:
+
+```bash
+make break-glass-status
+```
+
+Expected result: the status output names the operator, reason, expiration, and
+bypassed policy paths. If the record is expired, status reports inactive and the
+broker must not treat the bypass as active.
+
+Break-glass records are audit artifacts under `state/break-glass/`. Do not edit
+the active pointer or record files by hand. Create a new expiring record with
+`make break-glass-create` when an emergency bypass is still required.
+
 ## Profile Denials
 
 Symptoms:

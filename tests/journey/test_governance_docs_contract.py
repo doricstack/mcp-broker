@@ -46,6 +46,11 @@ def test_governance_docs_split_publishable_bundle_documents() -> None:
         "canary",
         "staged rollout",
         "rollback",
+        "break-glass",
+        "degraded status",
+        "bypassed policy paths",
+        "audit record",
+        "expiration",
         "compatibility rejection",
     ]
     forbidden_terms = [

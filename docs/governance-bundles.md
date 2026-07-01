@@ -136,6 +136,40 @@ Governance documents are evaluated by the local broker. The contract is:
 
 See `docs/governance-control-plane.md` for the Phase 2 control-plane contract.
 
+## Break-Glass Audit
+
+Break-glass is a local, time-bound policy bypass record. It is for emergency
+operator action only, and it must leave an audit record before any bypassed
+policy path is treated as active.
+
+Create a record with an operator, reason, expiration, and one or more bypassed
+policy paths:
+
+```bash
+make break-glass-create \
+  BREAK_GLASS_OPERATOR=operator@example.com \
+  BREAK_GLASS_REASON="Emergency runtime recovery" \
+  BREAK_GLASS_EXPIRES_AT=2099-07-01T12:30:00Z \
+  BREAK_GLASS_BYPASS_POLICY_PATHS="policy.rollout.approval policy.bootstrap.apply"
+```
+
+Inspect status:
+
+```bash
+make break-glass-status
+mcp-broker break-glass status --state-dir ~/mcp/mcp-broker/state
+```
+
+Records live under `state/break-glass/`. The active pointer is
+`state/break-glass/active.json`, record files live under
+`state/break-glass/records/`, and the append-only audit log is
+`state/break-glass/audit.jsonl`.
+
+While a valid record is active, daemon status reports `status: degraded` and
+adds a `break_glass` object with `degraded: true`, the active record, expiration,
+operator, reason, and bypassed policy paths. Expired records are rejected for
+active use and status returns inactive.
+
 ## Current Status
 
 - P1.2 defines the desired-state schema and helper metadata.
@@ -143,5 +177,7 @@ See `docs/governance-control-plane.md` for the Phase 2 control-plane contract.
 - P1.4 adds transactional deployment state and rollback records.
 - P1.N5 adds dry-run layered config composition with digest, provenance,
   conflict reporting, and secret-reference validation.
+- P1.N6 adds local break-glass audit records with reason, operator, expiration,
+  bypassed policy paths, and degraded status.
 - P2.1 splits the bundle model into profile, upstream-catalog, policy, rollout,
   and compatibility documents for enterprise governance.
