@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcp-broker.local/schema/broker.bundle.schema.json",
+  "title": "mcp-broker desired-state bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "version",
+    "channel",
+    "source",
+    "checksum",
+    "applies_to",
+    "profiles",
+    "upstreams",
+    "clients",
+    "policy",
+    "compatibility"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "bundle_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel": {
+      "$ref": "#/$defs/identifier"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "checksum": {
+      "$ref": "#/$defs/checksum"
+    },
+    "applies_to": {
+      "$ref": "#/$defs/appliesTo"
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/profile"
+      }
+    },
+    "upstreams": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/upstream"
+      }
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/client"
+      }
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "uri", "created_by"],
+      "properties": {
+        "type": {
+          "enum": ["file", "registry", "artifact"]
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_by": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        }
+      }
+    },
+    "appliesTo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["broker_id", "environments"],
+      "properties": {
+        "broker_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "environments": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tools": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "compact_tools_enabled": {
+          "type": "boolean"
+        },
+        "broker_tool_name_style": {
+          "enum": ["dotted", "snake"]
+        },
+        "allow_mutating_upstreams": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": ["shared", "per_session", "disabled"]
+        },
+        "transport": {
+          "enum": ["stdio", "http", "sse"]
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringList"
+        },
+        "tool_prefix": {
+          "$ref": "#/$defs/identifier"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/stringList"
+        },
+        "profiles": {
+          "$ref": "#/$defs/stringList"
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "serialize_calls": {
+          "type": "boolean"
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "entry_name"],
+      "properties": {
+        "format": {
+          "enum": ["codex-toml", "claude-json", "mcp-settings-json"]
+        },
+        "entry_name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "$ref": "#/$defs/stringList"
+        },
+        "mcp_allowed_servers": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_required",
+        "allow_remote_code_execution",
+        "mutating_upstreams_require_allowlist"
+      ],
+      "properties": {
+        "approval_required": {
+          "const": true
+        },
+        "allow_remote_code_execution": {
+          "const": false
+        },
+        "mutating_upstreams_require_allowlist": {
+          "const": true
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_config_schema_version", "max_config_schema_version"],
+      "properties": {
+        "min_config_schema_version": {
+          "const": 1
+        },
+        "max_config_schema_version": {
+          "const": 1
+        },
+        "required_features": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

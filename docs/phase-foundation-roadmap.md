@@ -19,7 +19,7 @@ control plane on day one.
 - [x] Add a config-backed broker identity/status contract with `broker_id`,
       `environment`, `bundle_version`, `schema_version`, active profile, and
       configured profile set.
-- [ ] Define a desired-state bundle schema for profiles, upstream catalog
+- [x] Define a desired-state bundle schema for profiles, upstream catalog
       entries, client render targets, policy, compatibility, and provenance.
 - [ ] Add a local bundle validator and loader that rejects invalid schema,
       version, checksum, and compatibility input without changing runtime state.
