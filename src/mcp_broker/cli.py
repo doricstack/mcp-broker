@@ -16,6 +16,7 @@ from mcp_broker.config import BrokerConfig
 from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
 from mcp_broker.deployments import main as deployments_main
+from mcp_broker.fleet_status import main as fleet_status_main
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -73,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_bundle_parser(subparsers)
     _add_deployment_parser(subparsers)
+    _add_fleet_status_parser(subparsers)
 
     return parser
 
@@ -121,6 +123,25 @@ def _add_deployment_parser(
     )
     recover_parser.add_argument("--state-dir", required=True, type=Path)
     recover_parser.set_defaults(handler=handle_deployment)
+
+
+def _add_fleet_status_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    fleet_parser = subparsers.add_parser(
+        "fleet-status",
+        help="Export central-safe broker fleet status",
+    )
+    fleet_subparsers = fleet_parser.add_subparsers(
+        dest="fleet_status_command",
+        required=True,
+    )
+    export_parser = fleet_subparsers.add_parser(
+        "export",
+        help="Export a redacted fleet status payload from broker-status.json",
+    )
+    export_parser.add_argument("--status-file", required=True, type=Path)
+    export_parser.set_defaults(handler=handle_fleet_status)
 
 
 def _daemon_parser(
@@ -367,6 +388,10 @@ def handle_deployment(args: argparse.Namespace) -> int:
         if args.dry_run:
             argv.append("--dry-run")
     return deployments_main(argv)
+
+
+def handle_fleet_status(args: argparse.Namespace) -> int:
+    return fleet_status_main(["--status-file", str(args.status_file.expanduser())])
 
 
 if __name__ == "__main__":
