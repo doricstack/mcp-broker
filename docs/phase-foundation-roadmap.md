@@ -38,7 +38,7 @@ control plane on day one.
       and fail-closed activation.
 - [x] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
       uninstall transactions.
-- [ ] Add layered configuration composition with deterministic merge, digest,
+- [x] Add layered configuration composition with deterministic merge, digest,
       provenance, and secret-reference validation.
 - [ ] Add break-glass audit records and degraded status.
 - [ ] Add cross-platform bootstrap tests for macOS, Linux, and Windows service
