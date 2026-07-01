@@ -11,6 +11,10 @@ make broker-status
 
 If either command reports stale resources, a failed upstream, or a missing command, fix that condition before retrying client wiring.
 
+If this is a first-time public checkout, return to the Clone-To-Running Path in
+`docs/adoption-guide.md` and confirm each command passes before debugging a
+client-specific symptom.
+
 When a client uses compact broker tools, `/mcp` shows only the single broker
 entry. Call `broker_status` from the client, or run
 `make profile-validation PROFILE=<profile>`, to inspect and validate which

@@ -319,6 +319,53 @@ def test_public_adoption_guides_cover_comparison_adoption_and_safety() -> None:
     assert "docs/safety.md" in readme
 
 
+def test_clone_to_running_path_is_documented_as_one_generic_flow() -> None:
+    make_vars = read_make_variable_defaults(ROOT)
+    repository_url = expand_make_value(make_vars, make_vars["GITHUB_REPOSITORY_URL"])
+    adoption = (ROOT / "docs" / "adoption-guide.md").read_text(encoding="utf-8")
+    install = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+    troubleshooting = (ROOT / "docs" / "troubleshooting.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    ordered_commands = [
+        'git clone "$GITHUB_REPOSITORY_URL" mcp-broker',
+        "cd mcp-broker",
+        "make setup",
+        "make config-init",
+        "make config-validate",
+        "make broker-smoke",
+        "make profile-validation PROFILE=codex",
+        "make config-backup CLIENT=codex",
+        "make config-render CLIENT=codex CONFIG_RENDER_APPLY=0",
+        "make broker-status",
+        "make config-render CLIENT=codex CONFIG_RENDER_APPLY=1",
+        "make config-rollback CLIENT=codex",
+    ]
+    required_terms = [
+        "## Clone-To-Running Path",
+        "Add one upstream",
+        "No client config is written before `CONFIG_RENDER_APPLY=1`",
+        "Keep local paths, account names, and secrets out of git",
+        *ordered_commands,
+    ]
+    forbidden_terms = [
+        "/Users/",
+        "CloudStorage",
+        "broker.private.yaml.bak",
+        "navin@",
+        "ms365-",
+        repository_url,
+    ]
+
+    assert [term for term in required_terms if term not in adoption] == []
+    assert [term for term in forbidden_terms if term in adoption] == []
+    positions = [adoption.index(command) for command in ordered_commands]
+    assert positions == sorted(positions)
+    assert "docs/adoption-guide.md#clone-to-running-path" in readme
+    assert "Clone-To-Running Path" in install
+    assert "Clone-To-Running Path" in troubleshooting
+
+
 def test_public_distribution_docs_cover_package_registry_and_directory_paths() -> None:
     make_vars = read_make_variable_defaults(ROOT)
     repository_url = expand_make_value(make_vars, make_vars["GITHUB_REPOSITORY_URL"])

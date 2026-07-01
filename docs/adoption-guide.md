@@ -21,6 +21,50 @@ broker_status
 
 Raw upstream tools stay behind the broker until a task needs them.
 
+## Clone-To-Running Path
+
+Use this path for a public clone on a personal machine or an enterprise laptop.
+It starts with the public repo, creates a private config, proves the broker can
+run, then writes client config only after an explicit apply flag.
+
+```bash
+GITHUB_REPOSITORY_URL="${GITHUB_REPOSITORY_URL}"
+git clone "$GITHUB_REPOSITORY_URL" mcp-broker
+cd mcp-broker
+make setup
+make config-init
+```
+
+Add one upstream to `config/broker.private.yaml`. Use the public example config
+as the contract. Keep local paths, account names, and secrets out of git. Secret
+values belong in environment variables or broker-owned runtime secret files, not
+in YAML.
+
+```bash
+make config-validate
+make broker-smoke
+make profile-validation PROFILE=codex
+make config-backup CLIENT=codex
+make config-render CLIENT=codex CONFIG_RENDER_APPLY=0
+make broker-status
+```
+
+No client config is written before `CONFIG_RENDER_APPLY=1`. Review the rendered
+client config under the broker runtime render directory first, then apply:
+
+```bash
+make config-render CLIENT=codex CONFIG_RENDER_APPLY=1
+```
+
+Rollback stays broker-owned:
+
+```bash
+make config-rollback CLIENT=codex
+```
+
+Use `CLIENT=claude` or `CLIENT=agy` only after that profile passes validation
+and the user intends to wire that client.
+
 ## Migration Path
 
 1. Run setup.

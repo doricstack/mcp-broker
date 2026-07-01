@@ -18,6 +18,9 @@ Run every setup, test, runtime, and client-wiring command through the Makefile.
 For a source checkout, use the Makefile flow below. For user installs, use
 PyPI, uv, Homebrew, or Docker.
 
+For the generic public checkout path from clone to local broker status, use the
+Clone-To-Running Path in `docs/adoption-guide.md`.
+
 PyPI through `pipx`:
 
 ```bash

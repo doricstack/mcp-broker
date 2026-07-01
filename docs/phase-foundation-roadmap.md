@@ -28,7 +28,7 @@ control plane on day one.
       partial writes.
 - [x] Add a plugin package contract with repo-owned install, status, dry-run,
       apply, rollback, and smoke checks.
-- [ ] Make the public clone-to-running path work through `make setup`, config
+- [x] Make the public clone-to-running path work through `make setup`, config
       initialization, profile validation, smoke checks, client render, rollback,
       and troubleshooting.
 
