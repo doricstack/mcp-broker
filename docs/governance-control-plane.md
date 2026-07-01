@@ -111,6 +111,21 @@ publishable documents, then evaluate:
 The simulator is not a hosted service. It is a deterministic local proof path
 for enterprise governance behavior before any shared infrastructure is designed.
 
+Run it against a local bundle and one or more redacted fleet-status payloads:
+
+```bash
+mcp-broker rollout simulate --bundle path/to/bundle.json --fleet-status path/to/fleet-status.json
+mcp-broker rollout simulate --bundle path/to/bundle.json --fleet-status path/to/fleet-status.json --approved
+```
+
+The result is a decision payload with `mode: local_simulation_only`. It can
+return `approval_required`, `compatibility_rejection`, `rollback`, or `ready`.
+Ready simulations list broker-level decisions for canary, staged rollout, and
+broad rollout stages. Rollback simulations list the broker and stage that
+triggered rollback. The command reads local files and writes JSON to stdout; it
+does not fetch bundles, upload status, contact a control plane, or mutate
+runtime state.
+
 ## Fleet Status Export
 
 Fleet status is a redacted export derived from the local

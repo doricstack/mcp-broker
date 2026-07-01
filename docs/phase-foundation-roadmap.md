@@ -39,7 +39,7 @@ control plane on day one.
 - [x] Add a redacted fleet-status export that reports broker identity, bundle
       version, health, counters, and upstream state without local paths, account
       names, secret values, or private inventory.
-- [ ] Add an offline control-plane simulator for canary, staged rollout,
+- [x] Add an offline control-plane simulator for canary, staged rollout,
       rollback, compatibility rejection, and approval decisions.
 
 ## Phase 3: Shared-Runtime Guardrails
