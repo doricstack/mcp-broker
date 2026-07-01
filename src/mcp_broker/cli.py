@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import os
 import shutil
@@ -18,6 +19,7 @@ from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_ma
 from mcp_broker.deployments import main as deployments_main
 from mcp_broker.fleet_status import main as fleet_status_main
 from mcp_broker.rollout_simulator import main as rollout_simulator_main
+from mcp_broker.runtime_launcher import ActiveRuntimeLauncher, RuntimeLauncherError
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -41,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_deployment_parser(subparsers)
     _add_fleet_status_parser(subparsers)
     _add_rollout_parser(subparsers)
+    _add_runtime_parser(subparsers)
 
     return parser
 
@@ -180,6 +183,26 @@ def _add_rollout_parser(
     simulate_parser.add_argument("--fleet-status", required=True, type=Path)
     simulate_parser.add_argument("--approved", action="store_true")
     simulate_parser.set_defaults(handler=handle_rollout_simulator)
+
+
+def _add_runtime_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    runtime_parser = subparsers.add_parser(
+        "runtime",
+        help="Inspect installed runtime launcher state",
+    )
+    runtime_subparsers = runtime_parser.add_subparsers(
+        dest="runtime_command",
+        required=True,
+    )
+    launch_plan_parser = runtime_subparsers.add_parser(
+        "launch-plan",
+        help="Print the active installed runtime argv without executing it",
+    )
+    launch_plan_parser.add_argument("--state-dir", required=True, type=Path)
+    launch_plan_parser.add_argument("runtime_args", nargs=argparse.REMAINDER)
+    launch_plan_parser.set_defaults(handler=handle_runtime_launch_plan)
 
 
 def _daemon_parser(
@@ -442,6 +465,19 @@ def handle_rollout_simulator(args: argparse.Namespace) -> int:
     if args.approved:
         argv.append("--approved")
     return rollout_simulator_main(argv)
+
+
+def handle_runtime_launch_plan(args: argparse.Namespace) -> int:
+    runtime_args = list(args.runtime_args)
+    if runtime_args[:1] == ["--"]:
+        runtime_args = runtime_args[1:]
+    try:
+        launch_plan = ActiveRuntimeLauncher(args.state_dir).launch_plan(runtime_args)
+    except RuntimeLauncherError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
+    sys.stdout.write(json.dumps(launch_plan, sort_keys=True) + "\n")
+    return 0
 
 
 if __name__ == "__main__":

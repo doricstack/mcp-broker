@@ -94,6 +94,21 @@ installed runtime path, package entrypoint, artifact digest, and install status.
 This establishes the stable broker-owned manifest layout that plugin setup and
 launcher wiring will consume in later Phase 1 tasks.
 
-Installed runtime manifests do not activate artifacts by themselves. Artifact
-integrity, launcher resolution, bootstrap apply, rollback, and uninstall are
-separate Phase 1 contracts.
+Installed runtime manifests do not activate artifacts by themselves. The
+launcher can resolve the active manifest into an argv plan, but artifact
+integrity, bootstrap apply, rollback, and uninstall are separate Phase 1
+contracts.
+
+The active runtime launcher resolves the active pointer and manifest without
+executing the installed runtime:
+
+```bash
+mcp-broker runtime launch-plan --state-dir ~/mcp/mcp-broker/state -- status
+```
+
+The command prints the active installed runtime argv as JSON. It fails closed
+when the active pointer, manifest, runtime identifier, runtime path, or
+entrypoint is missing, malformed, outside `runtime-install/versions/`, or a
+symlink escape from the installed runtime path. It also rejects a non-executable
+entrypoint. Runtime artifact digest verification and activation remain separate
+Phase 1 contracts.
