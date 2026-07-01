@@ -36,7 +36,7 @@ control plane on day one.
 - [x] Add a plugin-owned launcher that resolves the active installed runtime.
 - [x] Add runtime artifact metadata, digest verification, archive safety checks,
       and fail-closed activation.
-- [ ] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
+- [x] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
       uninstall transactions.
 - [ ] Add layered configuration composition with deterministic merge, digest,
       provenance, and secret-reference validation.
