@@ -39,4 +39,4 @@ def test_fresh_client_starts_with_a_nonnegative_idle(tmp_path: Path) -> None:
 
     # Construction stamps activity, so a brand-new client is never instantly stale.
     assert client.idle_seconds() >= 0.0
-    assert client.idle_seconds(now=client._last_activity_monotonic + 7.0) == 7.0
+    assert client.idle_seconds(now=client._last_activity_monotonic + 7.0) == pytest.approx(7.0)
