@@ -5,8 +5,8 @@ profiles, upstream catalog entries, client render targets, policy, provenance,
 and compatibility metadata. They do not execute code and they do not change live
 runtime state by themselves.
 
-The current contract is schema-only. Validation and deployment behavior are
-separate follow-up steps in the phase plan.
+The current contract supports local validation from disk. Deployment behavior is
+a separate follow-up step in the phase plan.
 
 ## Bundle Shape
 
@@ -26,6 +26,27 @@ these required sections:
 - `policy`: approval and execution policy.
 - `compatibility`: supported config schema range and required features.
 
+## Local Validation
+
+Validate a bundle without changing runtime state:
+
+```bash
+mcp-broker bundle validate --bundle path/to/bundle.json
+make bundle-validate BUNDLE=path/to/bundle.json
+```
+
+Validation checks:
+
+- JSON object shape against `config/broker.bundle.schema.json`
+- bundle schema version
+- SHA-256 checksum
+- config schema compatibility range
+- local file existence
+
+The checksum covers the canonical JSON bundle after replacing
+`checksum.value` with 64 zero characters. This gives the bundle a stable
+self-check without requiring external checksum sidecars.
+
 ## Execution Boundary
 
 Bundles are data. The schema enforces:
@@ -34,7 +55,8 @@ Bundles are data. The schema enforces:
 - `policy.approval_required` must be `true`
 - `policy.allow_remote_code_execution` must be `false`
 - `policy.mutating_upstreams_require_allowlist` must be `true`
-- compatibility is pinned to config schema version `1`
+- compatibility is rejected unless the current broker config schema version is
+  inside the bundle's supported range
 
 This keeps a published bundle from becoming an arbitrary installer. Later tasks
 can validate, stage, apply, and roll back bundles, but those steps remain local
@@ -43,7 +65,7 @@ and approval-gated.
 ## Current Status
 
 - P1.2 defines the desired-state schema and helper metadata.
-- P1.3 will add local bundle validation from disk.
+- P1.3 adds local bundle validation from disk.
 - P1.4 will add transactional deployment state and rollback records.
 - P2 will split the bundle model into profile, upstream-catalog, policy,
   rollout, and compatibility documents for enterprise governance.

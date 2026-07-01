@@ -40,6 +40,12 @@ config-validate: runtime-layout ## Validate CONFIG_PATH against the public JSON 
 		--schema "$(CONFIG_SCHEMA_PATH)"
 	$(call log_success,"Config validation passed")
 
+bundle-validate: ## Validate BUNDLE without changing runtime state
+	@test -n "$(BUNDLE)" || { $(call log_error,"BUNDLE is required"); exit 2; }
+	@test -f "$(BUNDLE)" || { $(call log_error,"Missing BUNDLE=$(BUNDLE)"); exit 1; }
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli bundle validate --bundle "$(BUNDLE)"
+	$(call log_success,"Bundle validation passed")
+
 clean: ## Remove generated artifacts
 	@rm -rf "$(ROOT)/var/coverage" "$(ROOT)/var/test-logs" "$(ROOT)/var/quality" "$(ROOT)/.pytest_cache" "$(ROOT)/.mutmut-cache" "$(ROOT)/mutants" "$(ROOT)/htmlcov" "$(ROOT)/dist" "$(ROOT)/build"
 	@rm -f "$(ROOT)/violations.json" "$(ROOT)/violations.log" "$(ROOT)/grade_quality_report.json"

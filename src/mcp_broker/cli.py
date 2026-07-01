@@ -11,6 +11,7 @@ from threading import Event
 from typing import Callable, Sequence
 
 from mcp_broker.client import ClientShim, ClientShimError
+from mcp_broker.bundle_loader import main as bundle_loader_main
 from mcp_broker.config import BrokerConfig
 from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
@@ -69,7 +70,22 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--target-path", type=Path)
     render_parser.set_defaults(handler=handle_render)
 
+    _add_bundle_parser(subparsers)
+
     return parser
+
+
+def _add_bundle_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    bundle_parser = subparsers.add_parser("bundle", help="Inspect and validate desired-state bundles")
+    bundle_subparsers = bundle_parser.add_subparsers(dest="bundle_command", required=True)
+    bundle_validate_parser = bundle_subparsers.add_parser(
+        "validate",
+        help="Validate a desired-state bundle without changing runtime state",
+    )
+    bundle_validate_parser.add_argument("--bundle", required=True, type=Path)
+    bundle_validate_parser.set_defaults(handler=handle_bundle_validate)
 
 
 def _daemon_parser(
@@ -303,6 +319,10 @@ def handle_render(args: argparse.Namespace) -> int:
     if args.target_path is not None:
         argv.extend(["--target-path", str(args.target_path.expanduser())])
     return config_render_main(argv)
+
+
+def handle_bundle_validate(args: argparse.Namespace) -> int:
+    return bundle_loader_main(["--bundle", str(args.bundle.expanduser())])
 
 
 if __name__ == "__main__":

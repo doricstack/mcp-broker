@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tests.support.makefiles import read_combined_makefiles
+from tests.support.bundles import write_signed_bundle
 from tests.support.repo_paths import make_command
 
 pytestmark = pytest.mark.e2e
@@ -71,6 +72,7 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "smithery-payload-check",
         "smithery-publish",
         "config-init",
+        "bundle-validate",
         "config-backup",
         "codex-app-policy",
         "config-render",
@@ -156,6 +158,24 @@ def test_make_profile_snippet_keeps_home_placeholder_public_safe() -> None:
     assert "      - mcp-broker" in result.stdout
     assert "/Users/" not in result.stdout
     assert "make config-render CLIENT=sample-client CONFIG_RENDER_APPLY=0" in result.stdout
+
+
+def test_make_bundle_validate_validates_local_bundle_without_runtime_writes(tmp_path: Path) -> None:
+    bundle_path = tmp_path / "bundle.json"
+    write_signed_bundle(bundle_path)
+
+    result = subprocess.run(
+        make_command("bundle-validate", f"BUNDLE={bundle_path}", f"RUNTIME_ROOT={tmp_path / 'runtime'}"),
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert "bundle validated:" in result.stdout
+    assert str(bundle_path) in result.stdout
+    assert not (tmp_path / "runtime").exists()
 
 
 def test_mutation_target_uses_venv_console_script() -> None:
@@ -254,7 +274,6 @@ def test_mutation_target_uses_venv_console_script() -> None:
     assert "tests_dir=\n    tests/unit\n    tests/journey" in setup_cfg
     assert "pytest_add_cli_args=\n    --timeout=30\n    -m\n    not private_contract" in setup_cfg
     assert "mutate_only_covered_lines=true" in setup_cfg
-
 
 def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     makefile = read_combined_makefiles(ROOT)

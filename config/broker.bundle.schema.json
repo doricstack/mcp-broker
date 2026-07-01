@@ -219,10 +219,10 @@
       "required": ["min_config_schema_version", "max_config_schema_version"],
       "properties": {
         "min_config_schema_version": {
-          "const": 1
+          "$ref": "#/$defs/positiveInteger"
         },
         "max_config_schema_version": {
-          "const": 1
+          "$ref": "#/$defs/positiveInteger"
         },
         "required_features": {
           "$ref": "#/$defs/stringList"

@@ -21,7 +21,7 @@ control plane on day one.
       configured profile set.
 - [x] Define a desired-state bundle schema for profiles, upstream catalog
       entries, client render targets, policy, compatibility, and provenance.
-- [ ] Add a local bundle validator and loader that rejects invalid schema,
+- [x] Add a local bundle validator and loader that rejects invalid schema,
       version, checksum, and compatibility input without changing runtime state.
 - [ ] Add transactional deployment state under the runtime state directory,
       including active and previous pointers, rollback journal, and recovery from

@@ -1,4 +1,4 @@
-.PHONY: config-init config-validate
+.PHONY: config-init config-validate bundle-validate
 
 PYTHON_BIN        ?= python3
 VENV_DIR          ?= $(ROOT)/venv-mcp-broker
@@ -11,6 +11,8 @@ REQUIREMENTS      ?= $(ROOT)/requirements.txt
 RUNTIME_ROOT      ?= $(HOME)/mcp/mcp-broker
 CONFIG_TEMPLATE_PATH ?= $(ROOT)/config/broker.example.yaml
 CONFIG_SCHEMA_PATH ?= $(ROOT)/config/broker.schema.json
+BUNDLE_SCHEMA_PATH ?= $(ROOT)/config/broker.bundle.schema.json
+BUNDLE ?=
 CONFIG_PRIVATE_PATH ?= $(ROOT)/config/broker.private.yaml
 CONFIG_PATH       ?= $(CONFIG_PRIVATE_PATH)
 SOCKET_PATH       ?= $(RUNTIME_ROOT)/sockets/broker.sock
