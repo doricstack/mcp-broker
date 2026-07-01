@@ -1,0 +1,66 @@
+from pathlib import Path
+
+import pytest
+
+
+pytestmark = pytest.mark.journey
+
+ROOT = Path(__file__).resolve().parents[2]
+GUARDRAILS_DOC = ROOT / "docs" / "shared-runtime-guardrails.md"
+
+
+def test_shared_runtime_guardrails_document_phase_3_gates() -> None:
+    assert GUARDRAILS_DOC.is_file()
+
+    document = GUARDRAILS_DOC.read_text(encoding="utf-8")
+
+    required_sections = [
+        "# Shared Runtime Guardrails",
+        "## Current Boundary",
+        "## Preconditions",
+        "## Decision Gates",
+        "## Mandatory Non-Goals",
+    ]
+    required_terms = [
+        "shared hosted execution is not implemented",
+        "Phase 1 value proof",
+        "Phase 2 governance proof",
+        "tenant isolation",
+        "authorization",
+        "quotas",
+        "session affinity",
+        "distributed state",
+        "cost controls",
+        "audit",
+        "failure domains",
+        "local edge broker remains the default",
+        "no remote listener",
+        "no shared upstream execution",
+    ]
+    forbidden_terms = [
+        "/Users/",
+        "CloudStorage",
+        "broker.private.yaml",
+        "navin@",
+        "ms365-",
+        "codebase-memory",
+    ]
+
+    assert [section for section in required_sections if section not in document] == []
+    assert [term for term in required_terms if term not in document] == []
+    assert [term for term in forbidden_terms if term in document] == []
+
+
+def test_public_surfaces_link_shared_runtime_guardrails() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    phase_roadmap = (ROOT / "docs" / "phase-foundation-roadmap.md").read_text(
+        encoding="utf-8"
+    )
+
+    required_link = "docs/shared-runtime-guardrails.md"
+
+    assert required_link in readme
+    assert required_link in roadmap
+    assert required_link in phase_roadmap
+    assert "shared hosted execution is not implemented" in phase_roadmap

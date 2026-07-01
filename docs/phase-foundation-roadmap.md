@@ -44,10 +44,11 @@ control plane on day one.
 
 ## Phase 3: Shared-Runtime Guardrails
 
-- [ ] Document that shared hosted execution is not implemented.
-- [ ] Require Phase 1 value proof and Phase 2 governance proof before designing a
-      shared execution runtime.
-- [ ] Define the decision gates for tenant isolation, authorization, quotas,
+- [x] Document that shared hosted execution is not implemented. Contract:
+      `docs/shared-runtime-guardrails.md`.
+- [x] Require Phase 1 value proof and Phase 2 governance proof before designing
+      a shared execution runtime.
+- [x] Define the decision gates for tenant isolation, authorization, quotas,
       session affinity, distributed state, cost controls, audit, and failure
       domains.
 
