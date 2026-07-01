@@ -36,7 +36,7 @@ control plane on day one.
 
 - [x] Split desired state into publishable profile, upstream-catalog, policy, rollout, and compatibility
       bundle documents. Contract: `docs/governance-control-plane.md`.
-- [ ] Add a redacted fleet-status export that reports broker identity, bundle
+- [x] Add a redacted fleet-status export that reports broker identity, bundle
       version, health, counters, and upstream state without local paths, account
       names, secret values, or private inventory.
 - [ ] Add an offline control-plane simulator for canary, staged rollout,

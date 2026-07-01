@@ -111,6 +111,29 @@ publishable documents, then evaluate:
 The simulator is not a hosted service. It is a deterministic local proof path
 for enterprise governance behavior before any shared infrastructure is designed.
 
+## Fleet Status Export
+
+Fleet status is a redacted export derived from the local
+`state/broker-status.json` snapshot:
+
+```bash
+mcp-broker fleet-status export --status-file ~/mcp/mcp-broker/state/broker-status.json
+```
+
+The export includes:
+
+- broker identity: `broker_id`, `environment`, `bundle_version`,
+  `schema_version`, and active profile names
+- health: daemon status, start time, update time, and last request status
+- counters: total requests and request errors
+- upstream states: enabled flag, lifecycle state, transport, mode, mutating
+  flag, auth state, restart count, and redacted last error
+
+The export must not include local filesystem paths, socket paths, process IDs,
+environment maps, account names, URLs, token values, credential values, OAuth
+state, or private upstream configuration. It is a local JSON payload only. The
+broker does not upload it and does not open an inbound status endpoint.
+
 ## Enterprise Adoption Path
 
 An enterprise can publish the five documents from an internal artifact system,
