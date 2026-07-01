@@ -31,8 +31,20 @@ control plane on day one.
 - [x] Make the public clone-to-running path work through `make setup`, config
       initialization, profile validation, smoke checks, client render, rollback,
       and troubleshooting.
+- [ ] Add installed runtime manifests with active and previous pointers so
+      plugin setup does not depend on a developer checkout path.
+- [ ] Add a plugin-owned launcher that resolves the active installed runtime.
+- [ ] Add runtime artifact metadata, digest verification, archive safety checks,
+      and fail-closed activation.
+- [ ] Add approval-gated bootstrap preflight, plan, apply, status, rollback, and
+      uninstall transactions.
+- [ ] Add layered configuration composition with deterministic merge, digest,
+      provenance, and secret-reference validation.
+- [ ] Add break-glass audit records and degraded status.
+- [ ] Add cross-platform bootstrap tests for macOS, Linux, and Windows service
+      setup without mutating host state by default.
 
-## Phase 2: Governance Contracts
+## Phase 2: Governance Control Plane
 
 - [x] Split desired state into publishable profile, upstream-catalog, policy, rollout, and compatibility
       bundle documents. Contract: `docs/governance-control-plane.md`.
@@ -41,8 +53,21 @@ control plane on day one.
       names, secret values, or private inventory.
 - [x] Add an offline control-plane simulator for canary, staged rollout,
       rollback, compatibility rejection, and approval decisions.
+- [ ] Add signed bundle publishing contracts.
+- [ ] Add assignment-source contracts for brokers, users, teams, channels, and
+      rollout rings.
+- [ ] Add broker pull/apply protocol for authenticated fetch, cache,
+      compatibility check, local approval, apply, and rollback.
+- [ ] Add fleet-status collection with auth, retention, failure handling, and
+      no-secret validation.
+- [ ] Add a rollout controller that turns simulator decisions into auditable
+      actions.
+- [ ] Add operator approval workflow for mutating rollout, rollback, policy
+      override, and break-glass.
+- [ ] Add a minimal reference control plane that exercises governance without
+      centralizing tool execution.
 
-## Phase 3: Shared-Runtime Guardrails
+## Phase 3: Shared Runtime
 
 - [x] Document that shared hosted execution is not implemented. Contract:
       `docs/shared-runtime-guardrails.md`.
@@ -51,6 +76,17 @@ control plane on day one.
 - [x] Define the decision gates for tenant isolation, authorization, quotas,
       session affinity, distributed state, cost controls, audit, and failure
       domains.
+- [ ] Add shared-runtime threat model and tenant model.
+- [ ] Add remote broker API contract for authenticated discovery, describe,
+      call, status, cancellation, streaming, and audit.
+- [ ] Add session affinity and state-placement rules.
+- [ ] Add quota and cost-control engine.
+- [ ] Add isolated shared worker runtime for allowlisted stateless upstreams.
+- [ ] Add distributed deployment state with locking, conflict handling,
+      rollback, recovery, and audit.
+- [ ] Add hybrid routing between local edge tools and shared workers.
+- [ ] Add shared-runtime E2E proof for tenant isolation, authz denial, quota
+      denial, session affinity, audit, rollback, and degraded mode.
 
 ## Non-Goals
 
@@ -59,5 +95,5 @@ control plane on day one.
   request handling.
 - Do not publish local private upstream inventory, account names, filesystem
   paths, or runtime state.
-- Do not build shared hosted execution until the plugin and governance contracts
-  are proven in local workflows.
+- Do not route any tool to shared hosted execution until the Phase 3 isolation,
+  authorization, quota, audit, and rollback gates are implemented and tested.
