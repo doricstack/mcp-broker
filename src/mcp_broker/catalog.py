@@ -139,6 +139,20 @@ class BrokerCatalogFacade:
             if self._status_exposes_upstream(upstream_name, upstream)
         }
         health = self._status_provider(exposed_upstreams)
+        upstreams = self._status_upstreams(health)
+        return structured_tool_result(
+            {
+                "identity": self._broker_config.identity_status_payload(
+                    active_profile=self._profile.name if self._profile is not None else None,
+                ),
+                "profile": self._profile.name if self._profile is not None else None,
+                "socket_path": str(self._broker_config.runtime.socket_path),
+                "status": _broker_status(upstreams),
+                "upstreams": upstreams,
+            }
+        )
+
+    def _status_upstreams(self, health: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
         upstreams = {}
         for upstream_name, upstream in self._broker_config.upstreams.items():
             exposed = self._status_exposes_upstream(upstream_name, upstream)
@@ -165,14 +179,7 @@ class BrokerCatalogFacade:
                 ),
                 "transport": upstream.transport,
             }
-        return structured_tool_result(
-            {
-                "profile": self._profile.name if self._profile is not None else None,
-                "socket_path": str(self._broker_config.runtime.socket_path),
-                "status": _broker_status(upstreams),
-                "upstreams": upstreams,
-            }
-        )
+        return upstreams
 
     def _status_exposes_upstream(self, upstream_name: str, upstream: UpstreamConfig) -> bool:
         if not upstream.enabled or upstream.mode == "disabled":

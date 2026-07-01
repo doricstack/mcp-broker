@@ -21,6 +21,7 @@ TOP_LEVEL_KEYS = frozenset(
 RUNTIME_KEYS = frozenset({"root", "socket_path", "log_dir", "state_dir", "secrets_dir"})
 BROKER_KEYS = frozenset(
     {
+        "identity",
         "tool_namespace_separator",
         "idle_timeout_seconds",
         "cpu_watchdog_percent",
@@ -28,6 +29,7 @@ BROKER_KEYS = frozenset(
         "remote_auth",
     }
 )
+BROKER_IDENTITY_KEYS = frozenset({"broker_id", "environment", "bundle_version"})
 REMOTE_AUTH_KEYS = frozenset({"enabled", "required", "token_env", "token_file"})
 PROFILE_KEYS = frozenset(
     {

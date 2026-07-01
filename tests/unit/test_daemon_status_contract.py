@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig
+from mcp_broker.profiles import ToolExposureProfile
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -145,6 +146,14 @@ def test_daemon_request_log_records_ok_error_and_notification_snapshots(
     assert daemon._last_request_method is None
     assert daemon._last_request_status == "notification"
     assert snapshot == {
+        "identity": {
+            "active_profile": None,
+            "active_profiles": [],
+            "broker_id": "mcp-broker-local",
+            "bundle_version": "unbundled",
+            "environment": "local",
+            "schema_version": 1,
+        },
         "last_request_method": None,
         "last_request_status": "notification",
         "pid": 654,
@@ -181,6 +190,7 @@ def test_daemon_status_snapshot_uses_config_state_dir_and_replaces_temp_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import mcp_broker.daemon_status as daemon_status
+    from mcp_broker.config import BrokerIdentityConfig
     from mcp_broker.daemon import BrokerDaemon
 
     config = BrokerConfig(
@@ -191,8 +201,18 @@ def test_daemon_status_snapshot_uses_config_state_dir_and_replaces_temp_file(
             state_dir=tmp_path / "custom-state",
             secrets_dir=tmp_path / "runtime" / "secrets",
         ),
-        broker=BrokerSettings(),
+        broker=BrokerSettings(
+            identity=BrokerIdentityConfig(
+                broker_id="engineer-laptop",
+                environment="local",
+                bundle_version="unbundled",
+            )
+        ),
         upstreams={},
+        profiles={
+            "codex": ToolExposureProfile(name="codex", max_tools=80),
+            "maintenance": ToolExposureProfile(name="maintenance", max_tools=500),
+        },
     )
     monkeypatch.setattr(daemon_status.os, "getpid", lambda: 987)
     monkeypatch.setattr(daemon_status, "_utc_timestamp", lambda: "2026-06-07T08:00:00+00:00")
@@ -214,6 +234,14 @@ def test_daemon_status_snapshot_uses_config_state_dir_and_replaces_temp_file(
         "broker-status.json"
     ]
     assert json.loads(daemon.status_snapshot_path.read_text(encoding="utf-8")) == {
+        "identity": {
+            "active_profile": None,
+            "active_profiles": ["codex", "maintenance"],
+            "broker_id": "engineer-laptop",
+            "bundle_version": "unbundled",
+            "environment": "local",
+            "schema_version": 1,
+        },
         "last_request_method": "broker/status",
         "last_request_status": "error",
         "pid": 987,

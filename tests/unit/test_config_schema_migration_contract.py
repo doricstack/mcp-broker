@@ -70,6 +70,10 @@ runtime:
   state_dir: /tmp/mcp-broker-test/state
   secrets_dir: /tmp/mcp-broker-test/secrets
 broker:
+  identity:
+    broker_id: engineer-laptop
+    environment: local
+    bundle_version: unbundled
   tool_namespace_separator: "."
   idle_timeout_seconds: 900
   cpu_watchdog_percent: 80
@@ -181,6 +185,9 @@ upstreams:
     config = BrokerConfig.from_file(config_file)
 
     assert config.runtime.secrets_dir == Path("/tmp/mcp-broker-test/secrets")
+    assert config.broker.identity.broker_id == "engineer-laptop"
+    assert config.broker.identity.environment == "local"
+    assert config.broker.identity.bundle_version == "unbundled"
     assert config.profiles["codex"].allows_mutating_upstream("writer")
     assert config.profiles["codex"].broker_tool_name_style == "snake"
     assert config.broker.remote_auth.enabled is True
@@ -209,6 +216,10 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
     assert fields == {
         "broker.cpu_watchdog_percent",
         "broker.cpu_watchdog_seconds",
+        "broker.identity",
+        "broker.identity.broker_id",
+        "broker.identity.bundle_version",
+        "broker.identity.environment",
         "broker.idle_timeout_seconds",
         "broker.remote_auth",
         "broker.remote_auth.enabled",
@@ -298,6 +309,45 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "upstreams.*.transport",
         "upstreams.*.working_dir",
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("broker_id", "", "broker.identity.broker_id must be a non-empty string"),
+        ("environment", "", "broker.identity.environment must be a non-empty string"),
+        ("bundle_version", "", "broker.identity.bundle_version must be a non-empty string"),
+    ],
+)
+def test_broker_identity_rejects_empty_fields(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    from mcp_broker.config import BrokerConfig
+
+    config_file = tmp_path / "invalid-identity.yaml"
+    config_file.write_text(
+        f"""
+schema_version: 1
+runtime:
+  root: /tmp/mcp-broker-test
+broker:
+  identity:
+    broker_id: local-broker
+    environment: local
+    bundle_version: unbundled
+upstreams: {{}}
+""".replace(f"{field}: local-broker", f"{field}: {value}")
+        .replace(f"{field}: local", f"{field}: {value}")
+        .replace(f"{field}: unbundled", f"{field}: {value}")
+        .strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        BrokerConfig.from_file(config_file)
 
 
 def _schema_fields(schema: dict[str, Any]) -> set[str]:

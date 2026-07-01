@@ -48,6 +48,7 @@ IDs, URLs, and filesystem paths.
 Broker daemon metrics are file-backed at `state/broker-status.json`. The daemon
 writes the snapshot at start, after each handled socket request, and during
 shutdown. The snapshot includes daemon status, PID, socket path, start and update
-timestamps, request and request-error counters, last request method and status,
-and the same per-upstream health map returned by `broker/health`, including
-auth-repair counters when a configured repair path has run.
+timestamps, broker identity, configured profile names, request and request-error
+counters, last request method and status, and the same per-upstream health map
+returned by `broker/health`, including auth-repair counters when a configured
+repair path has run.

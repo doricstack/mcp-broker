@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import threading
 
+from mcp_broker.config_identity import default_identity_status_payload
 from mcp_broker.daemon_helpers import (
     redact_log_field as _redact_log_field,
     utc_timestamp as _utc_timestamp,
@@ -79,7 +80,12 @@ class BrokerDaemonStatusMixin:
         self._write_log(event, upstream=upstream_name, **fields)
 
     def _write_status_snapshot(self, status: str) -> None:
+        if self.broker_config is None:
+            identity = default_identity_status_payload()
+        else:
+            identity = self.broker_config.identity_status_payload(active_profile=None)
         snapshot = {
+            "identity": identity,
             "last_request_method": self._last_request_method,
             "last_request_status": self._last_request_status,
             "pid": os.getpid(),

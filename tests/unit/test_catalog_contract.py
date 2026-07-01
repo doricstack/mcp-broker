@@ -15,7 +15,13 @@ from mcp_broker.catalog import (
     upstream_metadata_matches,
     upstream_owns_tool_name,
 )
-from mcp_broker.config import BrokerConfig, BrokerSettings, RuntimeConfig, SmokeProbe, UpstreamConfig
+from mcp_broker.config import (
+    BrokerConfig,
+    BrokerSettings,
+    RuntimeConfig,
+    SmokeProbe,
+    UpstreamConfig,
+)
 from mcp_broker.profiles import ToolExposureProfile
 
 
@@ -1321,7 +1327,28 @@ def test_call_managed_tool_enforces_profile_and_uses_shared_call_locks(tmp_path:
 
 
 def test_status_reports_visible_disabled_and_allowed_mutating_upstreams(tmp_path: Path) -> None:
-    config = _catalog_config(tmp_path)
+    from mcp_broker.config import BrokerIdentityConfig
+
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(
+            identity=BrokerIdentityConfig(
+                broker_id="engineer-laptop",
+                environment="local",
+                bundle_version="unbundled",
+            )
+        ),
+        profiles={
+            "default-llm": ToolExposureProfile(
+                name="default-llm",
+                max_tools=20,
+                allow_mutating_upstreams=("write-store",),
+            ),
+            "maintenance": ToolExposureProfile(name="maintenance", max_tools=500),
+            "other-llm": ToolExposureProfile(name="other-llm", max_tools=20),
+        },
+        upstreams=_catalog_config(tmp_path).upstreams,
+    )
     profile = ToolExposureProfile(
         name="default-llm",
         max_tools=20,
@@ -1367,6 +1394,14 @@ def test_status_reports_visible_disabled_and_allowed_mutating_upstreams(tmp_path
 
     payload = result["structuredContent"]
     assert visible_sets == [{"read-store", "write-store", "broken-store"}]
+    assert payload["identity"] == {
+        "active_profile": "default-llm",
+        "active_profiles": ["default-llm", "maintenance", "other-llm"],
+        "broker_id": "engineer-laptop",
+        "bundle_version": "unbundled",
+        "environment": "local",
+        "schema_version": 1,
+    }
     assert payload["profile"] == "default-llm"
     assert payload["socket_path"] == str(config.runtime.socket_path)
     assert payload["status"] == "degraded"

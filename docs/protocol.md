@@ -110,14 +110,19 @@ state. `broker_status` reports the configured socket path, broker status, and
 profile-scoped upstream view through MCP: enabled or disabled state, profile
 exposure, mode, transport, mutation flag, PID, restart count, session count,
 last error, `auth_probe`, auth state, and auth-repair counters. `auth_probe` is
-a passive credential-source check:
-`credentials_missing`, `credentials_present`, `oauth_refresh_expired`,
-`auth_repair_configured`, or `none`. Auth state is passive: `unknown` unless the
-upstream health snapshot exposes an auth signal, the passive probe proves a
-missing or expired credential source, or the last error is an auth-shaped
-failure. The status tool does not open browsers, run OAuth setup tools, or
-expose secret values. It still appears inside the broker server, not as separate
-Codex `/mcp` rows.
+a passive credential-source check that reports `credentials_missing`,
+`credentials_present`, `oauth_refresh_expired`, `auth_repair_configured`, or
+`none`.
+
+The status payload also reports broker identity fields from `broker.identity`:
+`broker_id`, `environment`, `bundle_version`, `schema_version`, the active
+profile, and the configured profile set. These fields are the local contract
+consumed by future bundle and fleet governance flows. Auth state is passive:
+`unknown` unless the upstream health snapshot exposes an auth signal, the
+passive probe proves a missing or expired credential source, or the last error is
+an auth-shaped failure. The status tool does not open browsers, run OAuth setup
+tools, or expose secret values. It still appears inside the broker server, not as
+separate Codex `/mcp` rows.
 
 `make profile-validation PROFILE=<profile>` loads the configured upstream list
 from YAML and validates each enabled profile-visible upstream through the

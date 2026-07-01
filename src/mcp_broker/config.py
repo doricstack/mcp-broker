@@ -22,6 +22,13 @@ from mcp_broker.config_keys import (
     TOP_LEVEL_KEYS,
     UPSTREAM_KEYS,
 )
+from mcp_broker.config_identity import (
+    BrokerIdentityConfig,
+    CONFIG_SCHEMA_VERSION,
+    DEFAULT_BROKER_ID,
+    DEFAULT_BROKER_ENVIRONMENT,
+    DEFAULT_BUNDLE_VERSION,
+)
 from mcp_broker.schema import (
     AuthProbePolicy,
     AuthRepairPolicy,
@@ -152,6 +159,7 @@ class RemoteBrokerAuthConfig:
 
 @dataclass(frozen=True)
 class BrokerSettings:
+    identity: BrokerIdentityConfig = field(default_factory=BrokerIdentityConfig)
     tool_namespace_separator: str = "."
     idle_timeout_seconds: int = DEFAULT_IDLE_TIMEOUT_SECONDS
     cpu_watchdog_percent: int = DEFAULT_CPU_WATCHDOG_PERCENT
@@ -162,6 +170,7 @@ class BrokerSettings:
     def from_mapping(cls, data: dict[str, Any], *, runtime: RuntimeConfig) -> "BrokerSettings":
         _validate_keys("broker", data, BROKER_KEYS)
         return cls(
+            identity=BrokerIdentityConfig.from_mapping(data.get("identity")),
             tool_namespace_separator=str(data.get("tool_namespace_separator", ".")),
             idle_timeout_seconds=int(data.get("idle_timeout_seconds", DEFAULT_IDLE_TIMEOUT_SECONDS)),
             cpu_watchdog_percent=int(data.get("cpu_watchdog_percent", DEFAULT_CPU_WATCHDOG_PERCENT)),
@@ -375,6 +384,12 @@ class BrokerConfig:
         _validate_unique_profile_prefixes(self.upstreams)
         _validate_upstream_profile_references(self.upstreams, self.profiles)
         _validate_mutating_upstream_allowlists(self.upstreams, self.profiles)
+
+    def identity_status_payload(self, *, active_profile: str | None) -> dict[str, object]:
+        return self.broker.identity.status_payload(
+            active_profile=active_profile,
+            active_profiles=sorted(self.profiles),
+        )
 
 
 def _validate_unique_profile_prefixes(upstreams: dict[str, UpstreamConfig]) -> None:

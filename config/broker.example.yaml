@@ -20,6 +20,13 @@ runtime:
 # tool_namespace_separator controls names such as `example-store.search`.
 # Timeout and watchdog values apply where an upstream does not override them.
 broker:
+  # Stable local broker identity for status, support, and future governance.
+  # CHANGE: set broker_id to a user- or machine-owned stable ID before joining
+  # any centrally governed rollout. Keep public examples generic.
+  identity:
+    broker_id: mcp-broker-local
+    environment: local
+    bundle_version: unbundled
   tool_namespace_separator: "."
   idle_timeout_seconds: 900
   cpu_watchdog_percent: 80

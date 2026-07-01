@@ -1371,7 +1371,22 @@ def _status_health_snapshot(
 
 
 def _expected_status_payload() -> dict[str, object]:
+    from mcp_broker.config_identity import (
+        CONFIG_SCHEMA_VERSION,
+        DEFAULT_BROKER_ENVIRONMENT,
+        DEFAULT_BROKER_ID,
+        DEFAULT_BUNDLE_VERSION,
+    )
+
     return {
+        "identity": {
+            "active_profile": "llm-profile",
+            "active_profiles": [],
+            "broker_id": DEFAULT_BROKER_ID,
+            "bundle_version": DEFAULT_BUNDLE_VERSION,
+            "environment": DEFAULT_BROKER_ENVIRONMENT,
+            "schema_version": CONFIG_SCHEMA_VERSION,
+        },
         "profile": "llm-profile",
         "socket_path": "/tmp/mcp-broker-test/sockets/broker.sock",
         "status": "degraded",

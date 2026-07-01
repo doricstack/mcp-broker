@@ -61,6 +61,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "identity": {
+          "$ref": "#/$defs/brokerIdentity"
+        },
         "tool_namespace_separator": {
           "type": "string",
           "minLength": 1
@@ -78,6 +81,24 @@
         },
         "remote_auth": {
           "$ref": "#/$defs/remoteAuth"
+        }
+      }
+    },
+    "brokerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "broker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bundle_version": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
