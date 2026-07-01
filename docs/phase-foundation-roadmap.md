@@ -34,8 +34,8 @@ control plane on day one.
 
 ## Phase 2: Governance Contracts
 
-- [ ] Split desired state into publishable profile, upstream-catalog, policy,
-      rollout, and compatibility bundle documents.
+- [x] Split desired state into publishable profile, upstream-catalog, policy, rollout, and compatibility
+      bundle documents. Contract: `docs/governance-control-plane.md`.
 - [ ] Add a redacted fleet-status export that reports broker identity, bundle
       version, health, counters, and upstream state without local paths, account
       names, secret values, or private inventory.
