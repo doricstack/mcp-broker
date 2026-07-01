@@ -61,7 +61,7 @@
     "mcp-client",
     "codex",
     "claude",
-    "gemini-cli",
+    "agy",
     "ai-tools"
   ],
   "license": "MIT",

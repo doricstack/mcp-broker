@@ -8,7 +8,7 @@ This roadmap is product-facing. Private agent task history and local upstream in
 - Stdio client shim for MCP clients.
 - Compact broker facade with search, describe, call, and status tools.
 - YAML config contract with JSON Schema validation.
-- Profile gates for MCP client profiles, including Codex, Claude, Gemini, and manual test flows.
+- Profile gates for MCP client profiles, including Codex, Claude, AGY, and manual test flows.
 - macOS LaunchAgent, Linux systemd user service, and Windows Scheduled Task install flows.
 - CLI-first package commands: `mcp-broker init`, `mcp-broker start`, `mcp-broker status`, and `mcp-broker render`.
 - Public quality gates, release smoke, and context-reduction measurement.
