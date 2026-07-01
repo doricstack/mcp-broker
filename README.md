@@ -263,6 +263,8 @@ make broker-status
 For the full install flow, see [docs/install.md](docs/install.md).
 For a clone-to-running adoption flow, see
 [docs/adoption-guide.md#clone-to-running-path](docs/adoption-guide.md#clone-to-running-path).
+For shared-runtime boundaries, see
+[docs/shared-runtime-guardrails.md](docs/shared-runtime-guardrails.md).
 
 ## Runtime layout
 
