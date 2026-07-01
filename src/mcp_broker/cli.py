@@ -17,6 +17,7 @@ from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
 from mcp_broker.deployments import main as deployments_main
 from mcp_broker.fleet_status import main as fleet_status_main
+from mcp_broker.rollout_simulator import main as rollout_simulator_main
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -33,12 +34,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Initialize, run, and inspect mcp-broker")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    _add_init_parser(subparsers)
+    _add_daemon_parsers(subparsers)
+    _add_render_parser(subparsers)
+    _add_bundle_parser(subparsers)
+    _add_deployment_parser(subparsers)
+    _add_fleet_status_parser(subparsers)
+    _add_rollout_parser(subparsers)
+
+    return parser
+
+
+def _add_init_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     init_parser = subparsers.add_parser("init", help="Create a private config from the public example")
     init_parser.add_argument("--config", type=Path, default=default_config_path())
     init_parser.add_argument("--template", type=Path)
     init_parser.add_argument("--force", action="store_true")
     init_parser.set_defaults(handler=handle_init)
 
+
+def _add_daemon_parsers(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     start_parser = _daemon_parser(subparsers, "start", "Start the broker daemon in the foreground")
     start_parser.add_argument("--config", type=Path, default=default_config_path())
     start_parser.set_defaults(handler=handle_daemon)
@@ -64,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     stop_parser = _daemon_parser(subparsers, "stop", "Ask the broker daemon to stop")
     stop_parser.set_defaults(handler=handle_daemon)
 
+
+def _add_render_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     render_parser = subparsers.add_parser("render", help="Render one client config")
     render_parser.add_argument("client")
     render_parser.add_argument("--config", type=Path, default=default_config_path())
@@ -71,12 +94,6 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--apply", action="store_true")
     render_parser.add_argument("--target-path", type=Path)
     render_parser.set_defaults(handler=handle_render)
-
-    _add_bundle_parser(subparsers)
-    _add_deployment_parser(subparsers)
-    _add_fleet_status_parser(subparsers)
-
-    return parser
 
 
 def _add_bundle_parser(
@@ -142,6 +159,27 @@ def _add_fleet_status_parser(
     )
     export_parser.add_argument("--status-file", required=True, type=Path)
     export_parser.set_defaults(handler=handle_fleet_status)
+
+
+def _add_rollout_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    rollout_parser = subparsers.add_parser(
+        "rollout",
+        help="Simulate governance rollout decisions locally",
+    )
+    rollout_subparsers = rollout_parser.add_subparsers(
+        dest="rollout_command",
+        required=True,
+    )
+    simulate_parser = rollout_subparsers.add_parser(
+        "simulate",
+        help="Simulate canary, staged rollout, rollback, and compatibility decisions",
+    )
+    simulate_parser.add_argument("--bundle", required=True, type=Path)
+    simulate_parser.add_argument("--fleet-status", required=True, type=Path)
+    simulate_parser.add_argument("--approved", action="store_true")
+    simulate_parser.set_defaults(handler=handle_rollout_simulator)
 
 
 def _daemon_parser(
@@ -392,6 +430,18 @@ def handle_deployment(args: argparse.Namespace) -> int:
 
 def handle_fleet_status(args: argparse.Namespace) -> int:
     return fleet_status_main(["--status-file", str(args.status_file.expanduser())])
+
+
+def handle_rollout_simulator(args: argparse.Namespace) -> int:
+    argv = [
+        "--bundle",
+        str(args.bundle.expanduser()),
+        "--fleet-status",
+        str(args.fleet_status.expanduser()),
+    ]
+    if args.approved:
+        argv.append("--approved")
+    return rollout_simulator_main(argv)
 
 
 if __name__ == "__main__":
