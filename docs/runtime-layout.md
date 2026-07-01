@@ -13,6 +13,11 @@ Runtime root:
   sockets/
   state/
     broker-status.json
+    deployments/
+      active.json
+      previous.json
+      rollback-journal.jsonl
+      records/
     upstreams/
       example-store/
       example-http/
@@ -52,3 +57,22 @@ timestamps, broker identity, configured profile names, request and request-error
 counters, last request method and status, and the same per-upstream health map
 returned by `broker/health`, including auth-repair counters when a configured
 repair path has run.
+
+Desired-state deployment records are file-backed under `state/deployments/`.
+`deployment-stage` validates `BUNDLE` and records an active deployment when
+`DEPLOYMENT_DRY_RUN=0`; the default is dry-run. Active and previous deployment
+pointers are written as separate JSON files, records live under
+`state/deployments/records/`, and rollback/recovery actions append to
+`rollback-journal.jsonl`.
+
+Deployment state commands:
+
+```bash
+make deployment-stage BUNDLE=path/to/bundle.json
+make deployment-stage BUNDLE=path/to/bundle.json DEPLOYMENT_DRY_RUN=0
+make deployment-rollback
+make deployment-recover
+```
+
+These commands do not edit client config files. Client rendering and rollback
+remain under `config-render` and `config-rollback`.

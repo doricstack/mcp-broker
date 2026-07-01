@@ -13,6 +13,7 @@ CONFIG_TEMPLATE_PATH ?= $(ROOT)/config/broker.example.yaml
 CONFIG_SCHEMA_PATH ?= $(ROOT)/config/broker.schema.json
 BUNDLE_SCHEMA_PATH ?= $(ROOT)/config/broker.bundle.schema.json
 BUNDLE ?=
+DEPLOYMENT_DRY_RUN ?= 1
 CONFIG_PRIVATE_PATH ?= $(ROOT)/config/broker.private.yaml
 CONFIG_PATH       ?= $(CONFIG_PRIVATE_PATH)
 SOCKET_PATH       ?= $(RUNTIME_ROOT)/sockets/broker.sock

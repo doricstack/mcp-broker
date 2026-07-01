@@ -23,7 +23,7 @@ control plane on day one.
       entries, client render targets, policy, compatibility, and provenance.
 - [x] Add a local bundle validator and loader that rejects invalid schema,
       version, checksum, and compatibility input without changing runtime state.
-- [ ] Add transactional deployment state under the runtime state directory,
+- [x] Add transactional deployment state under the runtime state directory,
       including active and previous pointers, rollback journal, and recovery from
       partial writes.
 - [ ] Add a plugin package contract with repo-owned install, status, dry-run,

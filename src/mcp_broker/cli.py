@@ -15,6 +15,7 @@ from mcp_broker.bundle_loader import main as bundle_loader_main
 from mcp_broker.config import BrokerConfig
 from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
+from mcp_broker.deployments import main as deployments_main
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -71,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.set_defaults(handler=handle_render)
 
     _add_bundle_parser(subparsers)
+    _add_deployment_parser(subparsers)
 
     return parser
 
@@ -86,6 +88,39 @@ def _add_bundle_parser(
     )
     bundle_validate_parser.add_argument("--bundle", required=True, type=Path)
     bundle_validate_parser.set_defaults(handler=handle_bundle_validate)
+
+
+def _add_deployment_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    deployment_parser = subparsers.add_parser(
+        "deployment",
+        help="Manage desired-state deployment records",
+    )
+    deployment_subparsers = deployment_parser.add_subparsers(
+        dest="deployment_command",
+        required=True,
+    )
+    stage_parser = deployment_subparsers.add_parser(
+        "stage",
+        help="Validate and record a bundle deployment",
+    )
+    stage_parser.add_argument("--bundle", required=True, type=Path)
+    stage_parser.add_argument("--state-dir", required=True, type=Path)
+    stage_parser.add_argument("--dry-run", action="store_true")
+    stage_parser.set_defaults(handler=handle_deployment)
+    rollback_parser = deployment_subparsers.add_parser(
+        "rollback",
+        help="Roll back to the previous deployment",
+    )
+    rollback_parser.add_argument("--state-dir", required=True, type=Path)
+    rollback_parser.set_defaults(handler=handle_deployment)
+    recover_parser = deployment_subparsers.add_parser(
+        "recover",
+        help="Recover deployment state after partial writes",
+    )
+    recover_parser.add_argument("--state-dir", required=True, type=Path)
+    recover_parser.set_defaults(handler=handle_deployment)
 
 
 def _daemon_parser(
@@ -323,6 +358,15 @@ def handle_render(args: argparse.Namespace) -> int:
 
 def handle_bundle_validate(args: argparse.Namespace) -> int:
     return bundle_loader_main(["--bundle", str(args.bundle.expanduser())])
+
+
+def handle_deployment(args: argparse.Namespace) -> int:
+    argv = [args.deployment_command, "--state-dir", str(args.state_dir.expanduser())]
+    if args.deployment_command == "stage":
+        argv.extend(["--bundle", str(args.bundle.expanduser())])
+        if args.dry_run:
+            argv.append("--dry-run")
+    return deployments_main(argv)
 
 
 if __name__ == "__main__":

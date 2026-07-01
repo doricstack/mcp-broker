@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -106,6 +106,26 @@ secret-import-env: runtime-layout ## Store SECRET_NAME from current environment 
 		umask 077; \
 		printf '%s\n' "$$VALUE" > "$(SECRETS_DIR)/$(SECRET_NAME)"
 	$(call log_success,"Imported $(SECRET_NAME) into $(SECRETS_DIR)")
+
+deployment-stage: runtime-layout bundle-validate ## Validate and stage BUNDLE into transactional deployment state
+	@if [[ "$(DEPLOYMENT_DRY_RUN)" == "1" ]]; then \
+		DRY_RUN_ARG="--dry-run"; \
+	else \
+		DRY_RUN_ARG=""; \
+	fi; \
+	PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli deployment stage \
+		--bundle "$(BUNDLE)" \
+		--state-dir "$(STATE_DIR)" \
+		$$DRY_RUN_ARG
+	$(call log_success,"Deployment stage completed")
+
+deployment-rollback: runtime-layout ## Roll back active deployment state to previous
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli deployment rollback --state-dir "$(STATE_DIR)"
+	$(call log_success,"Deployment rollback completed")
+
+deployment-recover: runtime-layout ## Recover deployment state after partial writes
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli deployment recover --state-dir "$(STATE_DIR)"
+	$(call log_success,"Deployment recovery completed")
 
 launchagent-install: deps runtime-layout ## Render LaunchAgent by default; set LAUNCHAGENT_APPLY=1 to write it
 	@if [[ "$(LAUNCHAGENT_APPLY)" == "1" ]]; then \
