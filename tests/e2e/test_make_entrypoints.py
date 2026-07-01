@@ -81,6 +81,12 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "plugin-render",
         "plugin-apply",
         "plugin-rollback",
+        "plugin-bootstrap-preflight",
+        "plugin-bootstrap-plan",
+        "plugin-bootstrap-apply",
+        "plugin-bootstrap-status",
+        "plugin-bootstrap-rollback",
+        "plugin-bootstrap-uninstall",
         "config-backup",
         "codex-app-policy",
         "config-render",
@@ -295,7 +301,11 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     assert "PYTEST_FANOUT_WORKERS ?=" in makefile
     assert "PYTEST_PRECOMMIT_WORKERS ?=" in makefile
     assert "PYTEST_RELEASE_WORKERS ?=" in makefile
-    assert "PYTEST_MARKER_EXPRESSION ?=" in makefile
+    assert "PUBLIC_RELEASE_PYTEST_MARKER_EXPRESSION ?= not private_contract" in makefile
+    assert (
+        "PYTEST_MARKER_EXPRESSION ?= "
+        "$(if $(wildcard $(ROOT)/local.mk),,$(PUBLIC_RELEASE_PYTEST_MARKER_EXPRESSION))"
+    ) in makefile
     assert "QUALITY_GATE_PYTEST_MARKER_EXPRESSION ?= $(RELEASE_GATE_PYTEST_MARKER_EXPRESSION)" in makefile
     assert 'PYTEST_MARKER_ARGS ?= $(if $(strip $(PYTEST_MARKER_EXPRESSION)),-m "$(PYTEST_MARKER_EXPRESSION)",)' in makefile
     assert 'PYTEST_COV_MARKER_ARGS ?= $(if $(strip $(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)),-m "$(QUALITY_GATE_PYTEST_MARKER_EXPRESSION)",)' in makefile

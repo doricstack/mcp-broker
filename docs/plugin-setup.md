@@ -37,6 +37,22 @@ Roll back the latest client config backup only after review:
 make plugin-rollback PLUGIN_APPLY=1
 ```
 
+Runtime bootstrap has separate approval-gated targets:
+
+```bash
+make plugin-bootstrap-preflight BOOTSTRAP_METADATA=path/to/runtime-metadata.json
+make plugin-bootstrap-plan BOOTSTRAP_METADATA=path/to/runtime-metadata.json
+make plugin-bootstrap-apply BOOTSTRAP_METADATA=path/to/runtime-metadata.json BOOTSTRAP_APPROVED=1
+make plugin-bootstrap-status
+make plugin-bootstrap-rollback BOOTSTRAP_APPROVED=1
+make plugin-bootstrap-uninstall BOOTSTRAP_APPROVED=1
+```
+
+Preflight and plan do not write active runtime pointers. Apply, rollback, and
+uninstall require `BOOTSTRAP_APPROVED=1`. Apply activates the runtime extracted
+from the verified archive, not a caller-supplied unpacked directory, and the
+active pointer moves only after the entrypoint smoke check passes.
+
 The plugin defaults to `PLUGIN_CLIENT=codex`. Override it only when the target
 client profile exists in the active broker config:
 

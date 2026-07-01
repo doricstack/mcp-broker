@@ -132,5 +132,24 @@ member paths, must exist in the archive, and must identify an executable regular
 file. `safe_to_activate` is reported only after the digest, archive safety, and
 metadata entrypoint checks pass.
 
-Artifact verification does not write active runtime pointers. Bootstrap apply
-and rollback remain separate Phase 1 contracts.
+Artifact verification does not write active runtime pointers.
+
+Bootstrap transactions use the verified metadata sidecar and the referenced
+artifact archive to plan and apply activation:
+
+```bash
+mcp-broker runtime bootstrap preflight --metadata path/to/runtime-metadata.json --state-dir ~/mcp/mcp-broker/state
+mcp-broker runtime bootstrap plan --metadata path/to/runtime-metadata.json --state-dir ~/mcp/mcp-broker/state
+mcp-broker runtime bootstrap apply --metadata path/to/runtime-metadata.json --state-dir ~/mcp/mcp-broker/state --approved
+mcp-broker runtime bootstrap status --state-dir ~/mcp/mcp-broker/state
+mcp-broker runtime bootstrap rollback --state-dir ~/mcp/mcp-broker/state --approved
+mcp-broker runtime bootstrap uninstall --state-dir ~/mcp/mcp-broker/state --approved
+```
+
+`preflight` verifies the artifact metadata and runtime entrypoint without
+writing bootstrap state. `apply` extracts the verified archive into
+`runtime-install/extracted-runtimes/`, runs a bounded entrypoint smoke check,
+and moves the active runtime pointer only after that extracted runtime passes.
+`rollback` validates the previous manifest and entrypoint before swapping
+pointers. `apply`, `rollback`, and `uninstall` require explicit approval flags.
+Failed apply preserves the previous active runtime pointer.

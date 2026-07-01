@@ -11,6 +11,7 @@ import sys
 from threading import Event
 from typing import Callable, Sequence
 
+from mcp_broker.bootstrap_transactions import main as bootstrap_transactions_main
 from mcp_broker.client import ClientShim, ClientShimError
 from mcp_broker.bundle_loader import main as bundle_loader_main
 from mcp_broker.config import BrokerConfig
@@ -212,6 +213,29 @@ def _add_runtime_parser(
     artifact_parser.add_argument("--digest")
     artifact_parser.add_argument("--metadata", type=Path)
     artifact_parser.set_defaults(handler=handle_runtime_artifact_verify)
+    bootstrap_parser = runtime_subparsers.add_parser(
+        "bootstrap",
+        help="Run approval-gated runtime bootstrap transactions",
+    )
+    bootstrap_subparsers = bootstrap_parser.add_subparsers(
+        dest="bootstrap_command",
+        required=True,
+    )
+    for command in ("preflight", "plan", "apply"):
+        command_parser = bootstrap_subparsers.add_parser(command)
+        command_parser.add_argument("--metadata", required=True, type=Path)
+        command_parser.add_argument("--state-dir", required=True, type=Path)
+        if command == "apply":
+            command_parser.add_argument("--approved", action="store_true")
+        command_parser.set_defaults(handler=handle_runtime_bootstrap)
+    status_parser = bootstrap_subparsers.add_parser("status")
+    status_parser.add_argument("--state-dir", required=True, type=Path)
+    status_parser.set_defaults(handler=handle_runtime_bootstrap)
+    for command in ("rollback", "uninstall"):
+        command_parser = bootstrap_subparsers.add_parser(command)
+        command_parser.add_argument("--state-dir", required=True, type=Path)
+        command_parser.add_argument("--approved", action="store_true")
+        command_parser.set_defaults(handler=handle_runtime_bootstrap)
 
 
 def _daemon_parser(
@@ -512,6 +536,15 @@ def handle_runtime_artifact_verify(args: argparse.Namespace) -> int:
         return 1
     sys.stdout.write(json.dumps(report, sort_keys=True) + "\n")
     return 0
+
+
+def handle_runtime_bootstrap(args: argparse.Namespace) -> int:
+    argv = [args.bootstrap_command, "--state-dir", str(args.state_dir.expanduser())]
+    if getattr(args, "metadata", None) is not None:
+        argv.extend(["--metadata", str(args.metadata.expanduser())])
+    if getattr(args, "approved", False):
+        argv.append("--approved")
+    return bootstrap_transactions_main(argv)
 
 
 if __name__ == "__main__":
