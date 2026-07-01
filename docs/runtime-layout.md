@@ -112,3 +112,25 @@ entrypoint is missing, malformed, outside `runtime-install/versions/`, or a
 symlink escape from the installed runtime path. It also rejects a non-executable
 entrypoint. Runtime artifact digest verification and activation remain separate
 Phase 1 contracts.
+
+Runtime artifact integrity is verified before activation:
+
+```bash
+mcp-broker runtime artifact-verify --artifact path/to/runtime.zip --digest sha256:<digest>
+mcp-broker runtime artifact-verify --metadata path/to/runtime-metadata.json
+```
+
+The verifier supports `.zip` and tar-compatible archives, validates the
+`sha256:` digest, checks every archive member for absolute paths, `..` path
+traversal, Windows drive or backslash traversal, archive links, and tar special
+files. Empty archives are rejected.
+
+Metadata sidecar verification is the activation-readiness check. Sidecar
+`artifact_path` values must be relative to the metadata file directory and must
+not escape that directory. Sidecar `entrypoint` values must be safe archive
+member paths, must exist in the archive, and must identify an executable regular
+file. `safe_to_activate` is reported only after the digest, archive safety, and
+metadata entrypoint checks pass.
+
+Artifact verification does not write active runtime pointers. Bootstrap apply
+and rollback remain separate Phase 1 contracts.

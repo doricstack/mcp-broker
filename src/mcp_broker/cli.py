@@ -19,6 +19,7 @@ from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_ma
 from mcp_broker.deployments import main as deployments_main
 from mcp_broker.fleet_status import main as fleet_status_main
 from mcp_broker.rollout_simulator import main as rollout_simulator_main
+from mcp_broker.runtime_artifact import RuntimeArtifactError, RuntimeArtifactVerifier
 from mcp_broker.runtime_launcher import ActiveRuntimeLauncher, RuntimeLauncherError
 
 
@@ -203,6 +204,14 @@ def _add_runtime_parser(
     launch_plan_parser.add_argument("--state-dir", required=True, type=Path)
     launch_plan_parser.add_argument("runtime_args", nargs=argparse.REMAINDER)
     launch_plan_parser.set_defaults(handler=handle_runtime_launch_plan)
+    artifact_parser = runtime_subparsers.add_parser(
+        "artifact-verify",
+        help="Verify runtime artifact digest and archive safety",
+    )
+    artifact_parser.add_argument("--artifact", type=Path)
+    artifact_parser.add_argument("--digest")
+    artifact_parser.add_argument("--metadata", type=Path)
+    artifact_parser.set_defaults(handler=handle_runtime_artifact_verify)
 
 
 def _daemon_parser(
@@ -477,6 +486,31 @@ def handle_runtime_launch_plan(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{exc}\n")
         return 1
     sys.stdout.write(json.dumps(launch_plan, sort_keys=True) + "\n")
+    return 0
+
+
+def handle_runtime_artifact_verify(args: argparse.Namespace) -> int:
+    try:
+        verifier = RuntimeArtifactVerifier()
+        if args.metadata is not None:
+            if args.artifact is not None or args.digest is not None:
+                raise RuntimeArtifactError(
+                    "runtime artifact verification accepts either --metadata or --artifact with --digest"
+                )
+            report = verifier.verify_metadata_file(args.metadata)
+        else:
+            if args.artifact is None or args.digest is None:
+                raise RuntimeArtifactError(
+                    "runtime artifact verification requires --artifact and --digest"
+                )
+            report = verifier.verify(
+                artifact_path=args.artifact,
+                expected_digest=args.digest,
+            )
+    except RuntimeArtifactError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
+    sys.stdout.write(json.dumps(report, sort_keys=True) + "\n")
     return 0
 
 

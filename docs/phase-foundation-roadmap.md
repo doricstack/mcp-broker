@@ -67,6 +67,10 @@ control plane on day one.
 - [ ] Add a minimal reference control plane that exercises governance without
       centralizing tool execution.
 
+Phase 2 build order is publish, assign, pull/apply, collect, control rollout,
+record approvals, then run the reference control plane. That order keeps
+unsigned state and unapproved mutation out of the broker path.
+
 ## Phase 3: Shared Runtime Build Sequence
 
 - [x] Document that shared hosted execution is not implemented. Contract:
@@ -87,6 +91,10 @@ control plane on day one.
 - [ ] Add hybrid routing between local edge tools and shared workers.
 - [ ] Add shared-runtime E2E proof for tenant isolation, authz denial, quota
       denial, session affinity, audit, rollback, and degraded mode.
+
+Phase 3 build order is threat model, remote API, state placement, quota control,
+shared worker isolation, distributed state, hybrid routing, then E2E proof.
+Hosted execution remains unsupported until that proof passes.
 
 ## Non-Goals
 
