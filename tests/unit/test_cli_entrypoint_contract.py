@@ -185,6 +185,8 @@ def test_top_level_cli_parser_preserves_handlers_and_path_types(
         ]
     )
     parsed_render = parser.parse_args(["render", "generic-client", "--config", str(config_path)])
+    org_path = tmp_path / "org.yaml"
+    parsed_config_compose = parser.parse_args(["config", "compose", "--org", str(org_path)])
 
     assert parsed_init.command == "init"
     assert parsed_init.handler is cli.handle_init
@@ -198,6 +200,10 @@ def test_top_level_cli_parser_preserves_handlers_and_path_types(
     assert parsed_render.handler is cli.handle_render
     assert parsed_render.client == "generic-client"
     assert parsed_render.config == config_path
+    assert parsed_config_compose.command == "config"
+    assert parsed_config_compose.config_command == "compose"
+    assert parsed_config_compose.handler is cli.handle_config_compose
+    assert parsed_config_compose.org == org_path
 
 
 def test_top_level_cli_parser_help_text_is_stable() -> None:
@@ -219,6 +225,8 @@ def test_top_level_cli_parser_help_text_is_stable() -> None:
     assert "Ask the broker daemon to stop" in help_text
     assert "render" in help_text
     assert "Render one client config" in help_text
+    assert "config" in help_text
+    assert "Inspect and compose broker config" in help_text
     assert "XX" not in help_text
     assert "INITIALIZE, RUN, AND INSPECT MCP-BROKER" not in help_text
 
