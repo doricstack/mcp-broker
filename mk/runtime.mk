@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover break-glass-create break-glass-status launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -126,6 +126,25 @@ deployment-rollback: runtime-layout ## Roll back active deployment state to prev
 deployment-recover: runtime-layout ## Recover deployment state after partial writes
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli deployment recover --state-dir "$(STATE_DIR)"
 	$(call log_success,"Deployment recovery completed")
+
+break-glass-create: runtime-layout ## Create an expiring break-glass audit record
+	@test -n "$(BREAK_GLASS_REASON)" || { $(call log_error,"Set BREAK_GLASS_REASON"); exit 2; }
+	@test -n "$(BREAK_GLASS_OPERATOR)" || { $(call log_error,"Set BREAK_GLASS_OPERATOR"); exit 2; }
+	@test -n "$(BREAK_GLASS_EXPIRES_AT)" || { $(call log_error,"Set BREAK_GLASS_EXPIRES_AT"); exit 2; }
+	@test -n "$(BREAK_GLASS_BYPASS_POLICY_PATHS)" || { $(call log_error,"Set BREAK_GLASS_BYPASS_POLICY_PATHS"); exit 2; }
+	@POLICY_ARGS=(); \
+	for POLICY_PATH in $(BREAK_GLASS_BYPASS_POLICY_PATHS); do \
+		POLICY_ARGS+=(--bypass-policy "$$POLICY_PATH"); \
+	done; \
+	PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli break-glass create \
+		--state-dir "$(STATE_DIR)" \
+		--reason "$(BREAK_GLASS_REASON)" \
+		--operator "$(BREAK_GLASS_OPERATOR)" \
+		--expires-at "$(BREAK_GLASS_EXPIRES_AT)" \
+		"$${POLICY_ARGS[@]}"
+
+break-glass-status: runtime-layout ## Report active break-glass status
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli break-glass status --state-dir "$(STATE_DIR)"
 
 launchagent-install: deps runtime-layout ## Render LaunchAgent by default; set LAUNCHAGENT_APPLY=1 to write it
 	@if [[ "$(LAUNCHAGENT_APPLY)" == "1" ]]; then \

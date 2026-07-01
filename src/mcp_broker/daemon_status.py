@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 
 from mcp_broker.config_identity import default_identity_status_payload
+from mcp_broker.break_glass import BreakGlassStore
 from mcp_broker.daemon_helpers import (
     redact_log_field as _redact_log_field,
     utc_timestamp as _utc_timestamp,
@@ -84,7 +85,10 @@ class BrokerDaemonStatusMixin:
             identity = default_identity_status_payload()
         else:
             identity = self.broker_config.identity_status_payload(active_profile=None)
+        break_glass_status = BreakGlassStore(self.status_snapshot_path.parent).status()
+        effective_status = "degraded" if break_glass_status["degraded"] else status
         snapshot = {
+            "break_glass": break_glass_status,
             "identity": identity,
             "last_request_method": self._last_request_method,
             "last_request_status": self._last_request_status,
@@ -93,7 +97,7 @@ class BrokerDaemonStatusMixin:
             "requests_total": self._requests_total,
             "socket_path": str(self.socket_path),
             "started_at": self._started_at,
-            "status": status,
+            "status": effective_status,
             "updated_at": _utc_timestamp(),
             "upstreams": self._upstream_health(restart_upstreams=set()),
         }

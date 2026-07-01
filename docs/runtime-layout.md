@@ -63,7 +63,14 @@ shutdown. The snapshot includes daemon status, PID, socket path, start and updat
 timestamps, broker identity, configured profile names, request and request-error
 counters, last request method and status, and the same per-upstream health map
 returned by `broker/health`, including auth-repair counters when a configured
-repair path has run.
+repair path has run. The snapshot also includes `break_glass`; when an active
+unexpired break-glass record exists, daemon status is written as `degraded` and
+the break-glass block includes the active audit record.
+
+Break-glass audit records are file-backed under `state/break-glass/`. The active
+pointer lives at `active.json`, records live under `records/`, and audit events
+append to `audit.jsonl`. Each record includes reason, operator, expiration,
+bypassed policy paths, creation time, and audit path.
 
 Desired-state deployment records are file-backed under `state/deployments/`.
 `deployment-stage` validates `BUNDLE` and records an active deployment when

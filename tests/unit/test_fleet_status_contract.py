@@ -21,6 +21,20 @@ def _status_snapshot() -> dict[str, object]:
             "environment": "local",
             "schema_version": 1,
         },
+        "break_glass": {
+            "active_record": {
+                "audit_path": "${HOME}/mcp/mcp-broker/state/break-glass/audit.jsonl",
+                "bypassed_policy_paths": ["policy.rollout.approval"],
+                "created_at": "2026-07-01T12:01:00Z",
+                "expires_at": "2026-07-01T12:31:00Z",
+                "operator": "engineer@example.com",
+                "reason": "Emergency secret-token recovery",
+                "record_id": "break-glass-example",
+                "status": "active",
+            },
+            "degraded": True,
+            "status": "active",
+        },
         "last_request_method": "tools/call",
         "last_request_status": "ok",
         "pid": 321,
@@ -116,6 +130,8 @@ def test_export_fleet_status_redacts_local_and_secret_fields() -> None:
     assert "socket_path" not in rendered
     assert "pid" not in rendered
     assert '"env":' not in rendered
+    assert "break_glass" not in rendered
+    assert "break-glass-example" not in rendered
 
 
 def test_fleet_status_cli_exports_redacted_json(
