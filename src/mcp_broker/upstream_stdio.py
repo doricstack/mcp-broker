@@ -484,7 +484,7 @@ class StdioUpstreamProcess:
             raise StdioUpstreamError(f"upstream stdout closed: {self.upstream.name}")
         deadline = time.monotonic() + timeout_seconds
         while True:
-            raw = self._read_stdout_line(stdout, deadline=deadline)
+            raw = self._read_stdout_line(stdout, deadline=deadline, process=process)
             loaded = json.loads(raw)
             if not isinstance(loaded, dict):
                 raise StdioUpstreamError(
@@ -499,11 +499,16 @@ class StdioUpstreamProcess:
         stdout: IO[bytes],
         *,
         deadline: float,
+        process: subprocess.Popen[bytes] | None = None,
     ) -> bytes:
         while b"\n" not in self._stdout_buffer:
             remaining = max(0, deadline - time.monotonic())
             readable, _, _ = select.select([stdout], [], [], remaining)
             if not readable:
+                if process is not None and process.poll() is not None:
+                    raise StdioUpstreamError(
+                        f"upstream exited without response: {self.upstream.name}"
+                    )
                 raise StdioUpstreamTimeout(f"upstream timed out: {self.upstream.name}")
             chunk = os.read(stdout.fileno(), 4096)
             if not chunk:

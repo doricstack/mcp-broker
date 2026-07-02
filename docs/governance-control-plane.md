@@ -137,6 +137,29 @@ reject unchecksummed bundles, and report `changed_runtime_state: false`. A
 publish manifest is not an assignment, not a rollout action, and not a remote
 tool execution request.
 
+## Assignment Source Contract
+
+Assignment source documents map broker identifiers and match users, teams,
+channels, and rings to published governance bundle versions. They are data-only routing
+documents. The local broker evaluates them against its own broker identity and
+caller context, then selects one target bundle digest from already published
+manifests.
+
+Assignment sources must not include local filesystem paths, account names,
+secret values, runtime sockets, OAuth state, or private upstream inventory.
+The evaluator rejects local paths, account names, secret-looking values,
+unpublished bundle target references, invalid match fields, and ambiguous
+assignment matches with the same priority.
+Error messages include `local paths are not allowed` and
+`unpublished bundle target` so operators can fix the assignment source without
+guessing.
+The exact match dimensions are users, teams, channels, and rings. Same-priority
+double matches fail as ambiguous assignment matches.
+
+Assignment evaluation must report `changed_runtime_state: false`. It does not
+fetch bundles, apply bundles, update client config, upload status, or call
+upstream tools.
+
 ## Fleet Status Export
 
 Fleet status is a redacted export derived from the local
