@@ -47,6 +47,10 @@ quota, audit, rollback, and E2E gates pass.
 
 ## Phase 2: Governance Control Plane
 
+Completed baseline contracts prove the local-only governance shape. The current
+implementation queue begins with signed publishing, then assignment, pull/apply,
+status collection, rollout control, approvals, and a reference control plane.
+
 - [x] Split desired state into publishable profile, upstream-catalog, policy, rollout, and compatibility
       bundle documents. Contract: `docs/governance-control-plane.md`.
 - [x] Add a redacted fleet-status export that reports broker identity, bundle
@@ -54,7 +58,7 @@ quota, audit, rollback, and E2E gates pass.
       names, secret values, or private inventory.
 - [x] Add an offline control-plane simulator for canary, staged rollout,
       rollback, compatibility rejection, and approval decisions.
-- [ ] Add signed bundle publishing contracts.
+- [x] Add signed bundle publishing contracts.
 - [ ] Add assignment-source contracts for brokers, users, teams, channels, and
       rollout rings.
 - [ ] Add broker pull/apply protocol for authenticated fetch, cache,
@@ -73,6 +77,10 @@ record approvals, then run the reference control plane. That order keeps
 unsigned state and unapproved mutation out of the broker path.
 
 ## Phase 3: Shared Runtime Build Sequence
+
+Completed baseline guardrails document the gates. The current implementation
+queue begins with tenant policy and remote API contracts, then state placement,
+quotas, worker isolation, distributed state, hybrid routing, and E2E proof.
 
 - [x] Document that shared hosted execution is not implemented. Contract:
       `docs/shared-runtime-guardrails.md`.

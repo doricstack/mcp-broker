@@ -126,6 +126,17 @@ triggered rollback. The command reads local files and writes JSON to stdout; it
 does not fetch bundles, upload status, contact a control plane, or mutate
 runtime state.
 
+## Signed Bundle Publishing
+
+Signed bundle publishing creates a local publish manifest for a validated
+governance bundle. The publish manifest records source provenance, bundle
+version, channel, digest, compatibility range, signature reference, promotion state, and revocation state.
+
+Publishing is still local file preparation. It must reject unsigned candidates,
+reject unchecksummed bundles, and report `changed_runtime_state: false`. A
+publish manifest is not an assignment, not a rollout action, and not a remote
+tool execution request.
+
 ## Fleet Status Export
 
 Fleet status is a redacted export derived from the local

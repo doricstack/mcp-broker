@@ -64,6 +64,9 @@
     },
     "compatibility": {
       "$ref": "#/$defs/compatibility"
+    },
+    "publish": {
+      "$ref": "#/$defs/publishMetadata"
     }
   },
   "$defs": {
@@ -226,6 +229,46 @@
         },
         "required_features": {
           "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "publishMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signature_ref", "promotion_state", "revoked", "provenance"],
+      "properties": {
+        "signature_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promotion_state": {
+          "enum": ["candidate", "canary", "staged", "stable", "deprecated"]
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "revocation_reason": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/publishProvenance"
+        }
+      }
+    },
+    "publishProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "builder"],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/identifier"
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "builder": {
+          "$ref": "#/$defs/identifier"
         }
       }
     },
