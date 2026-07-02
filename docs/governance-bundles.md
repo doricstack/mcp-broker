@@ -136,6 +136,14 @@ Governance documents are evaluated by the local broker. The contract is:
 
 See `docs/governance-control-plane.md` for the Phase 2 control-plane contract.
 
+## Signed Publishing Metadata
+
+Governance bundles may include a `publish` section when they are prepared for a
+channel. The section records `signature_ref`, `promotion_state`, `revoked`, and
+source `provenance`. Local publishing rejects candidates without a signature
+reference, rejects bundles whose checksum does not verify, and refuses revoked
+candidates before promotion metadata is written.
+
 ## Break-Glass Audit
 
 Break-glass is a local, time-bound policy bypass record. It is for emergency
@@ -179,5 +187,6 @@ active use and status returns inactive.
   conflict reporting, and secret-reference validation.
 - P1.N6 adds local break-glass audit records with reason, operator, expiration,
   bypassed policy paths, and degraded status.
-- P2.1 splits the bundle model into profile, upstream-catalog, policy, rollout,
+- B2.1 splits the bundle model into profile, upstream-catalog, policy, rollout,
   and compatibility documents for enterprise governance.
+- P2.1 adds signed publishing metadata and local publish manifests.

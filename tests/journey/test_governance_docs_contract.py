@@ -26,6 +26,7 @@ def test_governance_docs_split_publishable_bundle_documents() -> None:
         "### Compatibility Bundle",
         "## Local Execution Boundary",
         "## Offline Control-Plane Simulation",
+        "## Signed Bundle Publishing",
     ]
     required_terms = [
         "profile bundle",
@@ -52,6 +53,12 @@ def test_governance_docs_split_publishable_bundle_documents() -> None:
         "audit record",
         "expiration",
         "compatibility rejection",
+        "signature reference",
+        "promotion state",
+        "revocation state",
+        "reject unsigned",
+        "reject unchecksummed",
+        "changed_runtime_state: false",
     ]
     forbidden_terms = [
         "/Users/",
