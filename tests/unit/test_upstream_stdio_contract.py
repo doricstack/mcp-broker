@@ -2471,6 +2471,33 @@ def test_stdio_read_stdout_line_times_out_when_pipe_is_not_readable(
 
 
 @pytest.mark.error_simulation
+def test_stdio_read_response_reports_exited_process_when_pipe_is_not_readable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import upstream_stdio
+
+    class Stdout:
+        def fileno(self) -> int:
+            return 41
+
+    class ExitedProcess:
+        stdout = Stdout()
+
+        def poll(self) -> int:
+            return 0
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable),
+        runtime_state_dir=tmp_path / "state",
+    )
+    monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([], [], []))
+
+    with pytest.raises(StdioUpstreamError, match="upstream exited without response: fake"):
+        client._read_response(cast(Any, ExitedProcess()), timeout_seconds=1)
+
+
+@pytest.mark.error_simulation
 def test_stdio_read_stdout_line_reports_eof_before_response(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -27,6 +27,7 @@ def test_governance_docs_split_publishable_bundle_documents() -> None:
         "## Local Execution Boundary",
         "## Offline Control-Plane Simulation",
         "## Signed Bundle Publishing",
+        "## Assignment Source Contract",
     ]
     required_terms = [
         "profile bundle",
@@ -59,6 +60,11 @@ def test_governance_docs_split_publishable_bundle_documents() -> None:
         "reject unsigned",
         "reject unchecksummed",
         "changed_runtime_state: false",
+        "broker identifiers",
+        "users, teams, channels, and rings",
+        "unpublished bundle target",
+        "ambiguous assignment matches",
+        "local paths are not allowed",
     ]
     forbidden_terms = [
         "/Users/",
