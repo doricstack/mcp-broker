@@ -1682,7 +1682,7 @@ for line in sys.stdin:
     }
 
     try:
-        client.call_tool("fake.echo", {}, timeout_seconds=1)
+        client.call_tool("fake.echo", {}, timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS)
         snapshot = client.health_snapshot()
 
         assert client.status == "running"
@@ -1751,13 +1751,13 @@ print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {}}), flush=T
     )
 
     try:
-        client.call_tool("fake.echo", {}, timeout_seconds=1)
+        client.call_tool("fake.echo", {}, timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS)
         process = cast(subprocess.Popen[bytes], client._process)
         process.wait(timeout=1)
 
         assert client.status == "exited"
 
-        client.call_tool("fake.echo", {}, timeout_seconds=1)
+        client.call_tool("fake.echo", {}, timeout_seconds=STDIO_HAPPY_PATH_TIMEOUT_SECONDS)
 
         assert client.health_snapshot()["restarts"] == 1
     finally:

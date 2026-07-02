@@ -44,6 +44,7 @@ def test_make_help_exposes_broker_entrypoints() -> None:
         "discovery-parity",
         "codex-claude-discovery-parity",
         "launchagent-install",
+        "service-plan",
         "launchagent-load",
         "launchagent-uninstall",
         "launchagent-unload",

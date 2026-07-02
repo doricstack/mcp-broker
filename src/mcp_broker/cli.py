@@ -24,6 +24,7 @@ from mcp_broker.fleet_status import main as fleet_status_main
 from mcp_broker.rollout_simulator import main as rollout_simulator_main
 from mcp_broker.runtime_artifact import RuntimeArtifactError, RuntimeArtifactVerifier
 from mcp_broker.runtime_launcher import ActiveRuntimeLauncher, RuntimeLauncherError
+from mcp_broker.service_templates import main as service_templates_main
 
 
 DaemonRunner = Callable[[Sequence[str] | None], int]
@@ -50,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_fleet_status_parser(subparsers)
     _add_rollout_parser(subparsers)
     _add_runtime_parser(subparsers)
+    _add_service_parser(subparsers)
 
     return parser
 
@@ -285,6 +287,34 @@ def _add_runtime_parser(
         command_parser.add_argument("--state-dir", required=True, type=Path)
         command_parser.add_argument("--approved", action="store_true")
         command_parser.set_defaults(handler=handle_runtime_bootstrap)
+
+
+def _add_service_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    service_parser = subparsers.add_parser(
+        "service",
+        help="Render dry-run service manager plans",
+    )
+    service_subparsers = service_parser.add_subparsers(
+        dest="service_command",
+        required=True,
+    )
+    plan_parser = service_subparsers.add_parser(
+        "plan",
+        help="Print a non-mutating service manager plan",
+    )
+    plan_parser.add_argument(
+        "--platform",
+        required=True,
+        choices=("macos", "linux", "windows"),
+    )
+    plan_parser.add_argument("--runtime-root", required=True, type=Path)
+    plan_parser.add_argument("--socket-path", required=True, type=Path)
+    plan_parser.add_argument("--config", required=True, type=Path)
+    plan_parser.add_argument("--daemon-command", required=True)
+    plan_parser.add_argument("--home-dir", required=True, type=Path)
+    plan_parser.set_defaults(handler=handle_service_plan)
 
 
 def _daemon_parser(
@@ -625,6 +655,25 @@ def handle_runtime_bootstrap(args: argparse.Namespace) -> int:
     if getattr(args, "approved", False):
         argv.append("--approved")
     return bootstrap_transactions_main(argv)
+
+
+def handle_service_plan(args: argparse.Namespace) -> int:
+    return service_templates_main(
+        [
+            "--platform",
+            args.platform,
+            "--runtime-root",
+            str(args.runtime_root.expanduser()),
+            "--socket-path",
+            str(args.socket_path.expanduser()),
+            "--config",
+            str(args.config.expanduser()),
+            "--daemon-command",
+            args.daemon_command,
+            "--home-dir",
+            str(args.home_dir.expanduser()),
+        ]
+    )
 
 
 if __name__ == "__main__":

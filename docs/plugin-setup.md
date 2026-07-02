@@ -53,6 +53,19 @@ uninstall require `BOOTSTRAP_APPROVED=1`. Apply activates the runtime extracted
 from the verified archive, not a caller-supplied unpacked directory, and the
 active pointer moves only after the entrypoint smoke check passes.
 
+Service bootstrap also has a generic dry-run plan:
+
+```bash
+make service-plan SERVICE_PLAN_PLATFORM=macos MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
+make service-plan SERVICE_PLAN_PLATFORM=linux MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
+make service-plan SERVICE_PLAN_PLATFORM=windows MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
+```
+
+The service plan prints target paths, render paths, environment, and daemon
+command for LaunchAgent, systemd user service, or Windows Scheduled Task setup.
+It is non-mutating and reports `would_mutate=false`; use the platform-specific
+apply flag only after reviewing the plan.
+
 The plugin defaults to `PLUGIN_CLIENT=codex`. Override it only when the target
 client profile exists in the active broker config:
 

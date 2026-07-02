@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover break-glass-create break-glass-status launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover break-glass-create break-glass-status service-plan launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -145,6 +145,16 @@ break-glass-create: runtime-layout ## Create an expiring break-glass audit recor
 
 break-glass-status: runtime-layout ## Report active break-glass status
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli break-glass status --state-dir "$(STATE_DIR)"
+
+service-plan: runtime-layout ## Print a non-mutating service bootstrap plan for SERVICE_PLAN_PLATFORM
+	@test -n "$(MCP_BROKER_DAEMON_COMMAND)" || { $(call log_error,"Set MCP_BROKER_DAEMON_COMMAND"); exit 2; }
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli service plan \
+		--platform "$(SERVICE_PLAN_PLATFORM)" \
+		--runtime-root "$(RUNTIME_ROOT)" \
+		--socket-path "$(SOCKET_PATH)" \
+		--config "$(CONFIG_PATH)" \
+		--daemon-command "$(MCP_BROKER_DAEMON_COMMAND)" \
+		--home-dir "$(SERVICE_PLAN_HOME_DIR)"
 
 launchagent-install: deps runtime-layout ## Render LaunchAgent by default; set LAUNCHAGENT_APPLY=1 to write it
 	@if [[ "$(LAUNCHAGENT_APPLY)" == "1" ]]; then \
