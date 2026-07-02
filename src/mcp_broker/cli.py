@@ -21,6 +21,7 @@ from mcp_broker.config_render import main as config_render_main
 from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError, main as daemon_main
 from mcp_broker.deployments import main as deployments_main
 from mcp_broker.fleet_status import main as fleet_status_main
+from mcp_broker.cli_governance import add_governance_parser
 from mcp_broker.rollout_simulator import main as rollout_simulator_main
 from mcp_broker.runtime_artifact import RuntimeArtifactError, RuntimeArtifactVerifier
 from mcp_broker.runtime_launcher import ActiveRuntimeLauncher, RuntimeLauncherError
@@ -48,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_bundle_parser(subparsers)
     _add_deployment_parser(subparsers)
     _add_break_glass_parser(subparsers)
+    add_governance_parser(subparsers)
     _add_fleet_status_parser(subparsers)
     _add_rollout_parser(subparsers)
     _add_runtime_parser(subparsers)
