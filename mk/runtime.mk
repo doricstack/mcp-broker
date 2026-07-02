@@ -1,4 +1,4 @@
-.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover break-glass-create break-glass-status service-plan launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-uninstall windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
+.PHONY: runtime-layout doctor broker-secrets-sync broker-start broker-stop broker-status broker-wait broker-reap broker-smoke tools-count facade-smoke codex-facade-smoke claude-facade-smoke agy-facade-smoke profile-validation codex-profile-validation claude-profile-validation agy-profile-validation discovery-parity codex-claude-discovery-parity codex-deferred-acceptance secret-import-env deployment-stage deployment-rollback deployment-recover governance-pull governance-apply governance-rollback break-glass-create break-glass-status service-plan launchagent-install launchagent-load launchagent-uninstall launchagent-unload systemd-install systemd-load systemd-uninstall systemd-unload windows-install windows-load windows-unload linux-container-smoke linux-release-gate windows-powershell-smoke config-backup config-render codex-app-policy project-mcp-audit project-mcp-migrate config-rollback profile-snippet
 
 runtime-layout: ## Create configured runtime directories
 	$(call log_step,"Runtime layout")
@@ -126,6 +126,39 @@ deployment-rollback: runtime-layout ## Roll back active deployment state to prev
 deployment-recover: runtime-layout ## Recover deployment state after partial writes
 	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli deployment recover --state-dir "$(STATE_DIR)"
 	$(call log_success,"Deployment recovery completed")
+
+governance-pull: runtime-layout ## Fetch an assigned governance bundle into local cache
+	@test -n "$(GOVERNANCE_SOURCE)" || { $(call log_error,"Set GOVERNANCE_SOURCE"); exit 2; }
+	@test -n "$(GOVERNANCE_ASSIGNMENT_DECISION)" || { $(call log_error,"Set GOVERNANCE_ASSIGNMENT_DECISION"); exit 2; }
+	@test -f "$(GOVERNANCE_ASSIGNMENT_DECISION)" || { $(call log_error,"Missing GOVERNANCE_ASSIGNMENT_DECISION=$(GOVERNANCE_ASSIGNMENT_DECISION)"); exit 1; }
+	@test -n "$(GOVERNANCE_AUTH_REF)" || { $(call log_error,"Set GOVERNANCE_AUTH_REF"); exit 2; }
+	@if [[ "$(GOVERNANCE_AUTH_PRESENT)" == "1" ]]; then \
+		AUTH_PRESENT_ARG="--auth-present"; \
+	else \
+		AUTH_PRESENT_ARG=""; \
+	fi; \
+	PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli governance pull \
+		--source "$(GOVERNANCE_SOURCE)" \
+		--assignment-decision "$(GOVERNANCE_ASSIGNMENT_DECISION)" \
+		--state-dir "$(STATE_DIR)" \
+		--auth-ref "$(GOVERNANCE_AUTH_REF)" \
+		$$AUTH_PRESENT_ARG
+	$(call log_success,"Governance pull completed")
+
+governance-apply: runtime-layout ## Apply a cached governance bundle after local approval
+	@test -n "$(GOVERNANCE_PULL_RECORD)" || { $(call log_error,"Set GOVERNANCE_PULL_RECORD"); exit 2; }
+	@test -f "$(GOVERNANCE_PULL_RECORD)" || { $(call log_error,"Missing GOVERNANCE_PULL_RECORD=$(GOVERNANCE_PULL_RECORD)"); exit 1; }
+	@test -n "$(GOVERNANCE_APPROVAL)" || { $(call log_error,"Set GOVERNANCE_APPROVAL"); exit 2; }
+	@test -f "$(GOVERNANCE_APPROVAL)" || { $(call log_error,"Missing GOVERNANCE_APPROVAL=$(GOVERNANCE_APPROVAL)"); exit 1; }
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli governance apply \
+		--pull-record "$(GOVERNANCE_PULL_RECORD)" \
+		--state-dir "$(STATE_DIR)" \
+		--approval "$(GOVERNANCE_APPROVAL)"
+	$(call log_success,"Governance apply completed")
+
+governance-rollback: runtime-layout ## Roll back active governance deployment state
+	@PYTHONPATH="$(PYTHONPATH)" $(PYTHON) -m mcp_broker.cli governance rollback --state-dir "$(STATE_DIR)"
+	$(call log_success,"Governance rollback completed")
 
 break-glass-create: runtime-layout ## Create an expiring break-glass audit record
 	@test -n "$(BREAK_GLASS_REASON)" || { $(call log_error,"Set BREAK_GLASS_REASON"); exit 2; }

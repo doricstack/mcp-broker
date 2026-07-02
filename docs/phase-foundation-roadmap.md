@@ -59,9 +59,9 @@ status collection, rollout control, approvals, and a reference control plane.
 - [x] Add an offline control-plane simulator for canary, staged rollout,
       rollback, compatibility rejection, and approval decisions.
 - [x] Add signed bundle publishing contracts.
-- [ ] Add assignment-source contracts for brokers, users, teams, channels, and
+- [x] Add assignment-source contracts for brokers, users, teams, channels, and
       rollout rings.
-- [ ] Add broker pull/apply protocol for authenticated fetch, cache,
+- [x] Add broker pull/apply protocol for authenticated fetch, cache,
       compatibility check, local approval, apply, and rollback.
 - [ ] Add fleet-status collection with auth, retention, failure handling, and
       no-secret validation.

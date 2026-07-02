@@ -160,6 +160,52 @@ Assignment evaluation must report `changed_runtime_state: false`. It does not
 fetch bundles, apply bundles, update client config, upload status, or call
 upstream tools.
 
+## Broker Pull/Apply Protocol
+
+The broker can pull an assigned governance bundle into local cache, validate it,
+and apply it only after a local approval record exists.
+
+Pull supports `file://` bundle sources and localhost HTTP(S) bundle sources.
+It requires an auth reference such as `env:GOVERNANCE_FETCH_TOKEN` or
+`keychain:GOVERNANCE_FETCH_TOKEN` and records only the reference, never the
+secret value. Remote non-localhost URLs are rejected in this phase.
+
+Pull writes a cache record under local runtime state:
+
+```bash
+mcp-broker governance pull \
+  --source file:///path/to/bundle.json \
+  --assignment-decision assignment-decision.json \
+  --state-dir ~/mcp/mcp-broker/state \
+  --auth-ref env:GOVERNANCE_FETCH_TOKEN \
+  --auth-present
+```
+
+The pull step validates bundle schema, checksum, compatibility, and assigned
+target digest before writing the cache record. It reports
+`changed_runtime_state: false` and does not update deployment pointers.
+
+Apply requires an explicit approval JSON whose assignment id and target match
+the pull record:
+
+```bash
+mcp-broker governance apply \
+  --pull-record ~/mcp/mcp-broker/state/governance-pull/cache/.../pull-record.json \
+  --approval approval.json \
+  --state-dir ~/mcp/mcp-broker/state
+```
+
+Apply delegates to the P1 transactional deployment state. Rollback uses the
+same deployment rollback pointer swap:
+
+```bash
+mcp-broker governance rollback --state-dir ~/mcp/mcp-broker/state
+```
+
+The Make targets are `governance-pull`, `governance-apply`, and
+`governance-rollback`. Hosted fetching and central approval workflow are still
+future Phase 2 work; the current protocol proves the local broker behavior.
+
 ## Fleet Status Export
 
 Fleet status is a redacted export derived from the local

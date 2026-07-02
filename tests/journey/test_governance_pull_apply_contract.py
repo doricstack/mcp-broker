@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from tests.support.bundles import minimal_bundle, write_signed_bundle
+from tests.support.repo_paths import make_command, repo_root
+
+
+pytestmark = pytest.mark.journey
+
+ROOT = repo_root()
+AUTH_REF = "env:GOVERNANCE_FETCH_TOKEN"
+
+
+def test_cli_governance_pull_apply_and_rollback_flow(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    first_bundle, first_decision = _assigned_bundle(tmp_path / "first", version="2026.07.01")
+    second_bundle, second_decision = _assigned_bundle(tmp_path / "second", version="2026.07.02")
+    first_decision_path = _write_json(tmp_path / "first-decision.json", first_decision)
+    second_decision_path = _write_json(tmp_path / "second-decision.json", second_decision)
+    first_approval_path = _write_json(tmp_path / "first-approval.json", _approval(first_decision))
+    second_approval_path = _write_json(tmp_path / "second-approval.json", _approval(second_decision))
+
+    first_pull = _run_cli(
+        "governance",
+        "pull",
+        "--source",
+        first_bundle.as_uri(),
+        "--assignment-decision",
+        str(first_decision_path),
+        "--state-dir",
+        str(state_dir),
+        "--auth-ref",
+        AUTH_REF,
+        "--auth-present",
+    )
+    first_record = _record_path_from_stdout(first_pull.stdout)
+    first_apply = _run_cli(
+        "governance",
+        "apply",
+        "--pull-record",
+        str(first_record),
+        "--state-dir",
+        str(state_dir),
+        "--approval",
+        str(first_approval_path),
+    )
+
+    second_pull = _run_cli(
+        "governance",
+        "pull",
+        "--source",
+        second_bundle.as_uri(),
+        "--assignment-decision",
+        str(second_decision_path),
+        "--state-dir",
+        str(state_dir),
+        "--auth-ref",
+        AUTH_REF,
+        "--auth-present",
+    )
+    second_record = _record_path_from_stdout(second_pull.stdout)
+    second_apply = _run_cli(
+        "governance",
+        "apply",
+        "--pull-record",
+        str(second_record),
+        "--state-dir",
+        str(state_dir),
+        "--approval",
+        str(second_approval_path),
+    )
+    rollback = _run_cli("governance", "rollback", "--state-dir", str(state_dir))
+
+    assert "governance bundle pulled:" in first_pull.stdout
+    assert "governance bundle applied:" in first_apply.stdout
+    assert "governance bundle applied:" in second_apply.stdout
+    assert "governance bundle rolled back:" in rollback.stdout
+    active = json.loads((state_dir / "deployments" / "active.json").read_text(encoding="utf-8"))
+    assert "2026.07.01" in active["deployment_id"]
+
+
+def test_make_governance_pull_apply_requires_explicit_inputs(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    bundle_path, decision = _assigned_bundle(tmp_path)
+    decision_path = _write_json(tmp_path / "decision.json", decision)
+    approval_path = _write_json(tmp_path / "approval.json", _approval(decision))
+
+    pull_result = subprocess.run(
+        make_command(
+            "governance-pull",
+            f"GOVERNANCE_SOURCE={bundle_path.as_uri()}",
+            f"GOVERNANCE_ASSIGNMENT_DECISION={decision_path}",
+            f"GOVERNANCE_AUTH_REF={AUTH_REF}",
+            "GOVERNANCE_AUTH_PRESENT=1",
+            f"RUNTIME_ROOT={runtime_root}",
+        ),
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    pull_record = _record_path_from_stdout(pull_result.stdout)
+    apply_result = subprocess.run(
+        make_command(
+            "governance-apply",
+            f"GOVERNANCE_PULL_RECORD={pull_record}",
+            f"GOVERNANCE_APPROVAL={approval_path}",
+            f"RUNTIME_ROOT={runtime_root}",
+        ),
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert "governance bundle pulled:" in pull_result.stdout
+    assert "governance bundle applied:" in apply_result.stdout
+    assert (runtime_root / "state" / "deployments" / "active.json").is_file()
+
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "mcp_broker.cli", *args],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _assigned_bundle(
+    tmp_path: Path,
+    *,
+    version: str = "2026.07.01",
+) -> tuple[Path, dict[str, object]]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    bundle = minimal_bundle()
+    bundle["version"] = version
+    bundle_path = write_signed_bundle(tmp_path / "bundle.json", bundle)
+    loaded = json.loads(bundle_path.read_text(encoding="utf-8"))
+    decision = {
+        "schema_version": 1,
+        "assignment_id": f"assignment-{version}",
+        "target": {
+            "bundle_id": loaded["bundle_id"],
+            "version": loaded["version"],
+            "channel": loaded["channel"],
+            "digest": loaded["checksum"],
+        },
+        "changed_runtime_state": False,
+    }
+    return bundle_path, decision
+
+
+def _approval(decision: dict[str, object]) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "approved": True,
+        "approved_by": "release-manager",
+        "reason": "approved governance bundle rollout",
+        "assignment_id": decision["assignment_id"],
+        "target": decision["target"],
+    }
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> Path:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _record_path_from_stdout(stdout: str) -> Path:
+    marker = "record="
+    for line in stdout.splitlines():
+        if marker in line:
+            return Path(line.split(marker, maxsplit=1)[1].strip())
+    raise AssertionError(stdout)
