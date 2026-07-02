@@ -42,7 +42,7 @@ quota, audit, rollback, and E2E gates pass.
 - [x] Add layered configuration composition with deterministic merge, digest,
       provenance, and secret-reference validation.
 - [x] Add break-glass audit records and degraded status.
-- [ ] Add cross-platform bootstrap tests for macOS, Linux, and Windows service
+- [x] Add cross-platform bootstrap tests for macOS, Linux, and Windows service
       setup without mutating host state by default.
 
 ## Phase 2: Governance Control Plane

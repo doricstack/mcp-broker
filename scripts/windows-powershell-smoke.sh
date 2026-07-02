@@ -46,6 +46,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$WORK_DIR/home" "$WORK_DIR/runtime"
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 "$PWSH" -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/install-windows-task.ps1" -Help >/dev/null
 "$PWSH" -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/uninstall-windows-task.ps1" -Help >/dev/null

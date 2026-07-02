@@ -1034,16 +1034,20 @@ def test_systemd_service_contract_uses_runtime_root_and_config_path() -> None:
 def test_windows_scheduled_task_contract_uses_runtime_root_and_config_path() -> None:
     script = ROOT / "scripts" / "install-windows-task.ps1"
     uninstall_script = ROOT / "scripts" / "uninstall-windows-task.ps1"
+    smoke_script = ROOT / "scripts" / "windows-powershell-smoke.sh"
     text = script.read_text(encoding="utf-8")
+    smoke_text = smoke_script.read_text(encoding="utf-8")
 
     assert script.is_file()
     assert uninstall_script.is_file()
+    assert smoke_script.is_file()
     assert "MCP_BROKER_RUNTIME_ROOT" in text
     assert "MCP_BROKER_SOCKET" in text
     assert "MCP_BROKER_CONFIG" in text
     assert "MCP_BROKER_DAEMON_COMMAND" in text
     assert "mcp_broker.daemon" in text
     assert "Register-ScheduledTask" in text
+    assert "PIP_DISABLE_PIP_VERSION_CHECK=1" in smoke_text
     assert "/Users/" not in text
     assert "navin" not in text.lower()
 

@@ -41,6 +41,20 @@ mcp-broker render codex --dry-run
 For service managers, set `MCP_BROKER_DAEMON_COMMAND` to the installed daemon
 path when the repo-local venv is not used.
 
+Before using a platform installer, print the generic service bootstrap plan:
+
+```bash
+make service-plan \
+  SERVICE_PLAN_PLATFORM=macos \
+  MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
+```
+
+Use `SERVICE_PLAN_PLATFORM=linux` for systemd user services and
+`SERVICE_PLAN_PLATFORM=windows` for Windows Scheduled Task planning. The plan is
+dry-run only: it prints target paths, render paths, environment, and daemon
+command, and it reports `would_mutate=false`. Host service files are written
+only through the platform installer apply flags shown below.
+
 The `uv` path uses the same package:
 
 ```bash
@@ -120,6 +134,12 @@ $HOME/mcp/mcp-broker/
 
 ## Install LaunchAgent
 
+Plan the macOS LaunchAgent path first:
+
+```bash
+make service-plan SERVICE_PLAN_PLATFORM=macos MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
+```
+
 Render and smoke-test the LaunchAgent without writing it:
 
 ```bash
@@ -145,6 +165,7 @@ make broker-status
 Linux uses the same runtime-root contract as macOS:
 
 ```bash
+make service-plan SERVICE_PLAN_PLATFORM=linux MCP_BROKER_DAEMON_COMMAND="$(command -v mcp-broker-daemon)"
 make systemd-install
 ```
 
@@ -175,6 +196,7 @@ make systemd-uninstall SYSTEMD_APPLY=1
 Windows startup uses PowerShell Scheduled Task commands:
 
 ```powershell
+make service-plan SERVICE_PLAN_PLATFORM=windows MCP_BROKER_DAEMON_COMMAND="$(Get-Command mcp-broker-daemon).Source"
 make windows-install
 make windows-install WINDOWS_APPLY=1
 make windows-load
