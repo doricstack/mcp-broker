@@ -2,6 +2,21 @@
 
 All notable public changes will be recorded here.
 
+## 2.1.2 - 2026-09-07
+
+- Fix an ImportError that made 2.1.1 unusable on Python 3.10. Eight modules
+  imported `datetime.UTC`, which does not exist before 3.11, while the package
+  declared `requires-python = ">=3.10"`. Every 3.10 install failed at the CLI
+  entrypoint. If you are on 3.10, skip 2.1.1 and install this release; 2.1.1
+  cannot be replaced on PyPI.
+- Exercise the declared dependency floors in CI instead of only declaring them.
+  A new job installs the lowest versions `pyproject` permits and runs the suite
+  against them, so the range offered to users is the range that is tested. The
+  floors themselves are unchanged, and stay deliberately wide.
+- Prove the declared Python floor on every change. CI now installs that
+  interpreter and imports every shipped module on it, which is the check whose
+  absence let the 2.1.1 defect ship.
+
 ## 2.1.1 - 2026-09-06
 
 - Synchronize release metadata through the Makefile release path.
