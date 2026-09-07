@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import json
 import re
 import sys
@@ -436,7 +436,7 @@ def _insert_under_upstreams(config_text: str, addition: str) -> str:
 
 def _backup_file(path: Path, backup_root: Path) -> Path:
     backup_root.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "__", str(path.expanduser()))
     backup_path = backup_root / f"{timestamp}.{safe_name}"
     backup_path.write_text(path.read_text(encoding=TEXT_ENCODING), encoding=TEXT_ENCODING)

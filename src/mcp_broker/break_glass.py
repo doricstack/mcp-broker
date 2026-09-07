@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -195,7 +195,7 @@ def _parse_timestamp(value: str) -> datetime:
         raise BreakGlassError(f"invalid timestamp: {value}") from exc
     if parsed.tzinfo is None:
         raise BreakGlassError(f"timestamp must include timezone: {value}")
-    return parsed.astimezone(UTC)
+    return parsed.astimezone(timezone.utc)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -214,7 +214,7 @@ def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
 
 
 def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -176,7 +176,7 @@ def _parse_timestamp(value: str) -> datetime:
         raise GovernanceApprovalError(f"invalid timestamp: {value}") from exc
     if parsed.tzinfo is None:
         raise GovernanceApprovalError(f"timestamp must include timezone: {value}")
-    return parsed.astimezone(UTC)
+    return parsed.astimezone(timezone.utc)
 
 
 def _write_json_new(path: Path, payload: Mapping[str, object]) -> None:
@@ -198,7 +198,7 @@ def _append_audit(path: Path, entry: Mapping[str, object]) -> None:
 
 
 def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

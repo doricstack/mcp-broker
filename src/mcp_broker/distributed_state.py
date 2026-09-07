@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -358,15 +358,15 @@ def _revision(record: Mapping[str, Any] | None) -> int | None:
 def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         raise DistributedStateError("now must be timezone-aware")
-    return value.astimezone(UTC)
+    return value.astimezone(timezone.utc)
 
 
 def _format_utc(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _parse_utc(value: str) -> datetime:
-    return datetime.fromisoformat(value).astimezone(UTC)
+    return datetime.fromisoformat(value).astimezone(timezone.utc)
 
 
 def _read_json_optional(path: Path) -> dict[str, Any] | None:
