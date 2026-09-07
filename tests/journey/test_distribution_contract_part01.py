@@ -12,9 +12,15 @@ from tests.support.makefiles import (
 pytestmark = pytest.mark.journey
 ROOT = Path(__file__).resolve().parents[2]
 SEMVER_PATTERN = re.compile(r"\b(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\b")
+# Files that legitimately name a past release. A sentence recording that a
+# shipped version was broken is a fact about history: it never has to stay in
+# sync with the current version, which is what this scan exists to protect.
 HISTORICAL_RELEASE_FILES = {
     "CHANGELOG.md",
+    "TODO.md",
     "docs/p16-maintainer-inputs.md",
+    "tests/journey/test_dependency_floor_contract.py",
+    "tests/journey/test_python_floor_contract.py",
 }
 STATIC_RELEASE_METADATA_FILES = {
     ".well-known/mcp/server-card.json",
@@ -356,6 +362,13 @@ def test_public_release_workflows_cover_ci_package_and_registry_publish() -> Non
     assert "make publish-version-check" in workflows["ci.yml"]
     assert "make npm-package-check" in workflows["ci.yml"]
     assert "make npm-smoke" in workflows["ci.yml"]
+    # CI must install the declared floor and hand it to the suite, otherwise the
+    # floor import contract skips and only the newest Python is ever proven.
+    floor = re.search(r'requires-python\s*=\s*">=(\d+\.\d+)"',
+                      (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert floor, "pyproject must declare a requires-python floor"
+    assert f'python-version: "{floor.group(1)}"' in workflows["ci.yml"]
+    assert "PYTHON_FLOOR_INTERPRETER=" in workflows["ci.yml"]
     assert "release:" in workflows["publish-everywhere.yml"]
     assert "published" in workflows["publish-everywhere.yml"]
     assert "contents: write" in workflows["publish-everywhere.yml"]
@@ -384,8 +397,13 @@ def test_package_build_targets_are_available_through_make() -> None:
     assert "$(PYTHON) -m twine check" in makefile
     assert "build==" in requirements
     assert "twine==" in requirements
-    assert "pytest==9.0.3" in requirements
-    assert "pytest-xdist==3.8.0" in requirements
+    # Assert the pin exists and is exact, never which version it names. A
+    # literal version here duplicates requirements.txt, so every upgrade of a
+    # dependency would fail this contract for no behavioral reason.
+    for tool in ("pytest", "pytest-xdist", "pytest-cov", "mutmut"):
+        assert any(
+            line.startswith(tool + "==") for line in normalized_requirements
+        ), f"{tool} must be pinned exactly in requirements.txt"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["authors"] == [{"name": make_vars["PACKAGE_AUTHOR"]}]
     for dependency in pyproject["project"]["dependencies"]:

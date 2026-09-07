@@ -231,3 +231,17 @@ def test_selector_maps_deleted_source_to_its_tests(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert result.stdout.splitlines() == ["tests/unit/test_widget_contract.py"]
+
+
+def test_selector_maps_ci_workflow_to_the_contract_that_asserts_it() -> None:
+    """A workflow change must select the test that reads that workflow.
+
+    test_distribution_contract_part01 asserts the CI job list, its permissions
+    and the floor-interpreter step, so editing the workflow can break it. With
+    no mapping the selector returned nothing for the file and the commit hook
+    failed closed, which stops the commit without ever naming a test to run.
+    """
+    result = _run_selector(ROOT, [".github/workflows/ci.yml"])
+    assert result.returncode == 0, result.stderr
+    selected = result.stdout.splitlines()
+    assert "tests/journey/test_distribution_contract_part01.py" in selected

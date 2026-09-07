@@ -1,4 +1,4 @@
-.PHONY: setup venv deps clean
+.PHONY: setup venv deps deps-floor clean
 
 setup: config-init venv deps doctor ## Create config, venv, deps, and verify runtime layout
 	$(call log_success,"Setup complete")
@@ -12,6 +12,12 @@ $(VENV_DIR)/bin/python:
 
 deps: $(VENV_DIR)/.deps.stamp ## Install Python dependencies
 	$(call log_success,"Dependencies ready")
+
+deps-floor: $(VENV_DIR)/.deps.stamp ## Downgrade runtime deps to the floors pyproject permits
+	$(call log_step,"Installing declared dependency floors")
+	@$(PYTHON) "$(ROOT)/scripts/install_dependency_floors.py" \
+		--pyproject "$(ROOT)/pyproject.toml" --pip "$(PIP)"
+	$(call log_success,"Declared dependency floors installed")
 
 $(VENV_DIR)/.deps.stamp: $(VENV_DIR)/bin/python $(REQUIREMENTS) pyproject.toml $(CONFIG_TEMPLATE_PATH)
 	$(call log_step,"Installing dependencies")
