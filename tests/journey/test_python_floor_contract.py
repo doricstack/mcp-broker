@@ -18,6 +18,10 @@ from pathlib import Path
 
 import pytest
 
+# Without this the file sits in tests/journey but is invisible to marker-based
+# selection, so the floor contract would silently not run where journey tests do.
+pytestmark = pytest.mark.journey
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "mcp_broker"
 
@@ -55,11 +59,23 @@ def test_no_shipped_module_imports_a_name_newer_than_the_declared_floor():
         + "; ".join(offenders))
 
 
+class FloorInterpreterUnusable(RuntimeError):
+    """An explicitly configured floor interpreter is not usable."""
+
+
 def floor_interpreter() -> str | None:
-    """Locate an interpreter at the declared floor without naming any user path."""
+    """Locate an interpreter at the declared floor without naming any user path.
+
+    A configured override that does not resolve is an error, not a reason to
+    quietly fall back: silently testing a different interpreter than the one CI
+    installed would report a floor it never exercised.
+    """
     major, minor = declared_floor()
     override = os.environ.get("PYTHON_FLOOR_INTERPRETER")
-    if override and Path(override).is_file():
+    if override:
+        if not Path(override).is_file():
+            raise FloorInterpreterUnusable(
+                f"PYTHON_FLOOR_INTERPRETER is set to {override!r}, which is not a file")
         return override
     found = shutil.which(f"python{major}.{minor}")
     if found:
@@ -72,12 +88,22 @@ def floor_interpreter() -> str | None:
     return None
 
 
-@pytest.mark.skipif(floor_interpreter() is None,
-                    reason="no interpreter at the declared floor is installed")
 def test_every_shipped_module_imports_on_the_floor_interpreter():
-    """Static scanning catches known names; only the real floor catches the rest."""
+    """Static scanning catches known names; only the real floor catches the rest.
+
+    Skipping is allowed on a developer machine without the floor installed, but
+    never in CI: a gate that examines nothing must not report the same green as
+    one that examined everything, and CI is the only place this contract has to
+    hold before publication.
+    """
     interpreter = floor_interpreter()
-    assert interpreter is not None, "skipif should have prevented this"
+    if interpreter is None:
+        major, minor = declared_floor()
+        if os.environ.get("CI"):
+            pytest.fail(
+                f"CI must install Python {major}.{minor} and set PYTHON_FLOOR_INTERPRETER; "
+                "the floor contract cannot be proven without it")
+        pytest.skip(f"no Python {major}.{minor} installed to prove the floor")
     modules = sorted(
         ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
         for path in source_files()

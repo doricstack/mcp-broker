@@ -22,6 +22,10 @@
       "runTests": ["tests/unit/test_affected_test_selection_contract.py", "tests/e2e/test_make_entrypoints.py"]
     },
     {
+      "changed": ".github/workflows/**",
+      "runTests": ["tests/journey/test_distribution_contract_part*.py", "tests/journey/test_python_floor_contract.py"]
+    },
+    {
       "changed": "Makefile",
       "runTests": ["tests/e2e/test_make_entrypoints.py", "tests/journey/test_distribution_contract_part*.py"]
     },
