@@ -4,11 +4,22 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import tarfile
 
 import pytest
+
+
+# Python 3.14 colourizes argparse errors, so stderr can start with an escape
+# sequence instead of "usage:". Compare on the stripped text so the assertion is
+# interpreter-portable across the whole declared requires-python range.
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def without_ansi(text: str) -> str:
+    return ANSI_ESCAPE.sub("", text)
 
 
 pytestmark = pytest.mark.unit
@@ -35,9 +46,10 @@ def test_bootstrap_parse_args_rejects_missing_required_inputs(
         _parse_args(argv)
 
     captured = capsys.readouterr()
+    stderr = without_ansi(captured.err)
     assert raised.value.code == 2
-    assert captured.err.startswith("usage:")
-    assert required_text in captured.err
+    assert stderr.startswith("usage:")
+    assert required_text in stderr
 
 
 def test_bootstrap_parse_args_help_keeps_operator_description(
