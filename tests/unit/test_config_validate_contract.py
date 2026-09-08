@@ -4,6 +4,7 @@ from io import StringIO
 import pytest
 
 from tests.support.repo_paths import repo_root
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = pytest.mark.unit
@@ -312,8 +313,8 @@ def test_config_validate_parser_contract(capsys: pytest.CaptureFixture[str]) -> 
     assert help_exit.value.code == 0
     captured = capsys.readouterr()
     assert captured.out.splitlines()[2] == "Validate an mcp-broker YAML config"
-    assert "--config" in captured.out
-    assert "--schema" in captured.out
+    assert "--config" in without_ansi(captured.out)
+    assert "--schema" in without_ansi(captured.out)
 
 
 def test_config_validate_main_reports_success_and_failure(

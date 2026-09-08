@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from mcp_broker import secrets_sync
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -401,7 +402,7 @@ def test_secrets_sync_main_help_documents_config_argument(
     captured = capsys.readouterr()
     assert exc.value.code == 0
     assert "\nSync declared upstream secrets from the environment" in captured.out
-    assert "--config CONFIG" in captured.out
+    assert "--config CONFIG" in without_ansi(captured.out)
     assert "Path to the broker config file" in captured.out
     assert "XXPath to the broker config fileXX" not in captured.out
     assert "path to the broker config file" not in captured.out

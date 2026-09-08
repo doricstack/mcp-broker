@@ -3,6 +3,7 @@ import signal
 from pathlib import Path
 
 import pytest
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -28,8 +29,8 @@ def test_runtime_reaper_main_help_pins_cli_contract(
 
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
-    assert "\nReap mcp-broker runtime leftovers\n\noptions:" in output
-    assert "--runtime-root RUNTIME_ROOT" in output
+    assert "\nReap mcp-broker runtime leftovers\n\noptions:" in without_ansi(output)
+    assert "--runtime-root RUNTIME_ROOT" in without_ansi(output)
 
 
 def test_runtime_reaper_main_requires_runtime_root(
@@ -41,7 +42,7 @@ def test_runtime_reaper_main_requires_runtime_root(
         main([])
 
     assert exc_info.value.code == 2
-    assert "--runtime-root" in capsys.readouterr().err
+    assert "--runtime-root" in without_ansi(capsys.readouterr().err)
 
 
 def test_runtime_reaper_main_reports_stale_pidfile(

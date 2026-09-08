@@ -6,6 +6,7 @@ import sys
 import tempfile
 
 import pytest
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -402,9 +403,9 @@ def test_client_main_help_and_required_args(capsys: pytest.CaptureFixture[str]) 
     assert help_exit.value.code == 0
     captured = capsys.readouterr()
     assert "Run the mcp-broker stdio client shim" in captured.out.splitlines()
-    assert "--socket-path" in captured.out
-    assert "--profile" in captured.out
-    assert "--session-id" in captured.out
+    assert "--socket-path" in without_ansi(captured.out)
+    assert "--profile" in without_ansi(captured.out)
+    assert "--session-id" in without_ansi(captured.out)
 
     with pytest.raises(SystemExit) as missing_socket_path:
         main([])

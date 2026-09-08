@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -133,7 +134,7 @@ def test_tool_count_parse_args_requires_config_and_defaults_profile(capsys: pyte
     with pytest.raises(SystemExit):
         tool_count._parse_args([])
     missing = capsys.readouterr()
-    assert "--config" in missing.err
+    assert "--config" in without_ansi(missing.err)
 
 
 def test_tool_count_parse_args_help_names_command(capsys: pytest.CaptureFixture[str]) -> None:
@@ -145,8 +146,8 @@ def test_tool_count_parse_args_help_names_command(capsys: pytest.CaptureFixture[
     captured = capsys.readouterr()
     assert exc.value.code == 0
     assert "\nCount broker-advertised MCP tools\n" in captured.out
-    assert "--config" in captured.out
-    assert "--profile" in captured.out
+    assert "--config" in without_ansi(captured.out)
+    assert "--profile" in without_ansi(captured.out)
 
 
 def test_tool_count_rethrows_unexpected_daemon_start_error(
