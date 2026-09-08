@@ -27,6 +27,7 @@ _mutation-impl:
 		--output-json "$(MUTATION_STATS_JSON)" \
 		--min-score "$(MUTATION_MIN_SCORE)" \
 		$(if $(MUTATION_ARGS),--include-mutants $(MUTATION_ARGS),) \
+		$(if $(MUTATION_CARVEOUTS),--carveouts "$(MUTATION_CARVEOUTS)" --repo-root "$(ROOT)",) \
 		--fail-statuses $(MUTATION_FAIL_STATUSES)
 	$(call log_success,"Mutation tests passed")
 
