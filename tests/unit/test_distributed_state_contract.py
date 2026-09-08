@@ -591,3 +591,317 @@ def _journal_actions(state_dir: Path) -> list[str]:
         json.loads(line)["action"]
         for line in journal_path.read_text(encoding="utf-8").splitlines()
     ]
+
+
+# --- the audit event builders --------------------------------------------------
+
+FULL_LOCK = {
+    "tenant_id": "tenant-a",
+    "workspace_id": "workspace-a",
+    "user_id": "user-a",
+    "owner_id": "owner-a",
+    "token": "token-a",
+}
+
+
+def test_mutation_event_carries_every_field_from_a_populated_lock() -> None:
+    """A mutated lookup key falls through to the default, so a fully populated lock
+    is what distinguishes the right key from a wrong one."""
+    from mcp_broker.distributed_state import _mutation_event
+
+    assert _mutation_event(
+        event_type="distributed_state_write", lock=FULL_LOCK, result="allowed"
+    ) == {
+        "event_type": "distributed_state_write",
+        "tenant_id": "tenant-a",
+        "workspace_id": "workspace-a",
+        "user_id": "user-a",
+        "owner_id": "owner-a",
+        "lock_token": "token-a",
+        "result": "allowed",
+    }
+
+
+def test_mutation_event_defaults_every_missing_lock_field_to_empty_string() -> None:
+    """An empty lock is the only case where the defaults themselves are observable."""
+    from mcp_broker.distributed_state import _mutation_event
+
+    assert _mutation_event(event_type="e", lock={}, result="denied") == {
+        "event_type": "e",
+        "tenant_id": "",
+        "workspace_id": "",
+        "user_id": "",
+        "owner_id": "",
+        "lock_token": "",
+        "result": "denied",
+    }
+
+
+def test_mutation_event_reads_the_lock_token_from_the_token_key() -> None:
+    """The event field is lock_token; the lock's own field is token. Conflating the
+    two would leave every audit record with an empty token."""
+    from mcp_broker.distributed_state import _mutation_event
+
+    event = _mutation_event(event_type="e", lock={"token": "abc"}, result="allowed")
+
+    assert event["lock_token"] == "abc"
+    assert "token" not in event
+
+
+def test_mutation_event_omits_revision_and_denial_reason_when_not_supplied() -> None:
+    from mcp_broker.distributed_state import _mutation_event
+
+    event = _mutation_event(event_type="e", lock=FULL_LOCK, result="allowed")
+
+    assert "revision" not in event
+    assert "denial_reason" not in event
+
+
+def test_mutation_event_includes_a_zero_revision() -> None:
+    """The guard is `is not None`, so revision 0 is a real revision and must appear.
+    A truthiness test would drop it."""
+    from mcp_broker.distributed_state import _mutation_event
+
+    event = _mutation_event(
+        event_type="e", lock=FULL_LOCK, result="allowed", revision=0
+    )
+
+    assert event["revision"] == 0
+
+
+def test_mutation_event_includes_a_denial_reason_when_supplied() -> None:
+    from mcp_broker.distributed_state import _mutation_event
+
+    event = _mutation_event(
+        event_type="e", lock=FULL_LOCK, result="denied", denial_reason="stale token"
+    )
+
+    assert event["denial_reason"] == "stale token"
+
+
+def test_mutation_event_includes_an_empty_denial_reason() -> None:
+    """Same `is not None` guard: an empty string is a supplied reason."""
+    from mcp_broker.distributed_state import _mutation_event
+
+    assert _mutation_event(
+        event_type="e", lock=FULL_LOCK, result="denied", denial_reason=""
+    )["denial_reason"] == ""
+
+
+def test_lock_event_carries_the_context_and_the_owner() -> None:
+    from mcp_broker.distributed_state import _lock_event
+
+    assert _lock_event(
+        context=TENANT_CONTEXT, owner_id="owner-a", result="acquired"
+    ) == {
+        "event_type": "distributed_state_lock",
+        "tenant_id": "tenant-a",
+        "workspace_id": "workspace-a",
+        "user_id": "user-a",
+        "owner_id": "owner-a",
+        "result": "acquired",
+    }
+
+
+def test_lock_event_adds_only_the_optional_fields_it_is_given() -> None:
+    from mcp_broker.distributed_state import _lock_event
+
+    event = _lock_event(
+        context=TENANT_CONTEXT,
+        owner_id="owner-a",
+        result="denied",
+        denial_reason="held",
+        stale_owner_id="owner-b",
+        stale_token="token-b",
+    )
+
+    assert event["denial_reason"] == "held"
+    assert event["stale_owner_id"] == "owner-b"
+    assert event["stale_token"] == "token-b"
+
+    sparse = _lock_event(context=TENANT_CONTEXT, owner_id="owner-a", result="acquired")
+    assert "denial_reason" not in sparse
+    assert "stale_owner_id" not in sparse
+    assert "stale_token" not in sparse
+
+
+# --- the remaining helpers ------------------------------------------------------
+
+
+def test_required_identifier_rejects_blank_and_non_string_values() -> None:
+    from mcp_broker.distributed_state import DistributedStateError, _required_identifier
+
+    for bad in ("", "   "):
+        with pytest.raises(DistributedStateError) as exc:
+            _required_identifier(bad, "owner_id")
+        assert str(exc.value) == "owner_id is required"
+
+
+def test_required_identifier_rejects_both_path_separators() -> None:
+    """An identifier becomes part of a filename, so either separator would escape
+    the directory it is meant to stay in."""
+    from mcp_broker.distributed_state import DistributedStateError, _required_identifier
+
+    for bad in ("a/b", "a\\b"):
+        with pytest.raises(DistributedStateError) as exc:
+            _required_identifier(bad, "owner_id")
+        assert str(exc.value) == "owner_id must not contain path separators"
+
+
+def test_required_identifier_returns_a_valid_value_unchanged() -> None:
+    from mcp_broker.distributed_state import _required_identifier
+
+    assert _required_identifier("owner-a", "owner_id") == "owner-a"
+
+
+def test_utc_datetime_requires_an_aware_value_and_converts_to_utc() -> None:
+    from datetime import timezone
+
+    from mcp_broker.distributed_state import DistributedStateError, _utc_datetime
+
+    with pytest.raises(DistributedStateError) as exc:
+        _utc_datetime(datetime(2026, 1, 1))
+    assert str(exc.value) == "now must be timezone-aware"
+
+    offset = timezone(timedelta(hours=4))
+    converted = _utc_datetime(datetime(2026, 1, 1, 4, tzinfo=offset))
+    assert converted == datetime(2026, 1, 1, tzinfo=UTC)
+    assert converted.tzinfo is timezone.utc
+
+
+def test_format_utc_renders_a_z_suffix_and_converts_from_other_offsets() -> None:
+    from datetime import timezone
+
+    from mcp_broker.distributed_state import _format_utc
+
+    offset = timezone(timedelta(hours=-5))
+    rendered = _format_utc(datetime(2025, 12, 31, 19, tzinfo=offset))
+
+    assert rendered == "2026-01-01T00:00:00Z"
+    assert "+00:00" not in rendered
+
+
+def test_parse_utc_round_trips_the_formatted_value() -> None:
+    from mcp_broker.distributed_state import _format_utc, _parse_utc
+
+    value = datetime(2026, 1, 1, tzinfo=UTC)
+
+    assert _parse_utc(_format_utc(value).replace("Z", "+00:00")) == value
+
+
+def test_revision_reads_the_field_and_passes_none_through() -> None:
+    from mcp_broker.distributed_state import _revision
+
+    assert _revision(None) is None
+    assert _revision({"revision": 7}) == 7
+    assert _revision({"revision": "8"}) == 8
+
+
+def test_read_json_optional_returns_none_for_a_missing_file(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import _read_json_optional
+
+    assert _read_json_optional(tmp_path / "missing.json") is None
+
+
+def test_read_json_optional_reads_an_existing_object(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import _read_json_optional
+
+    target = tmp_path / "state.json"
+    target.write_text(json.dumps({"a": 1}), encoding="utf-8")
+
+    assert _read_json_optional(target) == {"a": 1}
+
+
+def test_require_json_reports_the_caller_message_when_absent(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import DistributedStateError, _require_json
+
+    with pytest.raises(DistributedStateError) as exc:
+        _require_json(tmp_path / "missing.json", "lock is not held")
+    assert str(exc.value) == "lock is not held"
+
+
+def test_require_json_rejects_valid_json_that_is_not_an_object(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import DistributedStateError, _require_json
+
+    target = tmp_path / "state.json"
+    target.write_text(json.dumps([1]), encoding="utf-8")
+
+    with pytest.raises(DistributedStateError) as exc:
+        _require_json(target, "unused")
+    assert str(exc.value) == f"expected JSON object: {target}"
+
+
+def test_read_jsonl_rejects_a_line_that_is_not_an_object(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import DistributedStateError, _read_jsonl
+
+    target = tmp_path / "audit.jsonl"
+    target.write_text(json.dumps({"a": 1}) + "\n" + json.dumps([2]) + "\n", encoding="utf-8")
+
+    with pytest.raises(DistributedStateError) as exc:
+        _read_jsonl(target)
+    assert str(exc.value) == f"expected JSON object in {target}"
+
+
+def test_read_jsonl_returns_every_line_in_order(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import _read_jsonl
+
+    target = tmp_path / "audit.jsonl"
+    target.write_text(
+        json.dumps({"n": 1}) + "\n" + json.dumps({"n": 2}) + "\n", encoding="utf-8"
+    )
+
+    assert _read_jsonl(target) == [{"n": 1}, {"n": 2}]
+
+
+def test_write_json_atomic_formats_sorted_and_indented_with_a_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.distributed_state import _write_json_atomic
+
+    target = tmp_path / "state.json"
+    _write_json_atomic(target, {"b": 1, "a": 2})
+
+    assert target.read_text(encoding="utf-8") == '{\n  "a": 2,\n  "b": 1\n}\n'
+
+
+def test_write_json_atomic_creates_nested_parents_and_leaves_no_temp(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import _write_json_atomic
+
+    # Two missing levels: mkdir(parents=False) still creates a single one.
+    target = tmp_path / "deep" / "nested" / "state.json"
+    _write_json_atomic(target, {"a": 1})
+
+    assert target.is_file()
+    assert sorted(p.name for p in target.parent.iterdir()) == ["state.json"]
+
+
+def test_write_json_atomic_replaces_an_existing_file_entirely(tmp_path: Path) -> None:
+    from mcp_broker.distributed_state import _write_json_atomic
+
+    target = tmp_path / "state.json"
+    target.write_text('{"stale": true}', encoding="utf-8")
+    _write_json_atomic(target, {"fresh": True})
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"fresh": True}
+
+
+def test_format_utc_is_utc_even_when_the_host_is_not(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stored timestamp must not follow the machine's timezone.
+
+    astimezone(None) converts to local time, which is indistinguishable from UTC on a
+    UTC host and wrong everywhere else. Forcing a zone is what makes the difference
+    observable.
+    """
+    import time
+
+    from mcp_broker.distributed_state import _format_utc
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        rendered = _format_utc(datetime(2026, 1, 1, 12, tzinfo=UTC))
+    finally:
+        monkeypatch.delenv("TZ", raising=False)
+        time.tzset()
+
+    assert rendered == "2026-01-01T12:00:00Z"

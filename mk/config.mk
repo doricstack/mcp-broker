@@ -286,6 +286,12 @@ MUTATION_RELEASE_CHILDREN ?= $(if $(filter Darwin,$(UNAME_S)),1,$(shell "$(PYTHO
 MUTATION_ARGS    ?=
 MUTATION_DEBUG   ?= false
 MUTATION_DIFF_BASE ?= origin/main
+# A feature branch asks "what is unmerged", and origin/main answers it. A release
+# cut asks "what is new since the last release", and origin/main answers nothing
+# because the branch already IS main. The release gate therefore takes its own
+# base, defaulting to the ordinary one so nothing changes for an ordinary run.
+# Set it to the previous released tag or commit when cutting a release.
+RELEASE_MUTATION_DIFF_BASE ?= $(MUTATION_DIFF_BASE)
 MUTATION_CHANGED_PATHS ?=
 MUTATION_PATHS_TO_MUTATE ?= $(MUTATION_CHANGED_PATHS)
 MUTATE_FILE ?=

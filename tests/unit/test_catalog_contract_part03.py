@@ -348,6 +348,68 @@ def test_call_managed_tool_enforces_profile_and_uses_shared_call_locks(tmp_path:
     assert calls == [("read-store", "find", {}, 60)]
     assert set(call_locks) == {"read-store"}
 
+def test_status_reports_the_active_call_count_the_snapshot_carries(tmp_path: Path) -> None:
+    """The status payload must read the snapshot's own active_call_count.
+
+    Asserting a zero proves nothing here: a lookup under any wrong key also yields
+    zero, so a mutated key name passes a zero-valued assertion unchanged. A non-zero
+    count is the case that can fail.
+    """
+    from mcp_broker.config import BrokerIdentityConfig
+
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(
+            identity=BrokerIdentityConfig(
+                broker_id="engineer-laptop",
+                environment="local",
+                bundle_version="unbundled",
+            )
+        ),
+        profiles={
+            # The shared upstream fixture references all three, and config
+            # validation rejects an upstream naming a profile that is not declared.
+            "default-llm": ToolExposureProfile(
+                name="default-llm",
+                max_tools=20,
+                # write-store is mutating, and config validation requires the
+                # profile that exposes it to allow it explicitly.
+                allow_mutating_upstreams=("write-store",),
+            ),
+            "maintenance": ToolExposureProfile(name="maintenance", max_tools=500),
+            "other-llm": ToolExposureProfile(name="other-llm", max_tools=20),
+        },
+        upstreams=_catalog_config(tmp_path).upstreams,
+    )
+    profile = ToolExposureProfile(
+        name="default-llm",
+        max_tools=20,
+        allow_mutating_upstreams=("write-store",),
+    )
+
+    def status_provider(_visible: set[str] | None) -> dict[str, dict[str, object]]:
+        return {
+            "read-store": {"state": "running", "active_call_count": 3},
+            "write-store": {"state": "running", "active_call_count": 1},
+            "broken-store": {"state": "running"},
+        }
+
+    payload = BrokerCatalogFacade(
+        broker_config=config,
+        profile=profile,
+        list_upstream=lambda _name, _timeout: [],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+        status_provider=status_provider,
+    ).call_tool("broker.status", {})["structuredContent"]
+
+    assert payload["upstreams"]["read-store"]["active_call_count"] == 3
+    assert payload["upstreams"]["write-store"]["active_call_count"] == 1
+    # An upstream whose snapshot omits the field still reports zero, so the default
+    # stays proven alongside the lookup.
+    assert payload["upstreams"]["broken-store"]["active_call_count"] == 0
+
+
 def test_status_reports_visible_disabled_and_allowed_mutating_upstreams(tmp_path: Path) -> None:
     from mcp_broker.config import BrokerIdentityConfig
 

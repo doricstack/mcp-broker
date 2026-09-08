@@ -150,7 +150,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     create.add_argument("--reason", required=True)
     create.add_argument("--operator", required=True)
     create.add_argument("--expires-at", required=True)
-    create.add_argument("--bypass-policy", action="append", default=[], required=True)
+    # No default: required=True means the flag must be supplied, so a default is
+    # unreachable. Leaving one there is dead configuration that reads as meaningful.
+    create.add_argument("--bypass-policy", action="append", required=True)
     status = subparsers.add_parser("status", help="Report active break-glass status")
     status.add_argument("--state-dir", required=True, type=Path)
     return parser.parse_args(argv)

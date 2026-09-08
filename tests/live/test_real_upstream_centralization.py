@@ -7,7 +7,18 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.live
+# Every case in this file starts a real MCP server. The suite has 23 enabled
+# upstreams, 21 of them stdio, so an unpinned xdist run spawns up to 21 cold
+# processes at once, all racing the same 10s ready budget. On 2026-09-07 that sweep
+# failed a release gate with "upstream timed out: mermaid" at load 18, while
+# the server itself answers initialize in 0.48s to 1.46s and the production daemon
+# logs 2491 such calls with zero timeouts.
+#
+# xdist_group pins the whole file to one worker, so the servers start one at a time.
+# That removes the self-inflicted storm rather than tuning the timeout to one
+# evening's machine load, and leaves the existing budget with roughly seven times
+# headroom over the slowest measured cold start.
+pytestmark = [pytest.mark.live, pytest.mark.xdist_group(name="live-upstreams")]
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_FILE = Path(
     os.environ.get(
