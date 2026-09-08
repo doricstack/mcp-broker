@@ -306,6 +306,10 @@ MUTATION_RUN_LOG ?= $(QUALITY_DIR)/mutmut-run.log
 MUTATION_MUTANTS_DIR ?= $(QUALITY_DIR)/mutants-linux
 MUTATION_MIN_SCORE ?= 100
 MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout check_was_interrupted_by_user segfault not_checked
+# Registry of adjudicated-equivalent survivors. A row stops a survivor from
+# blocking the gate ONLY while the file's current SHA-256 matches the hash the
+# row records; a stale row fails the gate rather than being ignored.
+MUTATION_CARVEOUTS ?= $(ROOT)/docs/mutation-carveouts.md
 SHARED_SCRIPTS_DIR ?= $(HOME)/.llm-shared/scripts
 CHECK_VIOLATIONS ?= $(SHARED_SCRIPTS_DIR)/check-violations.sh
 GRADE_QUALITY    ?= $(SHARED_SCRIPTS_DIR)/grade_quality.sh
