@@ -25,6 +25,15 @@ mcp-broker = "mcp_broker.cli:main"
 mcp-broker-client = "mcp_broker.client:main"
 mcp-broker-daemon = "mcp_broker.daemon:main"
 
+[tool.mcp-broker]
+# The newest interpreter CI proves the suite on. requires-python declares a floor
+# and no upper bound, so without naming a ceiling the newest supported Python is
+# whatever a runner happens to ship that day. A CI leg tracking "3.x" proves that
+# moving target rather than a stated one, which is how thirteen assertions
+# comparing raw argparse help text passed on 3.13 and failed on 3.14.
+# Raising this is a deliberate edit; CI reads the value from here.
+python-ceiling = "3.14"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

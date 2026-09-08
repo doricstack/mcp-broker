@@ -52,6 +52,37 @@ jobs:
       - name: Check package artifacts
         run: make package-check
 
+  # The job above tracks "3.x", which is whatever the runner ships that day, so the
+  # newest supported interpreter is a moving target no gate names. That is the
+  # ceiling half of the same claim the floor job proves: requires-python declares
+  # ">=3.10" with no upper bound. Thirteen assertions comparing raw argparse help
+  # text passed on 3.13 and failed on 3.14, which colourizes argparse output, and
+  # nothing caught it before a release gate. The version is read from pyproject so
+  # the declaration stays single-sourced and raising it is one visible edit.
+  python-ceiling:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Resolve the declared ceiling
+        id: ceiling
+        run: |
+          version="$(sed -n 's/^python-ceiling *= *"\([0-9][0-9.]*\)".*/\1/p' pyproject.toml)"
+          test -n "$version" || { echo "pyproject declares no python-ceiling" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up the ceiling Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "${{ steps.ceiling.outputs.version }}"
+
+      - name: Install project
+        run: make setup RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+
+      - name: Run the suite on the newest supported interpreter
+        run: make test RUNTIME_ROOT="$RUNNER_TEMP/mcp-broker"
+
   # pyproject offers `jsonschema>=4.25.1`, so that lower bound is what a user is
   # permitted to install, yet the job above always resolves the newest version.
   # Without this leg the declared floor is never executed, which is exactly how a

@@ -495,7 +495,11 @@ def test_mutation_entrypoints_fail_closed_before_runner_on_empty_selection(
         stderr=subprocess.STDOUT,
     )
     assert no_paths.returncode == 2
-    assert "selected zero changed source files; refusing unscoped mutation" in no_paths.stdout
+    # The message now names the base it selected against, so an operator can tell a
+    # release cut apart from a broken selector. Match the two halves rather than the
+    # whole sentence, which would re-pin the wording this change deliberately opened.
+    assert "selected zero changed source files" in no_paths.stdout
+    assert "refusing unscoped mutation" in no_paths.stdout
 
     no_tests = subprocess.run(
         [*base, "MUTATION_PATHS_TO_MUTATE=src/mcp_broker/daemon.py"],

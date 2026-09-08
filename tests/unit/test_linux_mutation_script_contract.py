@@ -152,7 +152,10 @@ def test_incremental_and_release_mutation_use_affected_file_selectors() -> None:
     assert "--diff-base \"$(MUTATION_DIFF_BASE)\" --format make" in incremental_block
     assert "--all" not in incremental_block
     assert "--all" not in release_block
-    assert '--diff-base "$(MUTATION_DIFF_BASE)" --format make' in release_block
+    # The release path takes its own base. origin/main answers "what is unmerged",
+    # which is the right question for the incremental path and the wrong one for a
+    # release cut, where the branch already IS main and the answer is always empty.
+    assert '--diff-base "$(RELEASE_MUTATION_DIFF_BASE)" --format make' in release_block
     for block in (incremental_block, release_block):
         assert "refusing unscoped mutation" in block
         assert '"$(MUTATION_PATH_SELECTOR)"' in block

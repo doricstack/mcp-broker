@@ -590,3 +590,457 @@ def _bundle_metadata() -> dict[str, object]:
             "value": "abc123",
         },
     }
+
+
+# --- the action records a rollout writes ---------------------------------------
+
+
+def _records(simulation: dict[str, object] | None = None) -> list[dict[str, object]]:
+    from mcp_broker.governance_rollout_controller import _records_from_simulation
+
+    return _records_from_simulation(
+        simulation=simulation or _ready_simulation(),
+        operator="release-operator",
+        bundle=_bundle_metadata(),
+        created_at="2026-07-04T05:00:00Z",
+    )
+
+
+def test_record_carries_every_field_including_the_no_mutation_claim() -> None:
+    """changed_runtime_state is the controller's claim that planning touched
+    nothing. requires_approval is the claim that it may proceed. Both are part of the
+    audit record and neither was asserted."""
+    first = _records()[0]
+
+    assert first == {
+        "schema_version": 1,
+        "action_id": "0001-broker-a-canary",
+        "created_at": "2026-07-04T05:00:00Z",
+        "operator": "release-operator",
+        "mode": "local_simulation_only",
+        "source_state": "ready",
+        "bundle": _bundle_metadata(),
+        "broker_id": "broker-a",
+        "stage": "canary",
+        "action": "canary",
+        "requires_approval": False,
+        "changed_runtime_state": False,
+        "reasons": [],
+        "decision": {
+            "broker_id": "broker-a",
+            "stage": "canary",
+            "state": "canary",
+        },
+    }
+
+
+def test_action_ids_are_zero_padded_and_numbered_from_one() -> None:
+    """The index is 4-digit zero padded and starts at 1, not 0. Operators quote
+    these ids, and sorting them lexically has to match their order."""
+    ids = [record["action_id"] for record in _records()]
+
+    assert ids == [
+        "0001-broker-a-canary",
+        "0002-broker-b-staged",
+        "0003-broker-c-broad",
+    ]
+    assert ids == sorted(ids)
+
+
+def test_every_decision_state_maps_to_its_own_action() -> None:
+    """A mutated mapping would file a rollback as a canary."""
+    from mcp_broker.governance_rollout_controller import _action_for_decision_state
+
+    assert _action_for_decision_state("canary") == "canary"
+    assert _action_for_decision_state("staged_rollout") == "staged"
+    assert _action_for_decision_state("broad_rollout") == "broad"
+    assert _action_for_decision_state("rollback") == "rollback"
+
+
+def test_an_unsupported_decision_state_is_rejected_by_name() -> None:
+    from mcp_broker.governance_rollout_controller import (
+        GovernanceRolloutControllerError,
+        _action_for_decision_state,
+    )
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _action_for_decision_state("sideways")
+    assert str(exc.value) == "unsupported decision state: sideways"
+
+
+@pytest.mark.parametrize(
+    ("state", "requires_approval"),
+    [("approval_required", True), ("compatibility_rejection", False)],
+)
+def test_a_holding_state_produces_one_fleet_wide_hold(
+    state: str, requires_approval: bool
+) -> None:
+    """Both holding states collapse to a single fleet action, and only
+    approval_required asks for approval."""
+    records = _records({"state": state, "reasons": ["needs sign-off"]})
+
+    assert len(records) == 1
+    assert records[0]["action_id"] == "0001-fleet-hold"
+    assert records[0]["broker_id"] == "fleet"
+    assert records[0]["stage"] == "fleet"
+    assert records[0]["action"] == "hold"
+    assert records[0]["source_state"] == state
+    assert records[0]["requires_approval"] is requires_approval
+    assert records[0]["reasons"] == ["needs sign-off"]
+    assert records[0]["decision"] == {}
+
+
+def test_a_proceeding_state_never_requires_approval() -> None:
+    assert all(record["requires_approval"] is False for record in _records())
+
+
+def test_reasons_are_carried_onto_every_record() -> None:
+    simulation = _ready_simulation()
+    simulation["reasons"] = ["one", "two"]
+
+    assert all(record["reasons"] == ["one", "two"] for record in _records(simulation))
+
+
+def test_a_proceeding_simulation_without_decisions_is_rejected() -> None:
+    from mcp_broker.governance_rollout_controller import GovernanceRolloutControllerError
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _records({"state": "ready", "decisions": [], "reasons": []})
+    assert str(exc.value) == "simulation decisions are required"
+
+
+# --- the bundle metadata --------------------------------------------------------
+
+
+def test_bundle_metadata_carries_the_five_declared_fields() -> None:
+    from mcp_broker.governance_rollout_controller import _bundle_metadata as extract
+
+    assert extract(_bundle_metadata()) == {
+        "bundle_id": "governance-bundle",
+        "version": "2026.07.04",
+        "channel": "stable",
+        "digest": {"algorithm": "sha256", "value": "abc123"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("missing", "label"),
+    [
+        ("bundle_id", "bundle_id"),
+        ("version", "bundle_version"),
+        ("channel", "bundle_channel"),
+    ],
+)
+def test_bundle_metadata_names_each_missing_top_level_field(
+    missing: str, label: str
+) -> None:
+    """The label is what an operator reads, and it is not always the key name:
+    version reports as bundle_version."""
+    from mcp_broker.governance_rollout_controller import (
+        GovernanceRolloutControllerError,
+        _bundle_metadata as extract,
+    )
+
+    bundle = _bundle_metadata()
+    del bundle[missing]
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        extract(bundle)
+    assert label in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("missing", "label"),
+    [("algorithm", "digest algorithm"), ("value", "digest value")],
+)
+def test_bundle_metadata_names_each_missing_digest_field(
+    missing: str, label: str
+) -> None:
+    from mcp_broker.governance_rollout_controller import (
+        GovernanceRolloutControllerError,
+        _bundle_metadata as extract,
+    )
+
+    bundle = _bundle_metadata()
+    del bundle["digest"][missing]
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        extract(bundle)
+    assert label in str(exc.value)
+
+
+# --- the on-disk formats --------------------------------------------------------
+
+
+def test_write_json_new_formats_sorted_and_indented_with_a_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    from mcp_broker.governance_rollout_controller import _write_json_new
+
+    target = tmp_path / "record.json"
+    _write_json_new(target, {"b": 1, "a": 2})
+
+    assert target.read_text(encoding="utf-8") == '{\n  "a": 2,\n  "b": 1\n}\n'
+
+
+def test_write_json_new_refuses_to_overwrite_an_existing_record(tmp_path: Path) -> None:
+    from mcp_broker.governance_rollout_controller import _write_json_new
+
+    target = tmp_path / "record.json"
+    _write_json_new(target, {"a": 1})
+
+    with pytest.raises(Exception):
+        _write_json_new(target, {"a": 2})
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
+
+
+def test_write_json_new_writes_through_a_temp_sibling_and_leaves_none_behind(
+    tmp_path: Path,
+) -> None:
+    """The write lands on a .tmp sibling and is renamed, so a reader never sees a
+    partial file. This module's writer does not create parents; its caller does."""
+    from mcp_broker.governance_rollout_controller import _write_json_new
+
+    target = tmp_path / "record.json"
+    _write_json_new(target, {"a": 1})
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["record.json"]
+
+
+def test_append_jsonl_writes_one_sorted_line_per_record(tmp_path: Path) -> None:
+    """It takes a sequence of records and writes one line each, keys sorted. The
+    mapping is deliberately not already alphabetical: an entry that is cannot show
+    whether sort_keys does anything."""
+    from mcp_broker.governance_rollout_controller import _append_jsonl
+
+    target = tmp_path / "audit.jsonl"
+    _append_jsonl(target, [{"zebra": 1, "apple": 2}, {"b": 3}])
+
+    assert target.read_text(encoding="utf-8") == (
+        '{"apple": 2, "zebra": 1}\n{"b": 3}\n'
+    )
+
+
+def test_append_jsonl_appends_rather_than_replacing(tmp_path: Path) -> None:
+    """Append mode is the point of an audit file: a later batch must not erase an
+    earlier one."""
+    from mcp_broker.governance_rollout_controller import _append_jsonl
+
+    target = tmp_path / "audit.jsonl"
+    _append_jsonl(target, [{"a": 1}])
+    _append_jsonl(target, [{"b": 2}])
+
+    assert target.read_text(encoding="utf-8") == '{"a": 1}\n{"b": 2}\n'
+
+
+def test_append_jsonl_writes_nothing_for_an_empty_sequence(tmp_path: Path) -> None:
+    from mcp_broker.governance_rollout_controller import _append_jsonl
+
+    target = tmp_path / "audit.jsonl"
+    _append_jsonl(target, [])
+
+    assert target.read_text(encoding="utf-8") == ""
+
+
+# --- the generated timestamp, the audit entry, and the validation messages ------
+
+
+def test_control_rollout_generates_a_utc_second_resolution_timestamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without created_at the controller stamps its own time: UTC, whole seconds.
+    Microseconds would make two records from one batch sort unstably, and a local
+    clock would file the batch under the operator's zone."""
+    import time
+
+    from mcp_broker.governance_rollout_controller import control_rollout
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        result = control_rollout(
+            simulation=_ready_simulation(),
+            state_dir=tmp_path / "state",
+            operator="release-operator",
+            bundle=_bundle_metadata(),
+        )
+    finally:
+        monkeypatch.delenv("TZ", raising=False)
+        time.tzset()
+
+    action_path = Path(result["action_paths"][0])
+    created = json.loads(action_path.read_text(encoding="utf-8"))["created_at"]
+
+    assert created.endswith("+00:00"), created
+    assert "." not in created, "microseconds must be truncated"
+
+
+def test_control_rollout_writes_the_rollout_control_audit_action(tmp_path: Path) -> None:
+    from mcp_broker.governance_rollout_controller import control_rollout
+
+    state_dir = tmp_path / "state"
+    result = control_rollout(
+        simulation=_ready_simulation(),
+        state_dir=state_dir,
+        operator="release-operator",
+        bundle=_bundle_metadata(),
+        created_at="2026-07-04T05:00:00Z",
+    )
+
+    audit_log_path = state_dir / "governance-rollout" / "action-log.jsonl"
+
+    # The summary names what the controller did and where it put things.
+    assert result["action"] == "rollout-control"
+    assert result["action_count"] == 3
+    assert result["audit_log_path"] == str(audit_log_path)
+    assert result["changed_runtime_state"] is False
+    assert result["schema_version"] == 1
+    assert len(result["action_paths"]) == 3
+
+    # And one audit line landed per action.
+    assert len(audit_log_path.read_text(encoding="utf-8").splitlines()) == 3
+
+
+@pytest.mark.parametrize(
+    ("simulation", "message"),
+    [
+        ({"mode": "remote", "state": "ready"},
+         "rollout controller accepts only local simulation results"),
+        ({"mode": "local_simulation_only"},
+         "simulation state is required"),
+        ({"mode": "local_simulation_only", "state": "ready", "decisions": {}},
+         "simulation decisions must be a list"),
+        ({"mode": "local_simulation_only", "state": "ready", "reasons": {}},
+         "simulation reasons must be a list"),
+    ],
+)
+def test_validate_simulation_messages_are_exact(
+    simulation: dict[str, object], message: str
+) -> None:
+    from mcp_broker.governance_rollout_controller import (
+        GovernanceRolloutControllerError,
+        _validate_simulation,
+    )
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _validate_simulation(simulation)
+    assert str(exc.value) == message
+
+
+# --- absent keys, not empty ones ------------------------------------------------
+
+
+def test_a_simulation_without_a_reasons_key_yields_empty_reasons() -> None:
+    """The default is only observable when the key is absent; an empty list present
+    exercises nothing."""
+    records = _records({"state": "ready", "decisions": _ready_simulation()["decisions"]})
+
+    assert all(record["reasons"] == [] for record in records)
+
+
+def test_a_proceeding_simulation_without_a_decisions_key_is_rejected() -> None:
+    from mcp_broker.governance_rollout_controller import GovernanceRolloutControllerError
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _records({"state": "ready"})
+    assert str(exc.value) == "simulation decisions are required"
+
+
+def test_a_hold_record_carries_the_mode_operator_and_timestamp() -> None:
+    """The hold path builds its record with its own arguments, and those three were
+    not asserted anywhere."""
+    record = _records({"state": "approval_required", "reasons": []})[0]
+
+    assert record["mode"] == "local_simulation_only"
+    assert record["operator"] == "release-operator"
+    assert record["created_at"] == "2026-07-04T05:00:00Z"
+    assert record["bundle"] == _bundle_metadata()
+
+
+# --- the error labels an operator reads -----------------------------------------
+
+
+def test_a_decision_missing_its_stage_is_named_by_label() -> None:
+    from mcp_broker.governance_rollout_controller import GovernanceRolloutControllerError
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _records(
+            {
+                "state": "ready",
+                "decisions": [{"broker_id": "broker-a", "state": "canary"}],
+                "reasons": [],
+            }
+        )
+    assert str(exc.value) == "stage is required"
+
+
+def test_a_decision_missing_its_state_is_named_by_label() -> None:
+    """The label is "decision state", not "state": the two would send an operator to
+    different fields."""
+    from mcp_broker.governance_rollout_controller import GovernanceRolloutControllerError
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _records(
+            {
+                "state": "ready",
+                "decisions": [{"broker_id": "broker-a", "stage": "canary"}],
+                "reasons": [],
+            }
+        )
+    assert str(exc.value) == "decision state is required"
+
+
+def test_a_decision_missing_its_broker_id_is_named_by_label() -> None:
+    from mcp_broker.governance_rollout_controller import GovernanceRolloutControllerError
+
+    with pytest.raises(GovernanceRolloutControllerError) as exc:
+        _records(
+            {
+                "state": "ready",
+                "decisions": [{"stage": "canary", "state": "canary"}],
+                "reasons": [],
+            }
+        )
+    assert str(exc.value) == "broker_id is required"
+
+
+def test_main_passes_the_operators_created_at_through_to_the_record(
+    tmp_path: Path,
+) -> None:
+    """Without this the controller stamps its own time, which is still a valid
+    timestamp, so only the operator's own value shows the argument is wired."""
+    from mcp_broker.governance_rollout_controller import main
+
+    simulation_path = tmp_path / "simulation.json"
+    simulation_path.write_text(json.dumps(_ready_simulation()), encoding="utf-8")
+    state_dir = tmp_path / "state"
+
+    exit_code = main(
+        [
+            "--simulation",
+            str(simulation_path),
+            "--state-dir",
+            str(state_dir),
+            "--operator",
+            "release-operator",
+            "--bundle-id",
+            "governance-bundle",
+            "--bundle-version",
+            "2026.07.04",
+            "--bundle-channel",
+            "stable",
+            "--bundle-digest",
+            "sha256:abc123",
+            "--created-at",
+            "2026-07-04T05:00:00Z",
+        ]
+    )
+    assert exit_code == 0
+
+    action = json.loads(
+        next((state_dir / "governance-rollout" / "actions").iterdir()).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert action["created_at"] == "2026-07-04T05:00:00Z"

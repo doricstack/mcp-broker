@@ -102,15 +102,20 @@ _release-gate-mutation:
 _release-gate-mutation-run:
 	@paths="$(MUTATION_PATHS_TO_MUTATE)"; \
 	if [[ -z "$$paths" ]]; then \
-		paths="$$(PYTHONPATH="$(PYTHONPATH)" "$(PYTHON)" "$(MUTATION_PATH_SELECTOR)" --root "$(ROOT)" --diff-base "$(MUTATION_DIFF_BASE)" --format make)"; \
+		paths="$$(PYTHONPATH="$(PYTHONPATH)" "$(PYTHON)" "$(MUTATION_PATH_SELECTOR)" --root "$(ROOT)" --diff-base "$(RELEASE_MUTATION_DIFF_BASE)" --format make)"; \
 	fi; \
 	if [[ -z "$$paths" ]]; then \
-		$(call log_error,"release-gate selected zero changed source files; refusing unscoped mutation"); \
+		$(call log_error,"release-gate selected zero changed source files against $(RELEASE_MUTATION_DIFF_BASE); refusing unscoped mutation"); \
+		if git -C "$(ROOT)" rev-parse --verify --quiet "$(RELEASE_MUTATION_DIFF_BASE)" >/dev/null && \
+			[[ "$$(git -C "$(ROOT)" rev-parse HEAD)" == "$$(git -C "$(ROOT)" rev-parse "$(RELEASE_MUTATION_DIFF_BASE)")" ]]; then \
+			$(call log_error,"HEAD already matches that base, so this looks like a release cut rather than a broken selector."); \
+			$(call log_error,"Scope it against the last released version: make release-gate RELEASE_MUTATION_DIFF_BASE=<previous release tag or commit>"); \
+		fi; \
 		exit 2; \
 	fi; \
 	tests="$(MUTATION_TESTS_TO_RUN)"; \
 	if [[ -z "$$tests" ]]; then \
-		tests="$$(PYTHONPATH="$(PYTHONPATH)" "$(PYTHON)" "$(MUTATION_TEST_SELECTOR)" --root "$(ROOT)" --tier "$(MUTATION_TEST_TIER)" --base "$(MUTATION_DIFF_BASE)" | tr '\n' ' ')"; \
+		tests="$$(PYTHONPATH="$(PYTHONPATH)" "$(PYTHON)" "$(MUTATION_TEST_SELECTOR)" --root "$(ROOT)" --tier "$(MUTATION_TEST_TIER)" --base "$(RELEASE_MUTATION_DIFF_BASE)" | tr '\n' ' ')"; \
 	fi; \
 	if [[ -z "$$tests" ]]; then \
 		$(call log_error,"release-gate selected zero affected tests; refusing unscoped mutation"); \
