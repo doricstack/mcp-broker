@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -253,7 +254,7 @@ def test_deferred_acceptance_parse_args_defaults_and_guards(
         _parse_args(["--help"])
     captured = capsys.readouterr()
     assert help_exit.value.code == 0
-    assert "\nGenerate maintainer-only deferred-tool acceptance steps\n\noptions:" in captured.out
+    assert "\nGenerate maintainer-only deferred-tool acceptance steps\n\noptions:" in without_ansi(captured.out)
 
 
 def _acceptance_config(tmp_path: Path) -> dict:

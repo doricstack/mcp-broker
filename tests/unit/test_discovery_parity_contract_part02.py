@@ -15,6 +15,7 @@ from mcp_broker.discovery_parity import (
     compare_profile_discovery,
     run_profile_discovery,
 )
+from tests.support.argparse_output import without_ansi
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
 class SequenceRequester:
     def __init__(self, responses: list[dict]) -> None:
@@ -69,7 +70,7 @@ def test_parse_args_help_describes_discovery_parity(
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 0
-    assert "\nCompare broker discovery across profiles\n\noptions:" in captured.out
+    assert "\nCompare broker discovery across profiles\n\noptions:" in without_ansi(captured.out)
 
 def test_discovery_parity_main_returns_zero_and_json_report_for_match(
     monkeypatch: pytest.MonkeyPatch,

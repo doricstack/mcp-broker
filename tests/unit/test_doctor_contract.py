@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 
 import pytest
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.error_simulation]
@@ -19,7 +20,7 @@ def test_doctor_main_help_documents_runtime_config(
     assert exc.value.code == 0
     assert "\nValidate mcp-broker runtime config\n" in captured.out
     assert "XXValidate" not in captured.out
-    assert "--config" in captured.out
+    assert "--config" in without_ansi(captured.out)
 
 
 def test_doctor_main_requires_config_argument(

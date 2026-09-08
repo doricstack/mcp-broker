@@ -1,4 +1,5 @@
 import pytest
+from tests.support.argparse_output import without_ansi
 
 
 pytestmark = pytest.mark.unit
@@ -201,7 +202,7 @@ def test_profile_snippet_main_argparse_guards(
         main(["--help"])
     captured = capsys.readouterr()
     assert help_exit.value.code == 0
-    assert "\nPrint a profile and client config snippet\n\noptions:" in captured.out
+    assert "\nPrint a profile and client config snippet\n\noptions:" in without_ansi(captured.out)
 
     with pytest.raises(SystemExit) as missing_required:
         main([])
