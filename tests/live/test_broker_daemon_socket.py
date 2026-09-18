@@ -598,6 +598,68 @@ def test_broker_daemon_removes_stale_lock_before_start(tmp_path: Path) -> None:
         daemon.stop()
 
 
+def test_broker_daemon_starts_when_lock_names_a_recycled_live_pid(tmp_path: Path) -> None:
+    """The recorded pid belongs to a live process that is not a broker daemon.
+
+    Regression, 2026-09-18: a reboot handed the pid in a stale lock to a file
+    sync process, and the LaunchAgent respawned into "broker daemon already
+    running" until the lock was removed by hand. The daemon must start.
+    """
+    from mcp_broker.daemon import BrokerDaemon
+
+    runtime_root = tmp_path / "runtime"
+    socket_path = _socket_path(tmp_path)
+    daemon = BrokerDaemon(runtime_root=runtime_root, socket_path=socket_path)
+    lock_path = runtime_root / "run" / "broker.lock"
+    lock_path.parent.mkdir(parents=True)
+    # This test process is alive, so the old pid-existence guard refuses here.
+    lock_path.write_text(json.dumps({"owner": "mcp-broker", "pid": os.getpid()}), encoding="utf-8")
+
+    daemon.start()
+    try:
+        assert _request(socket_path, {"method": "broker/health", "id": "recycled"})["result"][
+            "status"
+        ] == "ok"
+    finally:
+        daemon.stop()
+
+
+def test_broker_daemon_takes_the_lock_after_its_holder_is_killed(tmp_path: Path) -> None:
+    """An flock dies with its holder, so a crashed daemon cannot wedge startup."""
+    from mcp_broker.daemon import BrokerDaemon, BrokerDaemonError
+
+    runtime_root = tmp_path / "runtime"
+    socket_path = _socket_path(tmp_path)
+    lock_path = runtime_root / "run" / "broker.lock"
+    ready_path = tmp_path / "holder.ready"
+    lock_path.parent.mkdir(parents=True)
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _LOCK_HOLDER_SOURCE, str(lock_path), str(ready_path)]
+    )
+
+    try:
+        _wait_for_file(ready_path, holder)
+        blocked = BrokerDaemon(runtime_root=runtime_root, socket_path=socket_path)
+        with pytest.raises(BrokerDaemonError, match="already running"):
+            blocked.start()
+
+        holder.kill()
+        holder.wait(timeout=10)
+
+        daemon = BrokerDaemon(runtime_root=runtime_root, socket_path=socket_path)
+        daemon.start()
+        try:
+            assert _request(socket_path, {"method": "broker/health", "id": "reclaimed"})[
+                "result"
+            ]["status"] == "ok"
+        finally:
+            daemon.stop()
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait(timeout=10)
+
+
 def test_broker_daemon_handles_closed_server_and_missing_wake_socket(tmp_path: Path) -> None:
     from mcp_broker.daemon import BrokerDaemon
 
@@ -652,6 +714,39 @@ def _wait_for_snapshot_request_total(snapshot_path: Path, expected: int) -> dict
 
 def _socket_path(tmp_path: Path) -> Path:
     return Path("/tmp") / f"mcp-broker-{uuid.uuid4().hex}.sock"
+
+
+# A separate process that takes the daemon lock, writes the same metadata a real
+# daemon writes, and then sleeps, so a test can kill it without giving it a
+# chance to clean up.
+_LOCK_HOLDER_SOURCE = """
+import fcntl
+import json
+import os
+import pathlib
+import sys
+import time
+
+handle = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)
+fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+os.ftruncate(handle, 0)
+os.write(
+    handle,
+    json.dumps({"owner": "mcp-broker", "pid": os.getpid()}, sort_keys=True).encode("utf-8"),
+)
+pathlib.Path(sys.argv[2]).write_text(str(os.getpid()), encoding="utf-8")
+time.sleep(300)
+"""
+
+
+def _wait_for_file(path: Path, holder: subprocess.Popen[bytes]) -> None:
+    deadline = time.monotonic() + 10
+    while not path.exists():
+        if holder.poll() is not None:
+            raise AssertionError(f"lock holder exited early: {holder.returncode}")
+        if time.monotonic() > deadline:
+            raise AssertionError("lock holder never took the lock")
+        time.sleep(0.05)
 
 
 def _stubborn_child_worker(tmp_path: Path) -> Path:

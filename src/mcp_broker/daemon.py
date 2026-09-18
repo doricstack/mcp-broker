@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -21,7 +22,6 @@ from mcp_broker.daemon_helpers import (
     passive_auth_probe as _passive_auth_probe,
     per_call_health_snapshot as _per_call_health_snapshot,
     per_session_health_snapshot as _per_session_health_snapshot,
-    process_exists as _process_exists,
     _result_content_text,
     result_matches_auth_repair as _result_matches_auth_repair,
     stdio_client_name as _stdio_client_name,
@@ -72,6 +72,18 @@ def _source_provenance() -> dict[str, str]:
     )
 
 
+def _lock_holder_pid(lock_path: Path) -> int | str:
+    """Read the pid a lock file records, for the already-running message only.
+
+    Best effort by design: the lock file is never the authority, so anything
+    unreadable here degrades the message rather than the check.
+    """
+    try:
+        return int(json.loads(lock_path.read_text(encoding="utf-8"))["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return "unknown"
+
+
 @dataclass
 class BrokerDaemon(
     BrokerDaemonStatusMixin,
@@ -106,6 +118,7 @@ class BrokerDaemon(
         self._upstream_call_locks: dict[str, threading.Lock] = {}
         self._cleanup_lock = threading.Lock()
         self._cleanup_done = False
+        self._lock_handle: int | None = None
         self._log_lock = threading.Lock()
         self._status_snapshot_lock = threading.Lock()
         self._stop_logged = False
@@ -639,19 +652,43 @@ class BrokerDaemon(
             return
 
     def _acquire_lock(self) -> None:
+        """Take the daemon lock, holding an advisory lock for as long as we run.
+
+        The pid recorded in the lock file is diagnostics, not ownership. The
+        kernel recycles pids, so after a crash or a reboot the number in a
+        stale lock can belong to an unrelated live process, and a guard that
+        only asks "is that pid alive" then refuses to start forever. That is
+        the failure this replaces: a reboot handed the recorded pid to a
+        file-sync daemon, and every KeepAlive respawn died with "already
+        running" until the lock was removed by hand. An flock is released by
+        the kernel when its holder dies, so ownership cannot outlive the owner.
+        """
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.lock_path.exists():
-            metadata = json.loads(self.lock_path.read_text(encoding="utf-8"))
-            pid = int(metadata["pid"])
-            if _process_exists(pid):
-                raise BrokerDaemonError(f"broker daemon already running: pid {pid}")
-            self.lock_path.unlink(missing_ok=True)
-        self.lock_path.write_text(
-            json.dumps({"owner": "mcp-broker", "pid": os.getpid()}, sort_keys=True),
-            encoding="utf-8",
+        handle = os.open(self.lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+        # Not inheritable: an upstream spawned by this daemon that inherited the
+        # descriptor would keep the lock after the daemon itself was gone.
+        os.set_inheritable(handle, False)
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            holder = _lock_holder_pid(self.lock_path)
+            os.close(handle)
+            raise BrokerDaemonError(f"broker daemon already running: pid {holder}") from None
+        self._lock_handle = handle
+        os.ftruncate(handle, 0)
+        os.write(
+            handle,
+            json.dumps({"owner": "mcp-broker", "pid": os.getpid()}, sort_keys=True).encode(
+                "utf-8"
+            ),
         )
 
     def _release_lock(self) -> None:
+        handle = self._lock_handle
+        self._lock_handle = None
+        if handle is not None:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+            os.close(handle)
         self.lock_path.unlink(missing_ok=True)
 
     def _cleanup(self) -> None:

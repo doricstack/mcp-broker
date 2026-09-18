@@ -28,7 +28,11 @@ def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def repo(tmp_path: Path) -> Path:
     target = tmp_path / "repo"
     target.mkdir()
-    assert run(target, "git", "init", "-b", "main").returncode == 0
+    # --template= keeps the machine's init.templateDir out of the fixture. A
+    # global template with a commit-msg hook lands in .git/hooks, and the
+    # installer then refuses for the right reason (a hook already exists) on a
+    # repo this test believes is bare.
+    assert run(target, "git", "init", "-b", "main", "--template=").returncode == 0
     for path in ("Makefile", "mk", "scripts", ".cits", ".githooks", ".gitignore"):
         source = ROOT / path
         if source.is_dir():
@@ -102,6 +106,7 @@ def test_linked_worktree_install_does_not_change_primary_hooks(repo: Path) -> No
 
 def test_install_preserves_existing_default_hook(repo: Path) -> None:
     hook = repo / ".git/hooks/pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
     content = "#!/bin/sh\nexit 0\n"
     hook.write_text(content, encoding="utf-8")
     result = make(repo, "hooks-install")
