@@ -180,7 +180,7 @@ PY
     tar -xf /tmp/source.tar -C /workspace
     cd /workspace
     rewrite_mutation_scope
-    HOME=/tmp/home make mutation \
+    HOME=/tmp/home MCP_BROKER_MUTATION_WORKSPACE=1 make mutation \
       RUNTIME_ROOT=/tmp/runtime \
       PYTHON_BIN=python3 \
       VENV_DIR=/tmp/venv-mcp-broker \

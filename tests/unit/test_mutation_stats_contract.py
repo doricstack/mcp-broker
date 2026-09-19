@@ -797,3 +797,37 @@ def test_default_fail_statuses_match_all_non_passing_statuses() -> None:
     ]
     assert parsed.min_score == 100.0
     assert parsed.example_limit == 10
+
+
+def test_effective_score_is_zero_when_no_mutant_was_examined():
+    """An empty run scores zero, so it can never clear a minimum.
+
+    A denominator of zero means the run produced no evidence in either
+    direction. Returning zero keeps it below every threshold; treating it as a
+    pass would let a run that examined nothing certify a release.
+    """
+    report = MutationReport(
+        counts={},
+        total=0,
+        passed=0,
+        score=0.0,
+        blocked_by_file=[],
+    )
+
+    assert report.effective_score == 0.0
+
+
+def test_effective_score_credits_excused_survivors_over_the_total():
+    """The score answers what fraction is killed or adjudicated equivalent."""
+    report = MutationReport(
+        counts={"survived": 2, "killed": 8},
+        total=10,
+        passed=8,
+        score=80.0,
+        blocked_by_file=[],
+        excused_count=2,
+    )
+
+    assert report.effective_score == 100.0
+    # The raw score stays as measured; only the effective one is credited.
+    assert report.score == 80.0

@@ -8,14 +8,28 @@ import sys
 
 import pytest
 
+from tests.support.mutant_workspace import in_mutant_workspace
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SELECTOR = ROOT / "scripts" / "select_affected_tests.py"
 pytestmark = pytest.mark.unit
 
 
+def _run_checkout_selector(paths: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run the selector against this checkout, which needs a git base.
+
+    The mutation workspace is an unpacked copy with .git excluded and no
+    origin/main to diff against, so the selector exits instead of routing
+    anything. That is a missing prerequisite rather than a routing defect.
+    """
+    if in_mutant_workspace():
+        pytest.skip("the mutation workspace has no git base to diff against")
+    return _run_selector(ROOT, paths)
+
+
 def test_mutation_registry_change_selects_source_bound_contracts() -> None:
-    result = _run_selector(ROOT, ["docs/mutation-carveouts.md"])
+    result = _run_checkout_selector(["docs/mutation-carveouts.md"])
     assert result.returncode == 0, result.stderr
     assert "tests/unit/test_linux_mutation_script_contract.py" in result.stdout.splitlines()
     assert "tests/unit/test_mutation_scope_contract.py" in result.stdout.splitlines()
@@ -149,7 +163,7 @@ def test_selector_applies_declared_non_code_mapping(tmp_path: Path) -> None:
 
 
 def test_selector_maps_root_docs_to_release_coordinate_contracts() -> None:
-    result = _run_selector(ROOT, ["TODO.md"])
+    result = _run_checkout_selector(["TODO.md"])
 
     assert result.returncode == 0
     selected = result.stdout.splitlines()
@@ -168,21 +182,21 @@ def test_selector_fails_when_changed_file_has_no_test_mapping(tmp_path: Path) ->
 
 
 def test_selector_maps_distribution_make_fragment_to_npm_contract() -> None:
-    result = _run_selector(ROOT, ["mk/distribution.mk"])
+    result = _run_checkout_selector(["mk/distribution.mk"])
 
     assert result.returncode == 0
     assert "tests/journey/test_npm_distribution_contract.py" in result.stdout.splitlines()
 
 
 def test_selector_maps_profiles_module_to_profile_config_contract() -> None:
-    result = _run_selector(ROOT, ["src/mcp_broker/profiles.py"])
+    result = _run_checkout_selector(["src/mcp_broker/profiles.py"])
 
     assert result.returncode == 0
     assert "tests/unit/test_profile_config_contract.py" in result.stdout.splitlines()
 
 
 def test_selector_maps_config_modes_to_config_owner_contracts() -> None:
-    result = _run_selector(ROOT, ["src/mcp_broker/config_modes.py"])
+    result = _run_checkout_selector(["src/mcp_broker/config_modes.py"])
 
     assert result.returncode == 0
     assert "tests/unit/test_config_contract_part02.py" in result.stdout.splitlines()
@@ -191,7 +205,7 @@ def test_selector_maps_config_modes_to_config_owner_contracts() -> None:
 
 
 def test_selector_maps_daemon_errors_to_daemon_owner_contracts() -> None:
-    result = _run_selector(ROOT, ["src/mcp_broker/daemon_errors.py"])
+    result = _run_checkout_selector(["src/mcp_broker/daemon_errors.py"])
 
     assert result.returncode == 0
     assert "tests/unit/test_daemon_jsonrpc_contract_part04.py" in result.stdout.splitlines()
@@ -241,7 +255,7 @@ def test_selector_maps_ci_workflow_to_the_contract_that_asserts_it() -> None:
     no mapping the selector returned nothing for the file and the commit hook
     failed closed, which stops the commit without ever naming a test to run.
     """
-    result = _run_selector(ROOT, [".github/workflows/ci.yml"])
+    result = _run_checkout_selector([".github/workflows/ci.yml"])
     assert result.returncode == 0, result.stderr
     selected = result.stdout.splitlines()
     assert "tests/journey/test_distribution_contract_part01.py" in selected

@@ -211,6 +211,74 @@ def test_only_survivors_are_excusable_never_a_timeout(tmp_path: Path):
     assert excused == set()
 
 
+def test_parse_registry_returns_nothing_when_the_registry_is_absent(tmp_path: Path):
+    """A missing registry excuses nothing, and says so by returning nothing.
+
+    Raising here would surface as a mutation-gate failure, which reads as
+    mutants misbehaving rather than as a registry that is not there. Excusing
+    nothing is the same answer either way, and the gate reports it as such.
+    """
+    assert parse_registry(tmp_path / "absent.md") == []
+
+
+def test_parse_registry_skips_a_truncated_row(tmp_path: Path):
+    """A row too short to carry a reason class and a sign-off cannot be applied.
+
+    Reading whatever cells happen to be present would let a half-written row
+    contribute a callable set with no recorded judgment behind it.
+    """
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER + "| `src/mcp_broker/break_glass.py` | `_read_json` only |\n",
+        encoding="utf-8",
+    )
+
+    assert parse_registry(registry) == []
+
+
+def test_parse_registry_skips_a_source_row_without_a_sha256(tmp_path: Path):
+    """An unbound row cannot be verified, so it must not be able to excuse.
+
+    The digest is what ties a judgment to the code it was made about. Without
+    it the row would inherit an old verdict onto source that may have moved.
+    """
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER
+        + _row(
+            "src/mcp_broker/break_glass.py",
+            "`_read_json` | equivalent | no digest recorded here | signed off",
+        ),
+        encoding="utf-8",
+    )
+
+    assert parse_registry(registry) == []
+
+
+def test_a_survivor_the_engine_did_not_name_is_never_excused(tmp_path: Path):
+    """A result line with no mutant ordinal has no callable to attribute.
+
+    Only a name the engine mangled identifies which callable a survivor came
+    from. Anything else cannot be matched against a row's callables, and
+    guessing at one would excuse a result the registry never judged.
+    """
+    digest = _write_source(tmp_path, "src/mcp_broker/break_glass.py", "x = 1\n")
+    rows = [
+        Carveout(
+            source_path="src/mcp_broker/break_glass.py",
+            sha256=digest,
+            reason_class="equivalent",
+            callables=frozenset({"_read_json"}),
+        )
+    ]
+    results = [("src/mcp_broker/break_glass.py", "not-a-mutant-name", "survived")]
+
+    excused, invalid = excusable_survivors(results, rows, repo_root=tmp_path)
+
+    assert excused == set()
+    assert invalid == []
+
+
 def test_the_real_registry_parses_and_binds_to_real_files():
     """The shipped registry is the input this exists for, so parse it.
 

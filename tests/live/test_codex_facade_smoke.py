@@ -29,6 +29,31 @@ def test_facade_smoke_report_parser_ignores_make_directory_noise() -> None:
     assert report == {"profile": "codex", "called_tool": "fake.echo"}
 
 
+def _run_facade_smoke(target: str, arguments: list[str]) -> str:
+    """Run a facade smoke make target, reporting make's output when it fails.
+
+    check=True throws away the completed process, so a failure reports a return
+    code and nothing else. This target starts a broker daemon and an upstream,
+    which makes it the slowest thing in the suite and the one most likely to
+    fail for a reason that is not in the test, so the output has to survive.
+    """
+    result = subprocess.run(
+        ["make", target, *arguments],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"{target} exited {result.returncode}\n"
+            f"---- stdout ----\n{result.stdout}\n"
+            f"---- stderr ----\n{result.stderr}"
+        )
+    return result.stdout
+
+
+@pytest.mark.timeout(180)
 def test_make_codex_facade_smoke_uses_client_shim_and_calls_upstream(
     tmp_path: Path,
 ) -> None:
@@ -70,10 +95,9 @@ def test_make_codex_facade_smoke_uses_client_shim_and_calls_upstream(
         encoding="utf-8",
     )
 
-    result = subprocess.run(
+    stdout = _run_facade_smoke(
+        "codex-facade-smoke",
         [
-            "make",
-            "codex-facade-smoke",
             f"CONFIG_PATH={config_path}",
             f"RUNTIME_ROOT={runtime_root}",
             f"SOCKET_PATH={socket_path}",
@@ -82,14 +106,9 @@ def test_make_codex_facade_smoke_uses_client_shim_and_calls_upstream(
             "FACADE_CALL_TOOL=fake.echo",
             'FACADE_CALL_ARGS={"message":"hello"}',
         ],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
 
-    report = report_from_stdout(result.stdout, label="facade smoke")
+    report = report_from_stdout(stdout, label="facade smoke")
 
     assert report["profile"] == "codex"
     assert report["advertised_tools"] == [
@@ -123,6 +142,7 @@ def test_make_codex_facade_smoke_uses_client_shim_and_calls_upstream(
     )
 
 
+@pytest.mark.timeout(180)
 def test_make_claude_facade_smoke_uses_claude_profile_without_wiring(
     tmp_path: Path,
 ) -> None:
@@ -162,10 +182,9 @@ def test_make_claude_facade_smoke_uses_claude_profile_without_wiring(
         encoding="utf-8",
     )
 
-    result = subprocess.run(
+    stdout = _run_facade_smoke(
+        "claude-facade-smoke",
         [
-            "make",
-            "claude-facade-smoke",
             f"CONFIG_PATH={config_path}",
             f"RUNTIME_ROOT={runtime_root}",
             f"SOCKET_PATH={socket_path}",
@@ -173,14 +192,9 @@ def test_make_claude_facade_smoke_uses_claude_profile_without_wiring(
             "FACADE_CALL_TOOL=fake.echo",
             'FACADE_CALL_ARGS={"message":"hello"}',
         ],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
 
-    report = report_from_stdout(result.stdout, label="facade smoke")
+    report = report_from_stdout(stdout, label="facade smoke")
 
     assert report["profile"] == "claude"
     assert report["advertised_tools"] == [

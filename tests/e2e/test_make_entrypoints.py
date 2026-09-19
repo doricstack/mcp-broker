@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.support.makefiles import read_combined_makefiles
+from tests.support.mutant_workspace import in_mutant_workspace
 from tests.support.bundles import write_signed_bundle
 from tests.support.repo_paths import make_command
 
@@ -178,6 +179,14 @@ def test_cits_repo_override_keeps_test_execution_make_backed(
 
     assert override.is_file()
     assert override.stat().st_mode & 0o111
+
+    # The override resolves changed files against a git base, and the mutation
+    # workspace is an unpacked copy with .git excluded. The base cannot resolve
+    # there and the script exits rather than routing anything. That is a missing
+    # prerequisite, not a routing defect, so state it and step aside instead of
+    # reporting a failure the test cannot speak to.
+    if in_mutant_workspace():
+        pytest.skip("the mutation workspace has no git base to diff against")
 
     env = os.environ.copy()
     env["CITS_CHANGED_FILES"] = ".test-impact.json"
@@ -408,6 +417,9 @@ def test_mutation_release_gate_contract() -> None:
 
 
 def test_mutation_linux_copy_contract() -> None:
+    if in_mutant_workspace():
+        pytest.skip("the harness rewrites setup.cfg in the mutation workspace")
+
     setup_cfg = (ROOT / "setup.cfg").read_text(encoding="utf-8")
 
     assert "paths_to_mutate=src/mcp_broker" in setup_cfg

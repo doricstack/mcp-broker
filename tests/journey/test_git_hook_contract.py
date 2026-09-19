@@ -12,6 +12,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.journey
 
+# The installed hook scans staged content with gitleaks through make
+# hook-secret-scan, and gitleaks is a documented developer prerequisite rather
+# than a dependency of the package. A bare container therefore cannot run the
+# hook at all, and without this marker those tests fail on their prerequisite
+# in the mutation leg, which reads as a defect in the code under mutation. The
+# suite that must run them is the host quality gate, where the scanner is.
+requires_gitleaks = pytest.mark.skipif(
+    shutil.which("gitleaks") is None,
+    reason="the installed hook scans with gitleaks, which is not on PATH here",
+)
+
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
@@ -63,6 +74,7 @@ def test_install_refuses_unknown_hook_owner(repo: Path) -> None:
     assert run(repo, "git", "config", "--get", "core.hooksPath").stdout.strip() == "custom-hooks"
 
 
+@requires_gitleaks
 def test_secret_gate_scans_staged_content_not_clean_working_copy(repo: Path) -> None:
     secret = "ghp_" + "aB3cD4eF5gH6iJ7kL8mN9pQ0rS1tU2vW3xY4"
     target = repo / "credential.txt"
@@ -75,6 +87,7 @@ def test_secret_gate_scans_staged_content_not_clean_working_copy(repo: Path) -> 
     assert secret not in result.stdout + result.stderr
 
 
+@requires_gitleaks
 def test_secret_gate_accepts_clean_staged_content(repo: Path) -> None:
     (repo / "note.txt").write_text("public documentation\n", encoding="utf-8")
     assert run(repo, "git", "add", "note.txt").returncode == 0
@@ -115,6 +128,7 @@ def test_install_preserves_existing_default_hook(repo: Path) -> None:
     assert hook.read_text(encoding="utf-8") == content
 
 
+@requires_gitleaks
 def test_secret_gate_rejects_empty_staged_scope(repo: Path) -> None:
     result = make(repo, "hook-secret-scan")
     assert result.returncode != 0
@@ -136,6 +150,7 @@ def test_public_export_includes_hook_implementation_and_contracts() -> None:
 
 
 @pytest.mark.parametrize("valid", [True, False])
+@requires_gitleaks
 def test_installed_hook_runs_only_selected_tests_and_blocks_failures(repo: Path, valid: bool) -> None:
     tests = repo / "tests/unit"
     tests.mkdir(parents=True)

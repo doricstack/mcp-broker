@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.mutant_workspace import in_mutant_workspace
+
 
 pytestmark = pytest.mark.live
 
@@ -125,6 +127,13 @@ def test_install_apply_backs_up_existing_launchagent_before_write(tmp_path: Path
 
 
 def test_systemd_install_dry_run_writes_service_preview_after_smoke_passes(tmp_path: Path) -> None:
+    # The unit names the checkout's own interpreter, and the script falls
+    # through to a PATH-installed daemon when that interpreter is absent. The
+    # mutation workspace is an unpacked copy with no venv-mcp-broker, so the
+    # premise is missing there rather than the rendering being wrong.
+    if in_mutant_workspace():
+        pytest.skip("the mutation workspace has no checkout venv for the unit to name")
+
     env = _env_with_controlled_make(tmp_path, exit_code=0)
 
     result = subprocess.run(
@@ -153,6 +162,9 @@ def test_systemd_install_dry_run_writes_service_preview_after_smoke_passes(tmp_p
 
 
 def test_systemd_install_apply_backs_up_existing_service_before_write(tmp_path: Path) -> None:
+    if in_mutant_workspace():
+        pytest.skip("the mutation workspace has no checkout venv for the unit to name")
+
     env = _env_with_controlled_make(tmp_path, exit_code=0)
     service_path = _systemd_service_path(tmp_path)
     service_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,10 @@
 from pathlib import Path
 import hashlib
+import re
 
 import pytest
+
+from tests.support.mutant_workspace import MUTATION_WORKSPACE_ENV, in_mutant_workspace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -108,6 +111,60 @@ def test_mutmut_copies_public_listing_metadata_into_mutant_workspaces() -> None:
     assert "glama.json" in setup_cfg
 
 
+def test_the_container_marks_the_workspace_its_tests_run_in() -> None:
+    """Tests that assert the repository's wiring skip themselves on this marker.
+
+    The container runs the selected tests against an unpacked copy whose
+    configuration has been rewritten. A test asserting the shipped setup.cfg or
+    a git base cannot hold there, and without the marker it fails on a
+    prerequisite instead of stepping aside.
+    """
+    script = (ROOT / "scripts" / "linux-mutation.sh").read_text(encoding="utf-8")
+
+    assert f"{MUTATION_WORKSPACE_ENV}=1" in script
+
+
+def _paths_a_journey_fixture_borrows() -> tuple[str, ...]:
+    """The repo-root paths tests/journey/test_git_hook_contract.py copies out.
+
+    Read from the fixture rather than listed here, so adding a path to the
+    fixture cannot leave this contract behind.
+    """
+    source = (ROOT / "tests" / "journey" / "test_git_hook_contract.py").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r"for path in \(([^)]*)\)", source)
+    assert match, "the journey fixture no longer lists the paths it copies"
+    return tuple(
+        name.strip().strip('"') for name in match.group(1).split(",") if name.strip()
+    )
+
+
+def test_mutmut_copies_every_path_a_fixture_borrows_from_the_repo_root() -> None:
+    """A fixture that borrows a repo-root path cannot run without it.
+
+    The mutation workspace is built from also_copy, so a path the suite borrows
+    but the copy omits makes those tests fail on a missing prerequisite instead
+    of on a mutant, and the leg reports a defect that is not in the code under
+    mutation. .cits and .githooks were each found that way.
+    """
+    if in_mutant_workspace():
+        pytest.skip("the harness rewrites setup.cfg in the mutation workspace")
+
+    setup_cfg = (ROOT / "setup.cfg").read_text(encoding="utf-8")
+    also_copy = re.split(r"also_copy\s*=", setup_cfg, maxsplit=1)[1]
+    copied_paths = {
+        line.strip()
+        for line in re.split(r"tests_dir\s*=", also_copy, maxsplit=1)[0].splitlines()
+        if line.strip()
+    }
+
+    assert (ROOT / ".cits" / "test-impact.sh").is_file()
+    assert (ROOT / ".githooks" / "pre-commit").is_file()
+    missing = [path for path in _paths_a_journey_fixture_borrows() if path not in copied_paths]
+    assert missing == [], f"also_copy omits paths the journey fixture borrows: {missing}"
+
+
 def test_mutation_carveout_registry_records_config_keys_tool_incompatibility() -> None:
     registry = (ROOT / "docs" / "mutation-carveouts.md").read_text(encoding="utf-8")
 
@@ -125,6 +182,9 @@ def test_mutation_carveout_registry_records_daemon_class_method_limit() -> None:
     assert "`BrokerDaemon._handle_connection`" in registry
     assert "`BrokerDaemon._read_request`" in registry
     assert "`BrokerDaemon._send_response`" in registry
+    if in_mutant_workspace():
+        pytest.skip("the harness instruments daemon.py, so its recorded hash cannot match")
+
     assert "`BrokerDaemon._reap_idle_upstreams`" in registry
     source_hash = hashlib.sha256((ROOT / "src/mcp_broker/daemon.py").read_bytes()).hexdigest()
     daemon_rows = [line for line in registry.splitlines() if "| `src/mcp_broker/daemon.py` |" in line]
