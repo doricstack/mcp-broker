@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from mcp_broker.mutation_stats import (
     blocked_file_summary,
     build_parser,
     build_report,
+    failure_exit_code,
     load_mutant_results,
     main,
     mutant_source_path,
@@ -831,3 +833,211 @@ def test_effective_score_credits_excused_survivors_over_the_total():
     assert report.effective_score == 100.0
     # The raw score stays as measured; only the effective one is credited.
     assert report.score == 80.0
+
+
+def test_the_path_options_parse_into_path_objects() -> None:
+    """Every path option yields a Path, which is what the callers index into."""
+    args = build_parser().parse_args(
+        [
+            "--mutants-dir",
+            "mutants",
+            "--output-json",
+            "report.json",
+            "--carveouts",
+            "docs/mutation-carveouts.md",
+            "--repo-root",
+            ".",
+        ]
+    )
+
+    assert isinstance(args.mutants_dir, Path)
+    assert isinstance(args.output_json, Path)
+    assert isinstance(args.carveouts, Path)
+    assert isinstance(args.repo_root, Path)
+
+
+def test_the_parser_documents_the_carveout_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The two carve-out options are documented where an operator reads them.
+
+    argparse wraps help text to the terminal width, so a wide terminal keeps
+    each description on one line and lets the sentence be read whole.
+    """
+    monkeypatch.setenv("COLUMNS", "200")
+
+    help_text = build_parser().format_help()
+
+    # The trailing newline is asserted too: argparse ends each description with
+    # one, so a mutation that appends to the string cannot pass by containing it.
+    assert (
+        "Carve-out registry. Survivors it records as equivalent stop blocking, "
+        "but only where the row's recorded SHA-256 matches the file's current "
+        "hash. Requires --repo-root.\n"
+    ) in help_text
+    assert (
+        "Root the carve-out source paths are relative to, for hashing.\n" in help_text
+    )
+
+
+def _registry_for(digest: str, export: Path) -> Path:
+    export.write_text(
+        f"| `src/mcp_broker/sample.py` | `func` | equivalent | "
+        f"mutmut 3.7.0; SHA-256 `{digest}` | signed |\n",
+        encoding="utf-8",
+    )
+    return export
+
+
+def _hashed_source(root: Path) -> str:
+    source = root / "src" / "mcp_broker" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("x = 1\n", encoding="utf-8")
+    return hashlib.sha256(source.read_bytes()).hexdigest()
+
+
+def test_a_registry_without_a_repo_root_is_not_read(tmp_path: Path) -> None:
+    """Half the pair is not enough: without a root there is nothing to verify."""
+    mutants_dir = tmp_path / "mutants"
+    write_meta(mutants_dir / "src" / "mcp_broker" / "sample.py.meta", [0])
+    registry = _registry_for("a" * 64, tmp_path / "carveouts.md")
+
+    report = build_report(mutants_dir, carveouts_path=registry, repo_root=None)
+
+    assert report.excused_count == 0
+    assert report.invalid_carveouts == []
+
+
+def test_the_report_counts_excused_mutants_by_their_own_status(tmp_path: Path) -> None:
+    """Excuses are netted out per status, not assumed to all be survivors."""
+    root = tmp_path / "repo"
+    digest = _hashed_source(root)
+    mutants_dir = tmp_path / "mutants"
+    write_meta(mutants_dir / "src" / "mcp_broker" / "sample.py.meta", [1, 0])
+    registry = _registry_for(digest, tmp_path / "carveouts.md")
+
+    report = build_report(mutants_dir, carveouts_path=registry, repo_root=root)
+
+    assert report.excused_count == 1
+    assert report.excused_by_status == {"survived": 1}
+    assert report.blocking_counts["survived"] == 0
+
+
+def test_build_report_reports_a_registry_row_it_could_not_bind(tmp_path: Path) -> None:
+    """A stale row travels into the report; it is not dropped on the way."""
+    root = tmp_path / "repo"
+    _hashed_source(root)
+    mutants_dir = tmp_path / "mutants"
+    write_meta(mutants_dir / "src" / "mcp_broker" / "sample.py.meta", [0])
+    registry = _registry_for("0" * 64, tmp_path / "carveouts.md")
+
+    report = build_report(mutants_dir, carveouts_path=registry, repo_root=root)
+
+    assert report.excused_count == 0
+    assert len(report.invalid_carveouts) == 1
+    assert "sample.py" in report.invalid_carveouts[0]
+
+
+def test_blocked_file_summary_keeps_counting_after_an_excused_mutant() -> None:
+    """An excused mutant is skipped, not the end of that file's results."""
+    results = [
+        ("src/mcp_broker/sample.py", "mcp_broker.sample.x_func__mutmut_1", "survived"),
+        ("src/mcp_broker/sample.py", "mcp_broker.sample.x_func__mutmut_2", "survived"),
+    ]
+
+    blocked = blocked_file_summary(
+        results,
+        fail_statuses=["survived"],
+        example_limit=10,
+        excused={"mcp_broker.sample.x_func__mutmut_1"},
+    )
+
+    assert len(blocked) == 1
+    assert blocked[0]["blocked"] == 1
+    assert blocked[0]["examples"]["survived"] == ["mcp_broker.sample.x_func__mutmut_2"]
+
+
+def test_unusable_carve_outs_are_reported_with_the_refresh_instruction(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A stale registry fails loudly and says what to do about it."""
+    report = MutationReport(
+        counts={status: 0 for status in ALL_STATUSES},
+        total=1,
+        passed=1,
+        score=100.0,
+        blocked_by_file=[],
+        invalid_carveouts=[
+            "src/mcp_broker/sample.py: 1 carve-out row(s) bound to a different "
+            "source hash than the file's current 0123456789ab; they excuse nothing"
+        ],
+    )
+
+    code = failure_exit_code(
+        report,
+        argparse.Namespace(output_json="report.json", fail_statuses=[], min_score=100.0),
+    )
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert (
+        "Mutation gate failed: unusable carve-out: src/mcp_broker/sample.py: "
+        "1 carve-out row(s) bound to a different source hash"
+    ) in out
+    assert (
+        "Refresh the recorded SHA-256 after re-reviewing, or remove the row. "
+        "Report: report.json"
+    ) in out
+
+
+def test_the_excused_count_is_reported(capsys: pytest.CaptureFixture[str]) -> None:
+    """A pass that hides what it excused is not a pass."""
+    report = MutationReport(
+        counts={status: 0 for status in ALL_STATUSES},
+        total=1,
+        passed=1,
+        score=100.0,
+        blocked_by_file=[],
+        excused_count=2,
+    )
+
+    code = failure_exit_code(
+        report,
+        argparse.Namespace(output_json="report.json", fail_statuses=[], min_score=100.0),
+    )
+
+    assert code is None
+    assert (
+        "Mutation gate: 2 survivor(s) excused by docs/mutation-carveouts.md, "
+        "each bound to its file's current hash."
+    ) in capsys.readouterr().out
+
+
+def test_main_applies_the_registry_it_is_given(tmp_path: Path) -> None:
+    """The registry and its root travel from the command line into the report."""
+    root = tmp_path / "repo"
+    digest = _hashed_source(root)
+    mutants_dir = tmp_path / "mutants"
+    write_meta(mutants_dir / "src" / "mcp_broker" / "sample.py.meta", [0])
+    registry = _registry_for(digest, tmp_path / "carveouts.md")
+    report_path = tmp_path / "quality" / "mutation_stats.json"
+
+    result = main(
+        [
+            "--mutants-dir",
+            str(mutants_dir),
+            "--output-json",
+            str(report_path),
+            "--carveouts",
+            str(registry),
+            "--repo-root",
+            str(root),
+            "--min-score",
+            "100",
+        ]
+    )
+
+    written = json.loads(report_path.read_text(encoding="utf-8"))
+    assert result == 0
+    assert written["blocked_by_file"] == []
+    assert written["counts"]["survived"] == 1

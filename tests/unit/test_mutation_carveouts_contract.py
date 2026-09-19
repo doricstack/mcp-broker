@@ -294,3 +294,174 @@ def test_the_real_registry_parses_and_binds_to_real_files():
     for row in rows:
         assert (root / row.source_path).exists(), row.source_path
         assert len(row.sha256) == 64, (row.source_path, row.sha256)
+
+
+def test_parse_registry_accepts_a_row_without_a_trailing_pipe(tmp_path: Path):
+    """A five-cell row is a row: four fields plus the empty cell before the pipe.
+
+    Only a row that cannot carry a reason and a digest belongs in the skip.
+    """
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER
+        + "| `src/mcp_broker/sample.py` | `func`: the encoding literal | equivalent "
+        + f"| mutmut 3.7.0; SHA-256 `{'a' * 64}`\n",
+        encoding="utf-8",
+    )
+
+    rows = parse_registry(registry)
+
+    assert len(rows) == 1
+    assert rows[0].source_path == "src/mcp_broker/sample.py"
+    assert rows[0].callables == frozenset({"func"})
+
+
+def test_parse_registry_keeps_reading_after_a_prose_line(tmp_path: Path):
+    """A line that is not a source row is skipped, not a reason to stop."""
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER
+        + "Prose between the header and the rows.\n"
+        + _row(
+            "src/mcp_broker/sample.py",
+            f"`func` | equivalent | mutmut 3.7.0; SHA-256 `{'a' * 64}` | signed",
+        ),
+        encoding="utf-8",
+    )
+
+    rows = parse_registry(registry)
+
+    assert [row.source_path for row in rows] == ["src/mcp_broker/sample.py"]
+
+
+def test_parse_registry_keeps_reading_after_a_row_without_a_sha256(tmp_path: Path):
+    """An unbound row is skipped; the rows below it are still rows."""
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER
+        + _row(
+            "src/mcp_broker/unbound.py",
+            "`func` | equivalent | no digest recorded here | signed off",
+        )
+        + _row(
+            "src/mcp_broker/sample.py",
+            f"`func` | equivalent | mutmut 3.7.0; SHA-256 `{'a' * 64}` | signed",
+        ),
+        encoding="utf-8",
+    )
+
+    rows = parse_registry(registry)
+
+    assert [row.source_path for row in rows] == ["src/mcp_broker/sample.py"]
+
+
+def test_parse_registry_keeps_reading_after_a_truncated_row(tmp_path: Path):
+    """A row too short to carry a reason is skipped, not a reason to stop."""
+    registry = tmp_path / "carveouts.md"
+    registry.write_text(
+        REGISTRY_HEADER
+        + "| `src/mcp_broker/truncated.py` | only two cells\n"
+        + _row(
+            "src/mcp_broker/sample.py",
+            f"`func` | equivalent | mutmut 3.7.0; SHA-256 `{'a' * 64}` | signed",
+        ),
+        encoding="utf-8",
+    )
+
+    rows = parse_registry(registry)
+
+    assert [row.source_path for row in rows] == ["src/mcp_broker/sample.py"]
+
+
+def test_a_missing_source_does_not_stop_the_other_rows_being_verified(tmp_path: Path):
+    """One unusable row is reported; it does not abandon the rows after it."""
+    digest = _write_source(tmp_path, "src/mcp_broker/sample.py", "x = 1\n")
+    rows = [
+        Carveout("src/mcp_broker/absent.py", "0" * 64, "equivalent", frozenset({"func"})),
+        Carveout("src/mcp_broker/sample.py", digest, "equivalent", frozenset({"func"})),
+    ]
+    results = [
+        (
+            "src/mcp_broker/sample.py",
+            "src.mcp_broker.sample.x_func__mutmut_1",
+            "survived",
+        )
+    ]
+
+    excused, invalid = excusable_survivors(results, rows, repo_root=tmp_path)
+
+    assert excused == {"src.mcp_broker.sample.x_func__mutmut_1"}
+    assert len(invalid) == 1
+    assert "absent.py" in invalid[0]
+
+
+def test_a_killed_mutant_does_not_stop_a_later_survivor_being_excused(tmp_path: Path):
+    """Killed mutants are not excusable, but they are not the end of the list."""
+    digest = _write_source(tmp_path, "src/mcp_broker/sample.py", "x = 1\n")
+    rows = [
+        Carveout("src/mcp_broker/sample.py", digest, "equivalent", frozenset({"func"}))
+    ]
+    results = [
+        ("src/mcp_broker/sample.py", "src.mcp_broker.sample.x_func__mutmut_1", "killed"),
+        ("src/mcp_broker/sample.py", "src.mcp_broker.sample.x_func__mutmut_2", "survived"),
+    ]
+
+    excused, _ = excusable_survivors(results, rows, repo_root=tmp_path)
+
+    assert excused == {"src.mcp_broker.sample.x_func__mutmut_2"}
+
+
+def test_a_result_for_an_unverified_source_does_not_stop_a_later_one(tmp_path: Path):
+    """A source with no verified rows excuses nothing and blocks nothing."""
+    digest = _write_source(tmp_path, "src/mcp_broker/sample.py", "x = 1\n")
+    rows = [
+        Carveout("src/mcp_broker/sample.py", digest, "equivalent", frozenset({"func"}))
+    ]
+    results = [
+        ("src/mcp_broker/other.py", "src.mcp_broker.other.x_func__mutmut_1", "survived"),
+        (
+            "src/mcp_broker/sample.py",
+            "src.mcp_broker.sample.x_func__mutmut_2",
+            "survived",
+        ),
+    ]
+
+    excused, _ = excusable_survivors(results, rows, repo_root=tmp_path)
+
+    assert excused == {"src.mcp_broker.sample.x_func__mutmut_2"}
+
+
+def test_a_name_the_engine_did_not_generate_does_not_stop_a_later_survivor(
+    tmp_path: Path,
+):
+    """An unrecognised mutant name is skipped; the next result still counts."""
+    digest = _write_source(tmp_path, "src/mcp_broker/sample.py", "x = 1\n")
+    rows = [
+        Carveout("src/mcp_broker/sample.py", digest, "equivalent", frozenset({"func"}))
+    ]
+    results = [
+        ("src/mcp_broker/sample.py", "not-a-mutant-name", "survived"),
+        (
+            "src/mcp_broker/sample.py",
+            "src.mcp_broker.sample.x_func__mutmut_2",
+            "survived",
+        ),
+    ]
+
+    excused, _ = excusable_survivors(results, rows, repo_root=tmp_path)
+
+    assert excused == {"src.mcp_broker.sample.x_func__mutmut_2"}
+
+
+def test_a_stale_row_reports_the_short_current_hash(tmp_path: Path):
+    """The problem names a short prefix of the current hash, not a nearby one."""
+    digest = _write_source(tmp_path, "src/mcp_broker/sample.py", "x = 1\n")
+    rows = [
+        Carveout("src/mcp_broker/sample.py", "0" * 64, "equivalent", frozenset({"func"}))
+    ]
+
+    _, invalid = excusable_survivors([], rows, repo_root=tmp_path)
+
+    assert len(invalid) == 1
+    assert f"current {digest[:12]};" in invalid[0]
+    assert digest[:13] not in invalid[0]
