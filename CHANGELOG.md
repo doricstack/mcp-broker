@@ -4,6 +4,11 @@ All notable public changes will be recorded here.
 
 ## Unreleased
 
+- Keep daemon lock ownership on a stable file inode across shutdown and restart,
+  and recover stale PID records through kernel lock ownership.
+- Reconcile portable runtime and mutation-workspace fixes into the private
+  export source. Retain expired mutation evidence as inactive history.
+
 - Relay MCP elicitation requests for opted-in, isolated stdio upstreams. Keep
   approval decisions bound to the originating host while concurrent calls run.
   Invalid responses, disconnects, and timeouts fail closed. Existing client

@@ -651,7 +651,8 @@ class BrokerDaemon(
         if handle is not None:
             fcntl.flock(handle, fcntl.LOCK_UN)
             os.close(handle)
-        self.lock_path.unlink(missing_ok=True)
+        # Keep the inode stable: unlinking after unlock lets another process
+        # hold the old inode while a third process locks a replacement file.
 
     def _cleanup(self) -> None:
         with self._cleanup_lock:
