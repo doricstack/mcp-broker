@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from mcp_broker.mutation_carveouts import (
     Carveout,
     callable_of_mutant,

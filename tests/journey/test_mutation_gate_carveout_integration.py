@@ -16,6 +16,10 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.journey
+
 from mcp_broker.mutation_stats import build_parser, build_report, failure_exit_code
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mcp_broker.request_metadata import forwarded_request_metadata
+
 import json
 import os
 from pathlib import Path
@@ -350,7 +352,9 @@ class StdioUpstreamProcess:
         timeout_seconds: int,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"name": tool_name, "arguments": arguments}
-        request_meta = self.upstream.resolve_request_meta(os.environ)
+        request_meta = forwarded_request_metadata(self.upstream.forward_request_meta)
+        # Configured credentials take precedence over caller-supplied metadata.
+        request_meta.update(self.upstream.resolve_request_meta(os.environ))
         if request_meta:
             params["_meta"] = request_meta
         return self._jsonrpc_request_locked(

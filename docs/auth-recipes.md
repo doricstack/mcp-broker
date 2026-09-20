@@ -67,6 +67,16 @@ pattern for LaunchAgent-managed broker daemons.
 
 ## Request Metadata
 
+Use `forward_request_meta:` on a stdio upstream to pass selected fields from the
+client's current `tools/call` `_meta` object. It defaults to an empty allowlist.
+For example, `forward_request_meta: [session_id, turn_id, vendor/context]`
+preserves those fields, including structured values, across the broker facade.
+Missing fields stay absent; the broker does not synthesize identities or reuse
+metadata from an earlier call. Request context is isolated across concurrent
+calls and is cleared after success or failure. Configure only the keys the
+upstream needs. Configured `request_meta` credentials take precedence if a
+forwarded field has the same name. HTTP and SSE forwarding are not supported.
+
 Use `request_meta:` when the upstream expects a token inside each MCP tool call,
 for example `params._meta.authToken`.
 

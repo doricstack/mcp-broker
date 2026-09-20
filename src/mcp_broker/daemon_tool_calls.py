@@ -8,10 +8,18 @@ from mcp_broker.broker import BrokerToolError
 from mcp_broker.catalog import BrokerCatalogFacade
 from mcp_broker.hybrid_router import HybridRoutingContext, HybridToolRouter
 from mcp_broker.jsonrpc import JsonRpcRequest, JsonRpcResponse
+from mcp_broker.request_metadata import request_metadata_scope
 
 
 class BrokerDaemonToolCallMixin:
     def _handle_tools_call(self, request: JsonRpcRequest) -> JsonRpcResponse:
+        try:
+            with request_metadata_scope(request.params):
+                return self._handle_tools_call_scoped(request)
+        except ValueError as exc:
+            return JsonRpcResponse.error(request.id, -32602, str(exc))
+
+    def _handle_tools_call_scoped(self, request: JsonRpcRequest) -> JsonRpcResponse:
         if self.broker_config is None:
             return JsonRpcResponse.error(request.id, -32000, "broker config is not loaded")
         params = request.params
