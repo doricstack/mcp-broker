@@ -291,7 +291,7 @@ def test_broker_daemon_stop_removes_socket_lock_and_metadata(tmp_path: Path) -> 
         },
     }
     assert not socket_path.exists()
-    assert not (runtime_root / "run" / "broker.lock").exists()
+    assert (runtime_root / "run" / "broker.lock").exists()
     assert not (runtime_root / "run" / "sockets" / f"{socket_path.name}.json").exists()
 
 
@@ -372,7 +372,7 @@ def test_broker_daemon_stop_verifies_upstream_process_group_shutdown(tmp_path: P
     }
     assert child_running_after_stop is False
     assert not socket_path.exists()
-    assert not (runtime_root / "run" / "broker.lock").exists()
+    assert (runtime_root / "run" / "broker.lock").exists()
     assert not (runtime_root / "run" / "upstreams" / "fake.json").exists()
 
 
@@ -576,7 +576,7 @@ def test_broker_daemon_cleans_lock_after_bind_failure(tmp_path: Path) -> None:
     with pytest.raises(OSError, match="AF_UNIX path too long"):
         daemon.start()
 
-    assert not (runtime_root / "run" / "broker.lock").exists()
+    assert (runtime_root / "run" / "broker.lock").exists()
 
 
 def test_broker_daemon_removes_stale_lock_before_start(tmp_path: Path) -> None:

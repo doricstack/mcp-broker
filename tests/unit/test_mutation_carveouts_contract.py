@@ -282,20 +282,14 @@ def test_a_survivor_the_engine_did_not_name_is_never_excused(tmp_path: Path):
 
 
 def test_the_real_registry_parses_and_binds_to_real_files():
-    """The shipped registry is the input this exists for, so parse it.
+    """Historical and pending evidence must not excuse current mutants."""
+    from mcp_broker.mutation_scope import load_whole_file_carveouts
 
-    A parser that only works on fixtures is the empty-scope failure: it would
-    report zero problems having examined nothing real.
-    """
     root = Path(__file__).resolve().parents[2]
-    rows = parse_registry(root / "docs" / "mutation-carveouts.md")
-
-    assert rows, "the shipped registry parsed to zero rows"
-    equivalent = [row for row in rows if row.reason_class.startswith("equivalent")]
-    assert equivalent, "no equivalence rows found in the shipped registry"
-    for row in rows:
-        assert (root / row.source_path).exists(), row.source_path
-        assert len(row.sha256) == 64, (row.source_path, row.sha256)
+    registry = root / "docs" / "mutation-carveouts.md"
+    assert "> | `src/mcp_broker/daemon.py` |" in registry.read_text(encoding="utf-8")
+    assert parse_registry(registry) == []
+    assert load_whole_file_carveouts(registry) == set()
 
 
 def test_parse_registry_accepts_a_row_without_a_trailing_pipe(tmp_path: Path):

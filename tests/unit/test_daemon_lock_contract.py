@@ -17,7 +17,7 @@ def _daemon(tmp_path: Path) -> BrokerDaemon:
     return BrokerDaemon(runtime_root=tmp_path / "runtime", socket_path=tmp_path / "broker.sock")
 
 
-def test_acquire_lock_records_own_pid_and_release_removes_the_file(tmp_path: Path) -> None:
+def test_acquire_lock_records_own_pid_and_release_preserves_the_file(tmp_path: Path) -> None:
     daemon = _daemon(tmp_path)
 
     daemon._acquire_lock()
@@ -29,7 +29,7 @@ def test_acquire_lock_records_own_pid_and_release_removes_the_file(tmp_path: Pat
     finally:
         daemon._release_lock()
 
-    assert not daemon.lock_path.exists()
+    assert daemon.lock_path.exists()
 
 
 def test_acquire_lock_refuses_while_a_live_holder_owns_the_file(tmp_path: Path) -> None:

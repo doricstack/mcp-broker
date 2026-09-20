@@ -1,5 +1,4 @@
 from pathlib import Path
-import hashlib
 import re
 
 import pytest
@@ -182,14 +181,11 @@ def test_mutation_carveout_registry_records_daemon_class_method_limit() -> None:
     assert "`BrokerDaemon._handle_connection`" in registry
     assert "`BrokerDaemon._read_request`" in registry
     assert "`BrokerDaemon._send_response`" in registry
-    if in_mutant_workspace():
-        pytest.skip("the harness instruments daemon.py, so its recorded hash cannot match")
-
     assert "`BrokerDaemon._reap_idle_upstreams`" in registry
-    source_hash = hashlib.sha256((ROOT / "src/mcp_broker/daemon.py").read_bytes()).hexdigest()
     daemon_rows = [line for line in registry.splitlines() if "| `src/mcp_broker/daemon.py` |" in line]
     assert daemon_rows
-    assert all(source_hash in row for row in daemon_rows)
+    assert all(row.startswith("> |") for row in daemon_rows)
+    assert "No active exemptions" in registry
     assert "source or mutmut version drift invalidates this approval" in registry
 
 
