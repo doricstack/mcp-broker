@@ -476,6 +476,7 @@ def test_hybrid_router_uses_edge_when_shared_context_is_incomplete(
         {"env_files": {"EXAMPLE": Path("example.env")}},
         {"session_env": {"SESSION": "session_id"}},
         {"request_meta": {"client": "client_name"}},
+        {"forward_request_meta": ("session",)},
     ],
 )
 def test_requires_local_state_checks_each_supported_source(

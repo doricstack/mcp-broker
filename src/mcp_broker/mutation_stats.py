@@ -341,22 +341,15 @@ def failure_exit_code(report: MutationReport, args: argparse.Namespace) -> int |
             f"Mutation gate: {report.excused_count} survivor(s) excused by "
             "docs/mutation-carveouts.md, each bound to its file's current hash."
         )
-    if report.total == 0:
-        if report.missing_selected_mutants:
-            write_line(
-                "Mutation gate failed: selected mutants not found: "
-                + ", ".join(report.missing_selected_mutants)
-                + f". Report: {args.output_json}"
-            )
-            return 1
-        write_line(f"Mutation gate failed: no mutants found. Report: {args.output_json}")
-        return 1
     if report.missing_selected_mutants:
         write_line(
             "Mutation gate failed: selected mutants not found: "
             + ", ".join(report.missing_selected_mutants)
             + f". Report: {args.output_json}"
         )
+        return 1
+    if report.total == 0:
+        write_line(f"Mutation gate failed: no mutants found. Report: {args.output_json}")
         return 1
     if blocked_counts:
         write_line(

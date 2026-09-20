@@ -51,6 +51,7 @@ from mcp_broker.schema import (
     parse_transport,
 )
 from mcp_broker.profiles import ToolExposureProfile
+from mcp_broker.request_metadata import parse_request_meta as _parse_request_meta
 
 
 def _parse_path(path: str, value: Any) -> Path:
@@ -231,6 +232,7 @@ class UpstreamConfig:
     env_files: dict[str, Path] = field(default_factory=dict)
     session_env: dict[str, str] = field(default_factory=dict)
     request_meta: dict[str, str] = field(default_factory=dict)
+    forward_request_meta: tuple[str, ...] = ()
     purpose: str = ""
     tags: tuple[str, ...] = ()
     profiles: tuple[str, ...] = ("manual-test",)
@@ -270,6 +272,15 @@ class UpstreamConfig:
             data.get("session_env", {}),
         )
         config_modes.validate_upstream_session_mode(name, mode, session_env)
+        forwarded = data.get("forward_request_meta", [])
+        if not isinstance(forwarded, list) or any(
+            not isinstance(key, str) or not META_NAME_PATTERN.fullmatch(key)
+            for key in forwarded
+        ):
+            raise ValueError(f"upstreams.{name}.forward_request_meta must contain metadata names")
+        forward_request_meta = tuple(forwarded)
+        if forward_request_meta and transport != "stdio":
+            raise ValueError(f"upstreams.{name}.forward_request_meta requires transport: stdio")
         return cls(
             name=name,
             command=_expand_config_text(str(data["command"]), runtime),
@@ -283,6 +294,7 @@ class UpstreamConfig:
             env=env,
             env_files=env_files,
             session_env=session_env,
+            forward_request_meta=forward_request_meta,
             request_meta=_parse_request_meta(
                 f"upstreams.{name}.request_meta",
                 data.get("request_meta", {}),
@@ -522,26 +534,6 @@ def _parse_upstream_working_dir(
         data.get("working_dir"),
         runtime,
     )
-
-
-def _parse_request_meta(
-    path: str,
-    value: Any,
-    *,
-    configured_env_names: set[str],
-) -> dict[str, str]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{path} must be a mapping")
-    parsed: dict[str, str] = {}
-    for meta_name, source_name in value.items():
-        if not isinstance(meta_name, str) or not META_NAME_PATTERN.fullmatch(meta_name):
-            raise ValueError(f"{path} keys must be request metadata names")
-        if not isinstance(source_name, str) or not ENV_NAME_PATTERN.match(source_name):
-            raise ValueError(f"{path}.{meta_name} must name a configured environment variable")
-        if source_name not in configured_env_names:
-            raise ValueError(f"{path}.{meta_name} must reference env or env_files")
-        parsed[meta_name] = source_name
-    return parsed
 
 
 class _UpstreamPolicies(TypedDict):
