@@ -299,6 +299,7 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "upstreams.*.purpose",
         "upstreams.*.request_meta",
         "upstreams.*.forward_request_meta",
+        "upstreams.*.relay_elicitation",
         "upstreams.*.session_env",
         "upstreams.*.resources",
         "upstreams.*.resources.cpu_watchdog_percent",

@@ -334,6 +334,9 @@
         "serialize_calls": {
           "type": "boolean"
         },
+        "relay_elicitation": {
+          "type": "boolean"
+        },
         "strict_initialization": {
           "type": "boolean"
         },

@@ -103,6 +103,28 @@ upstreams:
 Each `request_meta` value must reference an `env` or `env_files` key. Config
 validation rejects metadata that points at an unknown source.
 
+## Approval requests
+
+Set `relay_elicitation: true` only on an upstream that needs MCP approval
+requests. It defaults to false and requires stdio transport with `per_session`
+or `per_call` mode. Keep it on the intended profile's allowlist. The relay stays
+on the local broker because it needs the originating client connection.
+
+The stdio client shim preserves the host's negotiated elicitation capability
+on each tool request. It keeps reading approval replies while other calls are
+queued. The daemon relays each `elicitation/create` request on the original
+call's socket, uses a fresh request ID, and returns the host's decision or error
+to the waiting upstream. It never generates acceptance. Invalid replies,
+disconnects, and approval timeouts fail the call and reset the waiting process.
+Late or duplicate replies cannot approve another request.
+
+Restart both the daemon and existing stdio client connections when installing
+this support. Older shims do not carry client capabilities and cannot relay
+approvals. Only opted-in upstreams receive elicitation capabilities; ordinary
+shared upstream processes retain their state across hosts with different
+capabilities. HTTP/SSE approval relaying, sampling, and roots requests are not
+implemented.
+
 ## OAuth And Browser Setup
 
 For OAuth or browser-backed MCPs, keep browser state and token caches under the

@@ -233,6 +233,7 @@ class UpstreamConfig:
     session_env: dict[str, str] = field(default_factory=dict)
     request_meta: dict[str, str] = field(default_factory=dict)
     forward_request_meta: tuple[str, ...] = ()
+    relay_elicitation: bool = False
     purpose: str = ""
     tags: tuple[str, ...] = ()
     profiles: tuple[str, ...] = ("manual-test",)
@@ -295,6 +296,8 @@ class UpstreamConfig:
             env_files=env_files,
             session_env=session_env,
             forward_request_meta=forward_request_meta,
+            relay_elicitation=config_modes.parse_relay_elicitation(
+                name, mode, transport, data.get("relay_elicitation", False)),
             request_meta=_parse_request_meta(
                 f"upstreams.{name}.request_meta",
                 data.get("request_meta", {}),
