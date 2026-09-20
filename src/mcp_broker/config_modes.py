@@ -19,3 +19,11 @@ def validate_upstream_session_mode(
         raise ValueError(
             f"upstreams.{name}.session_env requires mode: per_session or per_call"
         )
+
+
+def parse_relay_elicitation(name: str, mode: str, transport: str, value: object) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"upstreams.{name}.relay_elicitation must be a boolean")
+    if value and (transport != "stdio" or mode not in {"per_session", "per_call"}):
+        raise ValueError(f"upstreams.{name}.relay_elicitation requires isolated stdio mode")
+    return value

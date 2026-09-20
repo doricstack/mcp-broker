@@ -49,6 +49,7 @@ from mcp_broker.upstream_stdio import (
     StdioUpstreamProcess,
     UpstreamEventLogger,
 )
+from mcp_broker.daemon_socket import handle_connection, read_request as read_socket_request, send_response
 
 
 # Fixed cadence for the idle-upstream janitor sweep. Deliberately NOT derived
@@ -249,53 +250,14 @@ class BrokerDaemon(
             self._handle_connection(connection)
 
     def _handle_connection(self, connection: socket.socket) -> None:
-        try:
-            raw = self._read_request(connection)
-        except socket.timeout:
-            return
-        except BrokerRequestTooLarge as exc:
-            response = JsonRpcResponse.error(None, -32600, str(exc)).to_mapping()
-            self._send_response(connection, response)
-            self._write_request_log_safely(None, None, response)
-            return
-        if not raw:
-            return
-        try:
-            request = json.loads(raw.decode("utf-8").strip())
-        except json.JSONDecodeError:
-            response = JsonRpcResponse.error(None, -32700, "Parse error").to_mapping()
-            self._send_response(connection, response)
-            self._write_request_log_safely(None, None, response)
-        else:
-            response = self._handle_request(request)
-            if response is not None:
-                self._send_response(connection, response)
-            self._write_request_log_safely(request.get("id"), request.get("method"), response)
-            if request.get("method") == "broker/stop":
-                self._wake_server()
+        handle_connection(self, connection)
 
     def _read_request(self, connection: socket.socket) -> bytes:
-        chunks: list[bytes] = []
-        total_bytes = 0
-        while True:
-            chunk = connection.recv(SOCKET_READ_CHUNK_BYTES)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total_bytes += len(chunk)
-            if total_bytes > self._socket_max_request_bytes:
-                raise BrokerRequestTooLarge(
-                    f"Request exceeds {self._socket_max_request_bytes} bytes"
-                )
-            if chunk.endswith(b"\n"):
-                break
-        return b"".join(chunks)
+        return read_socket_request(connection, max_bytes=self._socket_max_request_bytes,
+                                   chunk_bytes=SOCKET_READ_CHUNK_BYTES)
 
     def _send_response(self, connection: socket.socket, response: dict[str, object]) -> None:
-        try:
-            connection.sendall(json.dumps(response, sort_keys=True).encode("utf-8") + b"\n")
-        except (BrokenPipeError, ConnectionResetError):
-            return
+        send_response(connection, response)
 
     def _handle_request(self, request: dict[str, object]) -> dict[str, object] | None:
         request_id = request.get("id")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mcp_broker.request_metadata import forwarded_request_metadata
+from mcp_broker.elicitation import client_capabilities, relay_request, ElicitationRelayError
 
 import json
 import os
@@ -67,6 +68,7 @@ class StdioUpstreamProcess:
         self._restart_count = 0
         self._last_error: str | None = None
         self._initialized = False
+        self._client_capabilities: dict[str, Any] = {}
         self._stdout_buffer = b""
 
     def __del__(self) -> None:
@@ -370,6 +372,10 @@ class StdioUpstreamProcess:
         *,
         timeout_seconds: int,
     ) -> dict[str, Any]:
+        capabilities = client_capabilities(enabled=self.upstream.relay_elicitation)
+        if self._initialized and self._client_capabilities != capabilities:
+            # A cached process must not retain a different host's capabilities.
+            self.stop()
         self._start()
         process = self._process
         assert process is not None
@@ -436,7 +442,7 @@ class StdioUpstreamProcess:
             "initialize",
             {
                 "protocolVersion": SUPPORTED_PROTOCOL_VERSIONS[0],
-                "capabilities": {},
+                "capabilities": client_capabilities(enabled=self.upstream.relay_elicitation),
                 "clientInfo": {"name": "mcp-broker", "version": __version__},
             },
         )
@@ -452,6 +458,7 @@ class StdioUpstreamProcess:
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
         )
         self._initialized = True
+        self._client_capabilities = client_capabilities(enabled=self.upstream.relay_elicitation)
 
     def _result_from_response(
         self,
@@ -502,6 +509,14 @@ class StdioUpstreamProcess:
                     f"upstream response must be an object: {self.upstream.name}"
                 )
             if expected_id is not None and _is_jsonrpc_notification(loaded):
+                continue
+            if "method" in loaded and "id" in loaded:
+                try:
+                    reply = relay_request(loaded, deadline, enabled=self.upstream.relay_elicitation)
+                except ElicitationRelayError as exc:
+                    # The upstream is waiting for this reply. Reset it on failure.
+                    raise StdioUpstreamTimeout(str(exc)) from exc
+                self._write_request(process, reply)
                 continue
             return loaded
 

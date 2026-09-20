@@ -169,6 +169,7 @@ def _requires_local_state(upstream: UpstreamConfig) -> bool:
         or upstream.session_env
         or upstream.request_meta
         or upstream.forward_request_meta
+        or upstream.relay_elicitation
     )
 
 

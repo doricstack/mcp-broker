@@ -61,6 +61,7 @@ UPSTREAM_KEYS = frozenset(
         "session_env",
         "request_meta",
         "forward_request_meta",
+        "relay_elicitation",
         "mutating",
         "serialize_calls",
         "strict_initialization",

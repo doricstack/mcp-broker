@@ -2,6 +2,13 @@
 
 All notable public changes will be recorded here.
 
+## Unreleased
+
+- Relay MCP elicitation requests for opted-in, isolated stdio upstreams. Keep
+  approval decisions bound to the originating host while concurrent calls run.
+  Invalid responses, disconnects, and timeouts fail closed. Existing client
+  connections must restart to negotiate and forward approval capabilities.
+
 ## 2.1.2 - 2026-09-07
 
 - Fix an ImportError that made 2.1.1 unusable on Python 3.10. Eight modules

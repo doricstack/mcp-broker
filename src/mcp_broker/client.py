@@ -36,12 +36,9 @@ class ClientShim:
             raise ClientShimError(f"broker socket unavailable: {self.socket_path}") from exc
 
     def run_stdio(self, stdin: BinaryIO, stdout: BinaryIO) -> None:
-        for payload in stdin:
-            response = self.forward_payload(payload)
-            if _is_jsonrpc_notification(payload):
-                continue
-            stdout.write(response)
-            stdout.flush()
+        from mcp_broker.client_relay import ClientRelay
+
+        ClientRelay(self, stdout).run(stdin)
 
 
 def _read_response(client: socket.socket) -> bytes:
