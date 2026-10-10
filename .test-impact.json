@@ -22,6 +22,10 @@
       "runTests": ["tests/unit/test_affected_test_selection_contract.py", "tests/e2e/test_make_entrypoints.py"]
     },
     {
+      "changed": ".gitignore",
+      "runTests": ["tests/unit/test_config_inventory_contract.py", "tests/journey/test_project_scaffold_contract.py", "tests/journey/test_git_hook_contract.py"]
+    },
+    {
       "changed": ".github/workflows/**",
       "runTests": ["tests/journey/test_distribution_contract_part*.py", "tests/journey/test_python_floor_contract.py"]
     },

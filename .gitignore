@@ -36,3 +36,6 @@ state/
 secrets/
 sockets/
 logs/
+
+# Scratch directory a delegated session leaves behind in the checkout.
+.devswarm-temp/

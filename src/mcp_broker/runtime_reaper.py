@@ -8,11 +8,15 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sys
 from typing import Sequence
 
 
 OWNER = "mcp-broker"
+
+# Overridable so a test can present a fixture proc tree instead of the host's.
+_PROC_ROOT = Path("/proc")
 
 
 @dataclass(frozen=True)
@@ -77,11 +81,20 @@ class RuntimeReaper:
             pid = int(metadata["pid"])
             broker_pid = int(metadata.get("broker_pid", pid))
             process_group_id = int(metadata.get("process_group_id", pid))
-            if not _process_exists(broker_pid) and _process_group_exists(process_group_id):
+            # Liveness alone is not ownership. The kernel recycles pids, so a
+            # recycled broker pid hides a real orphan from the kill below, and a
+            # recycled upstream pid keeps a dead upstream's pidfile alive
+            # forever. Both are checked against the identity recorded at spawn.
+            broker_alive = _pid_still_owns_metadata(
+                broker_pid, _recorded_identity(metadata, "broker_start_time")
+            )
+            if not broker_alive and _process_group_exists(process_group_id):
                 _kill_process_group(process_group_id)
                 metadata_path.unlink(missing_ok=True)
                 killed_orphans.append(name)
-            elif not _process_exists(pid):
+            elif not _pid_still_owns_metadata(
+                pid, _recorded_identity(metadata, "start_time")
+            ):
                 metadata_path.unlink(missing_ok=True)
                 stale_pidfiles.append(name)
 
@@ -91,7 +104,9 @@ class RuntimeReaper:
                 continue
             socket_name = str(metadata["socket_name"])
             pid = int(metadata["pid"])
-            if _process_exists(pid):
+            if _pid_still_owns_metadata(
+                pid, _recorded_identity(metadata, "start_time")
+            ):
                 continue
             socket_path = self.paths.sockets_dir / socket_name
             socket_path.unlink(missing_ok=True)
@@ -123,6 +138,11 @@ def write_process_metadata(
             "pid": pid,
             "name": name,
             "broker_pid": broker_pid,
+            # Identity, so the next startup reaps this record if the kernel has
+            # since handed either pid to another process. Null means the
+            # platform could not say, and the reaper falls back to liveness.
+            "start_time": process_start_time(pid),
+            "broker_start_time": process_start_time(broker_pid),
         },
     )
     return metadata_path
@@ -144,6 +164,7 @@ def write_socket_metadata(
             "pid": pid,
             "owner": OWNER,
             "broker_pid": broker_pid,
+            "start_time": process_start_time(pid),
         },
     )
     return metadata_path
@@ -178,6 +199,79 @@ def _read_metadata(metadata_path: Path) -> dict[str, object]:
 
 def _write_metadata(metadata_path: Path, payload: dict[str, object]) -> None:
     metadata_path.write_bytes(f"{json.dumps(payload, sort_keys=True)}\n".encode())
+
+
+def _linux_start_time(pid: int) -> str | None:
+    """Field 22 of `/proc/<pid>/stat`, the process start time in clock ticks."""
+    try:
+        stat = (_PROC_ROOT / str(pid) / "stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        # The command name is parenthesised and may itself contain spaces and
+        # parentheses, so the fields after it start at the last closing paren.
+        fields = stat[stat.rindex(")") + 2 :].split()
+        return fields[19]
+    except (ValueError, IndexError):
+        return None
+
+
+def _darwin_start_time(pid: int) -> str | None:
+    """`ps -o lstart=` for the pid, which Darwin exposes no proc tree for."""
+    try:
+        done = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    return done.stdout.strip() or None
+
+
+def process_start_time(pid: int) -> str | None:
+    """A value that changes when the kernel hands this pid to another process.
+
+    Identity, not liveness. `_process_exists` answers "is this number in use",
+    which stops being the same question once the kernel recycles it: a stale
+    pidfile naming a dead upstream can outlive it through any unrelated process
+    that inherits the number. That is what took the broker down on 2026-09-18.
+
+    None means the platform could not answer. Callers keep the old
+    liveness-only behaviour in that case rather than guessing, so a host
+    without a proc tree degrades to the previous semantics instead of
+    destroying live runtime state.
+    """
+    if pid <= 0:
+        return None
+    reader = _linux_start_time if sys.platform == "linux" else _darwin_start_time
+    return reader(pid)
+
+
+def _recorded_identity(metadata: dict[str, object], key: str) -> str | None:
+    value = metadata.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _pid_still_owns_metadata(pid: int, recorded: str | None) -> bool:
+    """True while `pid` is the process the metadata was written about.
+
+    Legacy metadata carries no identity. It is trusted on liveness alone, which
+    is exactly what the metadata written from here on does better, and refusing
+    to act on it would leave the old files unreapable forever.
+    """
+    if not _process_exists(pid):
+        return False
+    if recorded is None:
+        return True
+    live = process_start_time(pid)
+    if live is None:
+        return True
+    return live == recorded
 
 
 def _process_exists(pid: int) -> bool:

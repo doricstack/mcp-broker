@@ -272,7 +272,7 @@ def test_stdio_upstream_writes_and_removes_cached_process_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mcp_broker import upstream_stdio
+    from mcp_broker import runtime_reaper, upstream_stdio
     from mcp_broker.runtime_reaper import RuntimePaths
 
     paths = RuntimePaths.from_root(tmp_path / "runtime")
@@ -284,6 +284,9 @@ def test_stdio_upstream_writes_and_removes_cached_process_metadata(
     client._process = cast(Any, RunningProcessForHealth())
     monkeypatch.setattr(upstream_stdio.os, "getpgid", lambda pid: pid + 1)
     monkeypatch.setattr(upstream_stdio.os, "getpid", lambda: 222)
+    # Identity is read from the live process table, so pin it per pid: the two
+    # numbers below name no process on the host.
+    monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: f"t{pid}")
 
     client._write_process_metadata()
 
@@ -291,10 +294,12 @@ def test_stdio_upstream_writes_and_removes_cached_process_metadata(
     assert client._process_metadata_path == metadata_path
     assert json.loads(metadata_path.read_text(encoding="utf-8")) == {
         "broker_pid": 222,
+        "broker_start_time": "t222",
         "name": "fake",
         "owner": "mcp-broker",
         "pid": 999998,
         "process_group_id": 999999,
+        "start_time": "t999998",
     }
 
     client._remove_process_metadata()

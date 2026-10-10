@@ -281,8 +281,26 @@ def test_private_config_keeps_llm_profile_exposure_in_parity() -> None:
         for profile_name in LLM_PROFILES
     }
 
-    assert enabled_by_profile["claude"] == enabled_by_profile["agy"]
+    # Every upstream Claude sees must reach the other two as well, so a tool is
+    # never wired for Claude alone.
+    assert enabled_by_profile["claude"] <= enabled_by_profile["agy"]
     assert enabled_by_profile["claude"] <= enabled_by_profile["codex"]
+
+    # The three sets are not identical, and should not be asserted equal: a
+    # client's execution model decides what it needs. An upstream that runs work
+    # the client cannot run itself belongs on that client's profile and nowhere
+    # else's. What is never legitimate is an upstream reaching exactly one LLM
+    # profile, which is how a tool gets forgotten for the other two rather than
+    # deliberately withheld from them.
+    exposure_counts: dict[str, int] = {}
+    for exposed in enabled_by_profile.values():
+        for name in exposed:
+            exposure_counts[name] = exposure_counts.get(name, 0) + 1
+
+    single_profile = sorted(
+        name for name, count in exposure_counts.items() if count == 1
+    )
+    assert single_profile == []
 
 
 def test_private_config_path_is_gitignored() -> None:

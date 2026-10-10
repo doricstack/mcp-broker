@@ -72,9 +72,15 @@ def test_runtime_reaper_main_reports_stale_pidfile(
     assert capsys.readouterr().out == "reaped stale pidfiles: dead\n"
 
 
-def test_write_process_metadata_persists_contract_fields(tmp_path: Path) -> None:
+def test_write_process_metadata_persists_contract_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import runtime_reaper
     from mcp_broker.runtime_reaper import RuntimePaths, write_process_metadata
 
+    # Pinned so the expected bytes do not depend on the host's process table.
+    monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: f"t{pid}")
     paths = RuntimePaths.from_root(tmp_path / "runtime")
 
     metadata_path = write_process_metadata(
@@ -87,21 +93,53 @@ def test_write_process_metadata_persists_contract_fields(tmp_path: Path) -> None
 
     assert metadata_path == paths.upstream_pid_dir / "upstream-alpha.json"
     assert metadata_path.read_bytes() == (
-        b'{"broker_pid": 303, "name": "upstream-alpha", "owner": "mcp-broker", '
-        b'"pid": 101, "process_group_id": 202}\n'
+        b'{"broker_pid": 303, "broker_start_time": "t303", '
+        b'"name": "upstream-alpha", "owner": "mcp-broker", "pid": 101, '
+        b'"process_group_id": 202, "start_time": "t101"}\n'
     )
     assert json.loads(metadata_path.read_text(encoding="utf-8")) == {
         "broker_pid": 303,
+        "broker_start_time": "t303",
         "name": "upstream-alpha",
         "owner": "mcp-broker",
         "pid": 101,
         "process_group_id": 202,
+        "start_time": "t101",
     }
 
 
-def test_write_socket_metadata_persists_contract_fields(tmp_path: Path) -> None:
+def test_write_process_metadata_records_a_null_identity_it_cannot_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable identity is written explicitly, not omitted."""
+    from mcp_broker import runtime_reaper
+    from mcp_broker.runtime_reaper import RuntimePaths, write_process_metadata
+
+    monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: None)
+
+    metadata_path = write_process_metadata(
+        RuntimePaths.from_root(tmp_path / "runtime"),
+        name="upstream-alpha",
+        pid=101,
+        process_group_id=202,
+        broker_pid=303,
+    )
+
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert payload["start_time"] is None
+    assert payload["broker_start_time"] is None
+    assert "start_time" in payload and "broker_start_time" in payload
+
+
+def test_write_socket_metadata_persists_contract_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import runtime_reaper
     from mcp_broker.runtime_reaper import RuntimePaths, write_socket_metadata
 
+    monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: f"t{pid}")
     paths = RuntimePaths.from_root(tmp_path / "runtime")
 
     metadata_path = write_socket_metadata(
@@ -114,13 +152,14 @@ def test_write_socket_metadata_persists_contract_fields(tmp_path: Path) -> None:
     assert metadata_path == paths.socket_owner_dir / "broker.sock.json"
     assert metadata_path.read_bytes() == (
         b'{"broker_pid": 303, "owner": "mcp-broker", "pid": 101, '
-        b'"socket_name": "broker.sock"}\n'
+        b'"socket_name": "broker.sock", "start_time": "t101"}\n'
     )
     assert json.loads(metadata_path.read_text(encoding="utf-8")) == {
         "broker_pid": 303,
         "owner": "mcp-broker",
         "pid": 101,
         "socket_name": "broker.sock",
+        "start_time": "t101",
     }
 
 
@@ -560,3 +599,330 @@ def test_kill_process_group_uses_sigkill_and_ignores_missing_group(
     runtime_reaper._kill_process_group(456)
 
     assert calls == [(456, signal.SIGKILL)]
+
+
+def _write_identity_metadata(
+    paths: object,
+    *,
+    name: str,
+    pid: int,
+    broker_pid: int,
+    process_group_id: int,
+    start_time: str | None,
+    broker_start_time: str | None,
+) -> Path:
+    """A pidfile whose identity fields are chosen by the test, not the host."""
+    from mcp_broker.runtime_reaper import RuntimePaths
+
+    assert isinstance(paths, RuntimePaths)
+    paths.upstream_pid_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = paths.upstream_pid_dir / f"{name}.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "broker_pid": broker_pid,
+                "broker_start_time": broker_start_time,
+                "name": name,
+                "owner": "mcp-broker",
+                "pid": pid,
+                "process_group_id": process_group_id,
+                "start_time": start_time,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return metadata_path
+
+
+class TestPidIdentity:
+    """A live pid number is not proof that the recorded process still holds it."""
+
+    def test_a_recycled_upstream_pid_is_reaped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        metadata_path = _write_identity_metadata(
+            paths,
+            name="recycled",
+            pid=111,
+            broker_pid=222,
+            process_group_id=333,
+            start_time="spawned-at-t1",
+            broker_start_time="spawned-at-t1",
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "_process_group_exists", lambda pgid: False)
+        monkeypatch.setattr(
+            runtime_reaper,
+            "process_start_time",
+            lambda pid: "spawned-at-t9" if pid == 111 else "spawned-at-t1",
+        )
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_pidfiles == ("recycled",)
+        assert report.killed_orphans == ()
+        assert not metadata_path.exists()
+
+    def test_a_recycled_broker_pid_does_not_hide_a_live_orphan_group(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        metadata_path = _write_identity_metadata(
+            paths,
+            name="orphaned",
+            pid=111,
+            broker_pid=222,
+            process_group_id=333,
+            start_time="spawned-at-t1",
+            broker_start_time="spawned-at-t1",
+        )
+        killed: list[int] = []
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "_process_group_exists", lambda pgid: True)
+        monkeypatch.setattr(runtime_reaper, "_kill_process_group", killed.append)
+        # The broker's recorded pid now belongs to something else entirely.
+        monkeypatch.setattr(
+            runtime_reaper,
+            "process_start_time",
+            lambda pid: "spawned-at-t9" if pid == 222 else "spawned-at-t1",
+        )
+
+        report = RuntimeReaper(paths).reap()
+
+        assert killed == [333]
+        assert report.killed_orphans == ("orphaned",)
+        assert report.stale_pidfiles == ()
+        assert not metadata_path.exists()
+
+    def test_a_matching_identity_protects_the_live_upstream(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        metadata_path = _write_identity_metadata(
+            paths,
+            name="live",
+            pid=111,
+            broker_pid=222,
+            process_group_id=333,
+            start_time="spawned-at-t1",
+            broker_start_time="spawned-at-t1",
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "_process_group_exists", lambda pgid: False)
+        monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: "spawned-at-t1")
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_pidfiles == ()
+        assert report.killed_orphans == ()
+        assert metadata_path.exists()
+
+    def test_an_unreadable_identity_keeps_the_liveness_behaviour(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Never destroy runtime state on a platform that cannot answer."""
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        metadata_path = _write_identity_metadata(
+            paths,
+            name="unknown-identity",
+            pid=111,
+            broker_pid=222,
+            process_group_id=333,
+            start_time="spawned-at-t1",
+            broker_start_time="spawned-at-t1",
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "_process_group_exists", lambda pgid: False)
+        monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: None)
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_pidfiles == ()
+        assert metadata_path.exists()
+
+    def test_legacy_metadata_without_identity_still_trusts_a_live_pid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Files written before identity existed must stay reapable and safe."""
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        paths.upstream_pid_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = paths.upstream_pid_dir / "legacy-live.json"
+        metadata_path.write_bytes(
+            b'{"broker_pid": 222, "name": "legacy-live", "owner": "mcp-broker", '
+            b'"pid": 111, "process_group_id": 333}\n'
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "_process_group_exists", lambda pgid: False)
+        monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: "anything")
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_pidfiles == ()
+        assert report.killed_orphans == ()
+        assert metadata_path.exists()
+
+    def test_a_recycled_socket_pid_removes_the_socket(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        paths.ensure()
+        socket_path = paths.sockets_dir / "broker.sock"
+        socket_path.touch()
+        metadata_path = paths.socket_owner_dir / "broker.sock.json"
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "broker_pid": 222,
+                    "owner": "mcp-broker",
+                    "pid": 111,
+                    "socket_name": "broker.sock",
+                    "start_time": "spawned-at-t1",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: "spawned-at-t9")
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_sockets == ("broker.sock",)
+        assert not socket_path.exists()
+        assert not metadata_path.exists()
+
+    def test_a_matching_socket_identity_keeps_the_socket(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+        from mcp_broker.runtime_reaper import RuntimePaths, RuntimeReaper
+
+        paths = RuntimePaths.from_root(tmp_path / "runtime")
+        paths.ensure()
+        socket_path = paths.sockets_dir / "broker.sock"
+        socket_path.touch()
+        metadata_path = paths.socket_owner_dir / "broker.sock.json"
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "broker_pid": 222,
+                    "owner": "mcp-broker",
+                    "pid": 111,
+                    "socket_name": "broker.sock",
+                    "start_time": "spawned-at-t1",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(runtime_reaper, "_process_exists", lambda pid: True)
+        monkeypatch.setattr(runtime_reaper, "process_start_time", lambda pid: "spawned-at-t1")
+
+        report = RuntimeReaper(paths).reap()
+
+        assert report.stale_sockets == ()
+        assert socket_path.exists()
+        assert metadata_path.exists()
+
+
+class TestProcessStartTime:
+    """The identity reader itself, on both platforms and on its failure paths."""
+
+    def test_linux_reads_the_starttime_field(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+
+        proc_root = tmp_path / "proc"
+        (proc_root / "4242").mkdir(parents=True)
+        (proc_root / "4242" / "stat").write_text(
+            "4242 (a name with ) and spaces) S 1 4242 4242 0 -1 4194560 100 0 0 0 "
+            "1 2 3 4 20 0 1 0 987654 12345\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(runtime_reaper, "_PROC_ROOT", proc_root)
+
+        assert runtime_reaper._linux_start_time(4242) == "987654"
+
+    def test_linux_returns_none_for_an_absent_or_malformed_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+
+        proc_root = tmp_path / "proc"
+        (proc_root / "4242").mkdir(parents=True)
+        (proc_root / "4242" / "stat").write_text("4242 (truncated) S 1\n", encoding="utf-8")
+        monkeypatch.setattr(runtime_reaper, "_PROC_ROOT", proc_root)
+
+        assert runtime_reaper._linux_start_time(4242) is None
+        assert runtime_reaper._linux_start_time(9999) is None
+
+    def test_darwin_reads_ps_and_reports_failure_as_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import subprocess as subprocess_module
+
+        from mcp_broker import runtime_reaper
+
+        class Done:
+            def __init__(self, returncode: int, stdout: str) -> None:
+                self.returncode = returncode
+                self.stdout = stdout
+
+        monkeypatch.setattr(
+            subprocess_module,
+            "run",
+            lambda *args, **kwargs: Done(0, "Fri Sep 18 10:25:52 2026\n"),
+        )
+        assert runtime_reaper._darwin_start_time(4242) == "Fri Sep 18 10:25:52 2026"
+
+        monkeypatch.setattr(
+            subprocess_module, "run", lambda *args, **kwargs: Done(1, "")
+        )
+        assert runtime_reaper._darwin_start_time(4242) is None
+
+        def explode(*args: object, **kwargs: object) -> object:
+            raise OSError("ps is not installed")
+
+        monkeypatch.setattr(subprocess_module, "run", explode)
+        assert runtime_reaper._darwin_start_time(4242) is None
+
+    def test_the_platform_picks_the_reader(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_broker import runtime_reaper
+
+        monkeypatch.setattr(runtime_reaper, "_linux_start_time", lambda pid: f"linux:{pid}")
+        monkeypatch.setattr(runtime_reaper, "_darwin_start_time", lambda pid: f"darwin:{pid}")
+
+        monkeypatch.setattr(runtime_reaper.sys, "platform", "linux")
+        assert runtime_reaper.process_start_time(7) == "linux:7"
+
+        monkeypatch.setattr(runtime_reaper.sys, "platform", "darwin")
+        assert runtime_reaper.process_start_time(7) == "darwin:7"
+
+    def test_nonpositive_pids_have_no_identity(self) -> None:
+        from mcp_broker.runtime_reaper import process_start_time
+
+        assert process_start_time(0) is None
+        assert process_start_time(-1) is None
