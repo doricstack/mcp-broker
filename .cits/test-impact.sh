@@ -93,6 +93,12 @@ cd "$repo"
 printf '=== mcp-broker CITS override (tier=%s%s) ===\n' "$tier" "${base:+, base=$base}"
 printf '  - %s\n' "$reason"
 
+# The shared selector execs this override, so this script owns the entire output
+# contract, header included. changectl trial reads a change's selection from the
+# commands under this header and refuses the change without it, which would block
+# every merge in the repository rather than the one trial.
+printf '%s\n' "--- plan ---"
+
 if [ "$tier" = "ci" ]; then
   printf '  $ make %s\n' "${command[*]:1}"
 else

@@ -283,6 +283,91 @@ def test_cits_repo_override_summarizes_selected_paths() -> None:
     assert "tests/unit/test_daemon" not in result.stdout
 
 
+@pytest.mark.parametrize("tier", ["commit", "push", "ci"])
+def test_cits_repo_override_emits_the_plan_header_the_controller_reads(
+    tier: str,
+) -> None:
+    """The controller reads a trial's selection from this header alone.
+
+    The shared selector execs this override, so the override owns the whole
+    output contract, header included. changectl trial parses the plan from
+    `--- plan ---` and refuses the change when the header is absent, which
+    blocks every merge in the repository rather than the one trial.
+    """
+    env = os.environ.copy()
+    env["CITS_CHANGED_FILES"] = "src/mcp_broker/daemon.py"
+
+    result = subprocess.run(
+        [
+            str(ROOT / ".cits" / "test-impact.sh"),
+            "--tier",
+            tier,
+            "--repo",
+            str(ROOT),
+            "--base",
+            "origin/main",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert "--- plan ---" in lines, result.stdout
+    header = lines.index("--- plan ---")
+    commands = [line for line in lines[header + 1 :] if line.startswith("  $ ")]
+    assert commands, result.stdout
+    assert [line for line in lines[:header] if line.startswith("  $ ")] == []
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "test",
+        "test-unit",
+        "test-journey",
+        "test-live",
+        "test-live-targeted",
+        "test-e2e",
+        "test-quick",
+        "test-cov",
+        "precommit",
+        "xdist-benchmark",
+        "_test-targeted",
+    ],
+)
+def test_test_targets_provision_the_interpreter_they_run(target: str) -> None:
+    """A trial runs the plan in a worktree nobody set up.
+
+    The change controller merges a change onto origin/main in a detached
+    worktree and runs the selection there. That tree has no venv, so a target
+    that calls the venv interpreter without depending on `deps` dies with
+    errno 127 and the trial writes no receipt, which stops the change at NEW.
+    """
+    makefile_text = read_combined_makefiles(ROOT)
+    line = next(
+        (
+            candidate
+            for candidate in makefile_text.splitlines()
+            if candidate.startswith(f"{target}:")
+        ),
+        None,
+    )
+
+    assert line is not None, target
+    prerequisites = line.split("##", 1)[0].split(":", 1)[1].split()
+    assert "$(TEST_DEPS)" in prerequisites, line
+    # The prerequisite is conditional because a hook-contract fixture is a
+    # minimal checkout with no requirements file, and a hard `deps` there stops
+    # make before the hook can run.
+    assert "TEST_DEPS ?= $(if $(wildcard $(REQUIREMENTS)),deps,)" in makefile_text
+
+
 def test_make_profile_snippet_keeps_home_placeholder_public_safe() -> None:
     result = subprocess.run(
         make_command(
@@ -593,11 +678,11 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
     assert "PYTEST_XDIST_DIST=loadfile" in makefile
     assert "TEST_RUNTIME_ROOT ?= $(ROOT)/var/test-runtime" in makefile
 
-    test_section = makefile.split("test: ## Run all test tiers in parallel", maxsplit=1)[1].split(
+    test_section = makefile.split("test: $(TEST_DEPS) ## Run all test tiers in parallel", maxsplit=1)[1].split(
         "_test-targeted:",
         maxsplit=1,
     )[0]
-    precommit_section = makefile.split("precommit: ## Public commit gate", maxsplit=1)[1].split(
+    precommit_section = makefile.split("precommit: $(TEST_DEPS) ## Public commit gate", maxsplit=1)[1].split(
         "quality-gate:",
         maxsplit=1,
     )[0]
@@ -632,7 +717,7 @@ def test_make_test_gates_use_parallel_workers_and_fanout() -> None:
 
 def test_targeted_test_gate_labels_and_summarizes_only_selected_tests() -> None:
     makefile = read_combined_makefiles(ROOT)
-    test_section = makefile.split("test: ## Run all test tiers in parallel", maxsplit=1)[1].split(
+    test_section = makefile.split("test: $(TEST_DEPS) ## Run all test tiers in parallel", maxsplit=1)[1].split(
         "_test-targeted:", maxsplit=1
     )[0]
 

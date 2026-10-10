@@ -84,3 +84,117 @@ def test_unsupported_url_mode_never_reaches_host():
         relay = SocketElicitationRelay(left, {"elicitation": {"form": {}}}, 4096)
         response = relay.request({"id": 4, "params": {"mode": "url"}}, time.monotonic() + 1)
         assert response["error"]["code"] == -32601
+
+
+def test_expired_deadline_fails_before_reading_a_host_reply():
+    left, right = socket.socketpair()
+    with left, right:
+        right.settimeout(3)
+        left.settimeout(0.75)
+        relay = SocketElicitationRelay(left, {"elicitation": {}}, 4096)
+        with pytest.raises(ElicitationRelayError, match="^Elicitation host timed out$"):
+            relay.request({"id": "original", "method": "elicitation/create"},
+                          time.monotonic() - 1)
+        assert left.gettimeout() == 0.75
+        prompt = json.loads(right.recv(4096))
+        assert prompt["id"] != "original"
+        assert prompt["method"] == "elicitation/create"
+
+
+def test_host_eof_restores_timeout_and_does_not_fabricate_acceptance():
+    left, right = socket.socketpair()
+    with left, right, ThreadPoolExecutor() as executor:
+        right.settimeout(3)
+        left.settimeout(0.75)
+        relay = SocketElicitationRelay(left, {"elicitation": {}}, 4096)
+        future = executor.submit(relay.request, {"id": "original", "method": "elicitation/create"},
+                                 time.monotonic() + 2)
+        prompt = json.loads(right.recv(4096))
+        right.shutdown(socket.SHUT_WR)
+        with pytest.raises(ElicitationRelayError, match="^Elicitation host disconnected$"):
+            future.result(timeout=3)
+        assert left.gettimeout() == 0.75
+        assert prompt["id"] != "original"
+        assert prompt["method"] == "elicitation/create"
+
+
+@pytest.mark.parametrize("reply", [
+    [],
+    {"jsonrpc": "1.0", "result": {"action": "accept"}},
+    {"jsonrpc": "2.0", "method": "elicitation/create", "result": {"action": "accept"}},
+    {"jsonrpc": "2.0"},
+    {"jsonrpc": "2.0", "result": {"action": "accept"}, "error": {}},
+    {"jsonrpc": "2.0", "error": []},
+    {"jsonrpc": "2.0", "error": {"code": True, "message": "bad"}},
+    {"jsonrpc": "2.0", "error": {"code": -1, "message": 1}},
+    {"jsonrpc": "2.0", "result": []},
+    {"jsonrpc": "2.0", "result": {"action": "yes"}},
+    {"jsonrpc": "2.0", "result": {"action": "accept", "content": []}},
+])
+def test_malformed_matching_reply_is_rejected_and_timeout_restored(reply):
+    left, right = socket.socketpair()
+    with left, right, ThreadPoolExecutor() as executor:
+        right.settimeout(3)
+        left.settimeout(0.75)
+        relay = SocketElicitationRelay(left, {"elicitation": {}}, 4096)
+        future = executor.submit(relay.request, {"id": "original", "method": "elicitation/create"},
+                                 time.monotonic() + 2)
+        prompt = json.loads(right.recv(4096))
+        outbound = dict(reply, id=prompt["id"]) if isinstance(reply, dict) else reply
+        right.sendall(json.dumps(outbound).encode() + b"\n")
+        with pytest.raises(ElicitationRelayError, match="^Invalid elicitation response from host$"):
+            future.result(timeout=3)
+        assert left.gettimeout() == 0.75
+        assert prompt["id"] != "original"
+        assert prompt["method"] == "elicitation/create"
+
+
+@pytest.mark.parametrize("capabilities,params,reply", [
+    ({"elicitation": {}}, {}, {"result": {"action": "accept", "content": {"approved": True}}}),
+    ({"elicitation": {"form": {}}}, {"mode": "form"}, {"result": {"action": "decline"}}),
+    ({"elicitation": {"url": {}}}, {"mode": "url"}, {"result": {"action": "cancel"}}),
+    ({"elicitation": {}}, {}, {"error": {"code": -32601, "message": "Host refused"}}),
+])
+def test_supported_reply_roundtrip_preserves_decision_and_original_id(capabilities, params, reply):
+    left, right = socket.socketpair()
+    with left, right, ThreadPoolExecutor() as executor:
+        right.settimeout(3)
+        left.settimeout(0.75)
+        relay = SocketElicitationRelay(left, capabilities, 4096)
+        request = {"jsonrpc": "2.0", "id": 17, "method": "elicitation/create", "params": params}
+        future = executor.submit(relay.request, request, time.monotonic() + 2)
+        prompt = json.loads(right.recv(4096))
+        response = {"jsonrpc": "2.0", "id": prompt["id"], **reply}
+        right.sendall(json.dumps(response).encode() + b"\n")
+        assert future.result(timeout=3) == {"jsonrpc": "2.0", "id": 17, **reply}
+        assert prompt == {**request, "id": prompt["id"]}
+        assert prompt["id"] != request["id"]
+        assert left.gettimeout() == 0.75
+
+
+def test_scope_routes_supported_request_and_clears_even_after_an_exception():
+    left, right = socket.socketpair()
+    with left, right, ThreadPoolExecutor() as executor:
+        right.settimeout(3)
+        request = {"id": "original", "method": "elicitation/create", "params": {}}
+        capabilities = {"elicitation": {"form": {}}, "sampling": {}}
+
+        def scoped_request():
+            with pytest.raises(RuntimeError, match="^caller failed$"):
+                with elicitation_scope(left, {"params": {"broker_client_capabilities": capabilities}}, 4096):
+                    copied = client_capabilities(enabled=True)
+                    copied["elicitation"]["form"]["changed"] = True
+                    assert client_capabilities(enabled=True) == {"elicitation": {"form": {}}}
+                    response = relay_request(request, time.monotonic() + 2, enabled=True)
+                    assert response == {"jsonrpc": "2.0", "id": "original", "result": {"action": "decline"}}
+                    raise RuntimeError("caller failed")
+            assert client_capabilities(enabled=True) == {}
+            return relay_request(request, time.monotonic() + 2, enabled=True)
+
+        future = executor.submit(scoped_request)
+        prompt = json.loads(right.recv(4096))
+        right.sendall(json.dumps({"jsonrpc": "2.0", "id": prompt["id"],
+                                 "result": {"action": "decline"}}).encode() + b"\n")
+        assert future.result(timeout=3) == {"jsonrpc": "2.0", "id": "original", "error": {
+            "code": -32601, "message": "Client request relay unavailable"}}
+        assert capabilities == {"elicitation": {"form": {}}, "sampling": {}}
