@@ -29,3 +29,15 @@ def test_relay_rejects_unsafe_or_malformed_configuration(tmp_path, extra):
         "command": "python", "relay_elicitation": True, **extra}}}))
     with pytest.raises(ValueError):
         BrokerConfig.from_file(path)
+
+
+@pytest.mark.parametrize("mode", ["per_session", "per_call"])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_isolated_stdio_relay_setting_survives_config_loading(tmp_path, mode, enabled):
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"runtime": {"root": str(tmp_path / "runtime")}, "upstreams": {"sample": {
+        "command": "python", "mode": mode, "relay_elicitation": enabled}}}))
+    upstream = BrokerConfig.from_file(path).upstreams["sample"]
+    assert upstream.relay_elicitation is enabled
+    assert upstream.mode == mode
+    assert upstream.transport == "stdio"
