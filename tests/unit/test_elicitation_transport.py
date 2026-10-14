@@ -7,7 +7,9 @@ from pathlib import Path
 import socket
 from threading import Thread
 import time
-from uuid import uuid4
+from types import SimpleNamespace
+from unittest.mock import Mock, call
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -84,6 +86,11 @@ def test_unsupported_url_mode_never_reaches_host():
         relay = SocketElicitationRelay(left, {"elicitation": {"form": {}}}, 4096)
         response = relay.request({"id": 4, "params": {"mode": "url"}}, time.monotonic() + 1)
         assert response["error"]["code"] == -32601
+        assert response == {"jsonrpc": "2.0", "id": 4, "error": {
+            "code": -32601, "message": "Host does not support this elicitation mode"}}
+        right.setblocking(False)
+        with pytest.raises(BlockingIOError):
+            right.recv(1)
 
 
 def test_expired_deadline_fails_before_reading_a_host_reply():
@@ -198,3 +205,132 @@ def test_scope_routes_supported_request_and_clears_even_after_an_exception():
         assert future.result(timeout=3) == {"jsonrpc": "2.0", "id": "original", "error": {
             "code": -32601, "message": "Client request relay unavailable"}}
         assert capabilities == {"elicitation": {"form": {}}, "sampling": {}}
+
+
+@pytest.fixture
+def relay_socket(monkeypatch):
+    """Control socket fragmentation and time without relying on OS scheduling."""
+    monkeypatch.setattr("mcp_broker.elicitation.time", SimpleNamespace(monotonic=lambda: 10.0))
+    monkeypatch.setattr("mcp_broker.elicitation.uuid4",
+                        lambda: UUID("12345678-1234-5678-1234-567812345678"))
+    connection = Mock(spec=socket.socket)
+    connection.gettimeout.return_value = 0.75
+    return connection
+
+
+@pytest.mark.parametrize("remaining,send_timeout", [(0.25, 0.25), (1 / 2048, 0.001)])
+def test_request_writes_exact_frame_and_restores_timeout(relay_socket, remaining, send_timeout):
+    relay_socket.recv.return_value = (
+        b'{"jsonrpc":"2.0","id":"broker-elicitation-12345678123456781234567812345678",'
+        b'"result":{"action":"accept","content":{"approved":true}}}\n')
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 4096)
+    request = {"jsonrpc": "2.0", "id": 17, "method": "elicitation/create",
+               "params": {"message": "Approve?\nSecond line"}}
+
+    response = relay.request(request, 10.0 + remaining)
+
+    assert response == {"jsonrpc": "2.0", "id": 17,
+                        "result": {"action": "accept", "content": {"approved": True}}}
+    assert request == {"jsonrpc": "2.0", "id": 17, "method": "elicitation/create",
+                       "params": {"message": "Approve?\nSecond line"}}
+    assert relay_socket.mock_calls == [
+        call.gettimeout(), call.settimeout(send_timeout),
+        call.sendall(b'{"jsonrpc": "2.0", "id": "broker-elicitation-12345678123456781234567812345678", '
+                     b'"method": "elicitation/create", "params": {"message": "Approve?\\nSecond line"}}\n'),
+        call.settimeout(remaining), call.recv(4097), call.settimeout(0.75),
+    ]
+
+
+@pytest.mark.parametrize("failure", [b"invalid\n", b"\xff\n", OSError("socket closed"),
+                                     TimeoutError("socket timed out")])
+def test_request_reports_exact_transport_error_and_restores_timeout(relay_socket, failure):
+    if isinstance(failure, bytes):
+        relay_socket.recv.return_value = failure
+    else:
+        relay_socket.recv.side_effect = failure
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 4096)
+
+    with pytest.raises(ElicitationRelayError,
+                       match="^Elicitation host disconnected or timed out$") as caught:
+        relay.request({"id": 17, "method": "elicitation/create"}, 10.25)
+
+    if isinstance(failure, bytes):
+        assert isinstance(caught.value.__cause__, ValueError)
+    else:
+        assert caught.value.__cause__ is failure
+    assert relay_socket.settimeout.call_args_list == [call(0.25), call(0.25), call(0.75)]
+    relay_socket.recv.assert_called_once_with(4097)
+
+
+def test_request_restores_timeout_after_send_failure(relay_socket):
+    failure = BrokenPipeError("host closed before prompt")
+    relay_socket.sendall.side_effect = failure
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 4096)
+
+    with pytest.raises(ElicitationRelayError,
+                       match="^Elicitation host disconnected or timed out$") as caught:
+        relay.request({"id": 17, "method": "elicitation/create"}, 10.25)
+
+    assert caught.value.__cause__ is failure
+    assert relay_socket.settimeout.call_args_list == [call(0.25), call(0.75)]
+    relay_socket.recv.assert_not_called()
+
+
+def test_read_reply_rejects_exact_deadline_before_socket_io(relay_socket):
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 128)
+
+    with pytest.raises(ElicitationRelayError, match="^Elicitation host timed out$"):
+        relay._read_reply(10.0)
+
+    assert relay_socket.mock_calls == []
+
+
+def test_read_reply_assembles_short_reads_at_exact_byte_limit(relay_socket):
+    # Split a UTF-8 character and put the framing newline in its own read.
+    parts = [b'{"content":"caf\xc3', b'\xa9","approved":true}', b'\n']
+    size = sum(len(part) for part in parts)
+    relay_socket.recv.side_effect = parts
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, size)
+
+    assert relay._read_reply(10.25) == {"content": "caf\u00e9", "approved": True}
+    assert relay_socket.recv.call_args_list == [
+        call(size + 1), call(size + 1 - len(parts[0])), call(2)]
+    assert relay_socket.settimeout.call_args_list == [call(0.25)] * 3
+
+
+def test_read_reply_caps_reads_and_recomputes_remaining_budget(relay_socket):
+    # A valid JSON string spanning the 64 KiB receive cap, with no short reads.
+    wire = b'"' + b"a" * 65536 + b'"\n'
+    relay_socket.recv.side_effect = [wire[:65536], wire[65536:]]
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, len(wire))
+
+    assert relay._read_reply(10.25) == "a" * 65536
+    assert relay_socket.recv.call_args_list == [call(65536), call(4)]
+    assert relay_socket.settimeout.call_args_list == [call(0.25), call(0.25)]
+
+
+@pytest.mark.parametrize("parts", [[b'"abc"\n'], [b'"abc"', b'\n']])
+def test_read_reply_rejects_one_byte_over_limit_with_exact_error(relay_socket, parts):
+    relay_socket.recv.side_effect = parts
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 5)
+
+    with pytest.raises(ElicitationRelayError,
+                       match="^Elicitation response exceeds request size limit$"):
+        relay._read_reply(10.25)
+
+    expected_reads = [call(6)] if len(parts) == 1 else [call(6), call(1)]
+    assert relay_socket.recv.call_args_list == expected_reads
+    assert relay_socket.settimeout.call_args_list == [call(0.25)] * len(parts)
+
+
+@pytest.mark.parametrize("prefix", [b"", b'{"action":"accept"}'])
+def test_read_reply_requires_newline_before_eof(relay_socket, prefix):
+    relay_socket.recv.side_effect = [prefix, b""] if prefix else [b""]
+    relay = SocketElicitationRelay(relay_socket, {"elicitation": {}}, 128)
+
+    with pytest.raises(ElicitationRelayError, match="^Elicitation host disconnected$"):
+        relay._read_reply(10.25)
+
+    expected_reads = [call(129), call(129 - len(prefix))] if prefix else [call(129)]
+    assert relay_socket.recv.call_args_list == expected_reads
+    assert relay_socket.settimeout.call_args_list == [call(0.25)] * len(expected_reads)

@@ -1,6 +1,8 @@
 import json
 import signal
+import subprocess
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from tests.support.argparse_output import without_ansi
@@ -926,3 +928,195 @@ class TestProcessStartTime:
 
         assert process_start_time(0) is None
         assert process_start_time(-1) is None
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected"),
+    [
+        (0, " \tFri Sep 18 10:25:52 2026\n ", "Fri Sep 18 10:25:52 2026"),
+        (0, "", None),
+        (0, " \t\n", None),
+        (1, "Fri Sep 18 10:25:52 2026\n", None),
+        (2, "Fri Sep 18 10:25:52 2026\n", None),
+        (-9, "Fri Sep 18 10:25:52 2026\n", None),
+    ],
+)
+def test_darwin_start_time_pins_ps_contract_and_result(
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    stdout: str,
+    expected: str | None,
+) -> None:
+    from mcp_broker import runtime_reaper
+
+    argv = ["ps", "-o", "lstart=", "-p", "4242"]
+    run = Mock(return_value=subprocess.CompletedProcess(argv, returncode, stdout))
+    monkeypatch.setattr(runtime_reaper.subprocess, "run", run)
+
+    assert runtime_reaper._darwin_start_time(4242) == expected
+    run.assert_called_once_with(
+        argv, capture_output=True, text=True, timeout=5, check=False
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("ps is unavailable"),
+        subprocess.SubprocessError("ps failed"),
+        subprocess.TimeoutExpired(cmd="ps", timeout=5),
+    ],
+    ids=["os-error", "subprocess-error", "timeout"],
+)
+def test_darwin_start_time_handles_ps_errors(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    from mcp_broker import runtime_reaper
+
+    run = Mock(side_effect=error)
+    monkeypatch.setattr(runtime_reaper.subprocess, "run", run)
+
+    assert runtime_reaper._darwin_start_time(4242) is None
+    run.assert_called_once_with(
+        ["ps", "-o", "lstart=", "-p", "4242"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+
+def test_linux_start_time_reads_pid_stat_with_explicit_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_broker import runtime_reaper
+
+    proc_root = tmp_path / "proc"
+    stat_path = proc_root / "4242" / "stat"
+    stat_path.parent.mkdir(parents=True)
+    stat_path.write_text(
+        "4242 (caf\u00e9 with ) and spaces) S 1 4242 4242 0 -1 4194560 100 0 0 0 "
+        "1 2 3 4 20 0 1 0 987654 12345\n",
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+    reads: list[tuple[Path, tuple[object, ...], dict[str, object]]] = []
+
+    def read_text(path: Path, *args: object, **kwargs: object) -> str:
+        reads.append((path, args, kwargs))
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(runtime_reaper, "_PROC_ROOT", proc_root)
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    assert runtime_reaper._linux_start_time(4242) == "987654"
+    assert reads == [(stat_path, (), {"encoding": "utf-8"})]
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+@pytest.mark.parametrize("pid", [-1, 0, 1])
+def test_process_start_time_rejects_nonpositive_pids_before_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, pid: int
+) -> None:
+    from mcp_broker import runtime_reaper
+
+    stat_path = tmp_path / "1" / "stat"
+    stat_path.parent.mkdir()
+    stat_path.write_text(
+        "1 (init) S 0 1 1 0 -1 4194560 100 0 0 0 "
+        "1 2 3 4 20 0 1 0 987654 12345\n",
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+    reads: list[Path] = []
+
+    def read_text(path: Path, *args: object, **kwargs: object) -> str:
+        reads.append(path)
+        return original_read_text(path, *args, **kwargs)
+
+    argv = ["ps", "-o", "lstart=", "-p", "1"]
+    run = Mock(return_value=subprocess.CompletedProcess(argv, 0, "darwin-start\n"))
+    monkeypatch.setattr(runtime_reaper, "_PROC_ROOT", tmp_path)
+    monkeypatch.setattr(runtime_reaper.sys, "platform", platform)
+    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(runtime_reaper.subprocess, "run", run)
+
+    result = runtime_reaper.process_start_time(pid)
+
+    if pid <= 0:
+        assert result is None
+        assert reads == []
+        run.assert_not_called()
+    elif platform == "linux":
+        assert result == "987654"
+        assert reads == [stat_path]
+        run.assert_not_called()
+    else:
+        assert result == "darwin-start"
+        assert reads == []
+        run.assert_called_once_with(
+            argv, capture_output=True, text=True, timeout=5, check=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({}, None),
+        ({"start_time": None}, None),
+        ({"start_time": ""}, None),
+        ({"start_time": 42}, None),
+        ({"start_time": True}, None),
+        ({"start_time": False}, None),
+        ({"start_time": ["start"]}, None),
+        ({"start_time": {"value": "start"}}, None),
+        ({"start_time": " \t"}, " \t"),
+        ({"start_time": "upstream-start", "broker_start_time": "broker-start"}, "upstream-start"),
+    ],
+)
+def test_recorded_identity_accepts_only_nonempty_strings(
+    metadata: dict[str, object], expected: str | None
+) -> None:
+    from mcp_broker.runtime_reaper import _recorded_identity
+
+    assert _recorded_identity(metadata, "start_time") == expected
+    assert _recorded_identity(metadata, "absent") is None
+
+
+def test_runtime_reaper_live_socket_does_not_block_later_stale_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_broker import runtime_reaper
+
+    paths = runtime_reaper.RuntimePaths.from_root(tmp_path / "runtime")
+    paths.ensure()
+    live_socket = paths.sockets_dir / "aaa-live.sock"
+    stale_socket = paths.sockets_dir / "zzz-stale.sock"
+    live_metadata = paths.socket_owner_dir / "aaa-live.sock.json"
+    stale_metadata = paths.socket_owner_dir / "zzz-stale.sock.json"
+    live_socket.write_bytes(b"live socket placeholder")
+    stale_socket.write_bytes(b"stale socket placeholder")
+    live_payload = b'{"owner": "mcp-broker", "pid": 101, "socket_name": "aaa-live.sock"}\n'
+    live_metadata.write_bytes(live_payload)
+    stale_metadata.write_bytes(
+        b'{"owner": "mcp-broker", "pid": 202, "socket_name": "zzz-stale.sock"}\n'
+    )
+    probes: list[tuple[int, int]] = []
+
+    def kill(pid: int, sig: int) -> None:
+        assert sig == 0
+        assert pid in (101, 202)
+        probes.append((pid, sig))
+        if pid == 202:
+            raise ProcessLookupError(pid)
+
+    monkeypatch.setattr(runtime_reaper.os, "kill", kill)
+
+    report = runtime_reaper.RuntimeReaper(paths).reap()
+
+    assert probes == [(101, 0), (202, 0)]
+    assert report == runtime_reaper.ReapReport(stale_sockets=("zzz-stale.sock",))
+    assert live_socket.read_bytes() == b"live socket placeholder"
+    assert live_metadata.read_bytes() == live_payload
+    assert not stale_socket.exists()
+    assert not stale_metadata.exists()

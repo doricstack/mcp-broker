@@ -10,6 +10,165 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.error_simulation
+def test_optional_json_reader_names_a_file_removed_between_existence_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker.distributed_state import DistributedStateError, _read_json_optional
+
+    target = tmp_path / "record.json"
+    target.write_bytes(b"{}")
+    real_exists = Path.exists
+    checks = []
+
+    def exists(path):
+        if path == target:
+            checks.append(path)
+            present = real_exists(path)
+            if len(checks) == 1:
+                target.unlink()
+            return present
+        return real_exists(path)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    with pytest.raises(DistributedStateError) as caught:
+        _read_json_optional(target)
+
+    assert str(caught.value) == f"expected JSON object: {target}"
+    assert checks == [target, target]
+    assert not real_exists(target)
+
+
+@pytest.mark.parametrize("helper_name", ["_require_json","_read_json_optional"])
+def test_json_reader_uses_explicit_read_mode_and_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper_name: str,
+) -> None:
+    from mcp_broker import distributed_state as module
+
+    target = tmp_path / "record.json"
+    content = b'{"name":"caf\xc3\xa9"}\n'
+    target.write_bytes(content)
+    calls = []
+    handles = []
+    real_open = Path.open
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        handle = real_open(path, *args, **kwargs)
+        handles.append(handle)
+        return handle
+
+    helper = getattr(module, helper_name)
+    arguments = (target, "missing record") if helper_name == "_require_json" else (target,)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        result = helper(*arguments)
+
+    assert result == {"name": "caf\u00e9"}
+    assert calls == [(target, ("r",), {"encoding": "utf-8"})]
+    assert len(handles) == 1
+    assert handles[0].closed
+    assert target.read_bytes() == content
+
+
+@pytest.mark.parametrize("helper_name", ["_require_json","_read_json_optional"])
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [(b'{"name":', json.JSONDecodeError), (b'{"name":"\xff"}', UnicodeDecodeError)],
+)
+def test_json_reader_propagates_invalid_input_without_rewriting(
+    tmp_path: Path, helper_name: str, content: bytes, error: type[Exception],
+) -> None:
+    from mcp_broker import distributed_state as module
+
+    target = tmp_path / "record.json"
+    target.write_bytes(content)
+    helper = getattr(module, helper_name)
+    arguments = (target, "missing record") if helper_name == "_require_json" else (target,)
+
+    with pytest.raises(error):
+        helper(*arguments)
+
+    assert target.read_bytes() == content
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["record.json"]
+
+
+
+def test_json_writer_publishes_complete_utf8_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import distributed_state as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    expected = b'{\n  "a": "\\u00e9",\n  "z": 1\n}\n'
+    target.write_bytes(b"old record\n")
+    writes = []
+    replacements = []
+    real_write = Path.write_text
+    real_replace = module.os.replace
+
+    def write_text(path, data, *args, **kwargs):
+        writes.append((path, data, args, kwargs))
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        assert source == temporary
+        assert destination == target
+        assert temporary.read_bytes() == expected
+        assert target.read_bytes() == b"old record\n"
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    module._write_json_atomic(target, {"z": 1, "a": "\u00e9"})
+
+    assert writes == [(temporary, expected.decode("utf-8"), (), {"encoding": "utf-8"})]
+    assert replacements == [(temporary, target)]
+    assert target.read_bytes() == expected
+    assert not temporary.exists()
+
+
+@pytest.mark.error_simulation
+@pytest.mark.parametrize("failure_stage", ["write", "replace"])
+def test_json_writer_propagates_io_failure_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    from mcp_broker import distributed_state as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    target.write_bytes(b"old record\n")
+    failure = OSError("simulated disk failure")
+    replacements = []
+    real_write = Path.write_text
+
+    def write_text(path, data, *args, **kwargs):
+        if path == temporary and failure_stage == "write":
+            raise failure
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        raise failure
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    with pytest.raises(OSError) as caught:
+        module._write_json_atomic(target, {"z": 1, "a": 2})
+
+    assert caught.value is failure
+    assert target.read_bytes() == b"old record\n"
+    assert replacements == ([(temporary, target)] if failure_stage == "replace" else [])
+    assert temporary.exists() is (failure_stage == "replace")
+    if failure_stage == "replace":
+        assert temporary.read_bytes() == b'{\n  "a": 2,\n  "z": 1\n}\n'
+
+
+
 TENANT_CONTEXT = {
     "tenant_id": "tenant-a",
     "workspace_id": "workspace-a",

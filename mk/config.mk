@@ -306,6 +306,10 @@ MUTATION_RUN_LOG ?= $(QUALITY_DIR)/mutmut-run.log
 MUTATION_MUTANTS_DIR ?= $(QUALITY_DIR)/mutants-linux
 MUTATION_MIN_SCORE ?= 100
 MUTATION_FAIL_STATUSES ?= survived no_tests skipped suspicious timeout check_was_interrupted_by_user segfault not_checked
+# Loaded through PYTHONPATH on the mutmut invocation only. Mutmut 3.7.0 unloads
+# every module its coverage run imported, which re-imports compiled extensions
+# and segfaults the process; the guard narrows that unload. See the module.
+MUTMUT_UNLOAD_GUARD_DIR ?= $(ROOT)/scripts/mutmut_guard
 # Registry of adjudicated-equivalent survivors. A row stops a survivor from
 # blocking the gate ONLY while the file's current SHA-256 matches the hash the
 # row records; a stale row fails the gate rather than being ignored.

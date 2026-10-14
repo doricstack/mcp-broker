@@ -117,6 +117,29 @@ def test_tools_call_errors_preserve_request_id(
     assert response.error["code"] == expected_code
 
 
+@pytest.mark.parametrize("request_id", ["metadata-request", 17])
+def test_invalid_metadata_error_preserves_request_id(tmp_path: Path, request_id) -> None:
+    from mcp_broker.daemon import BrokerDaemon
+    from mcp_broker.jsonrpc import JsonRpcRequest
+
+    config = _config(tmp_path)
+    daemon = BrokerDaemon(
+        runtime_root=config.runtime.root,
+        socket_path=config.runtime.socket_path,
+        broker_config=config,
+    )
+
+    response = daemon._handle_tools_call(JsonRpcRequest(
+        method="tools/call", id=request_id, has_id=True,
+        params={"name": "broker.status", "arguments": {}, "_meta": []},
+    ))
+
+    assert response.to_mapping() == {
+        "jsonrpc": "2.0", "id": request_id,
+        "error": {"code": -32602, "message": "tools/call _meta must be an object"},
+    }
+
+
 def test_tools_call_defaults_missing_arguments_to_empty_object(tmp_path: Path) -> None:
     from mcp_broker.config import UpstreamConfig
     from mcp_broker.daemon import BrokerDaemon

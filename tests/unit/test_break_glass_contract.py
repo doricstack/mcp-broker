@@ -15,6 +15,152 @@ from tests.support.argparse_output import without_ansi
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.parametrize("helper_name", ["_read_json"])
+def test_json_reader_preserves_missing_file_error(
+    tmp_path: Path, helper_name: str,
+) -> None:
+    from mcp_broker import break_glass as module
+
+    target = tmp_path / "missing.json"
+    with pytest.raises(FileNotFoundError) as caught:
+        getattr(module, helper_name)(target)
+
+    assert caught.value.filename == str(target)
+    assert not target.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+
+@pytest.mark.parametrize("helper_name", ["_read_json"])
+def test_json_reader_uses_explicit_read_mode_and_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper_name: str,
+) -> None:
+    from mcp_broker import break_glass as module
+
+    target = tmp_path / "record.json"
+    content = b'{"name":"caf\xc3\xa9"}\n'
+    target.write_bytes(content)
+    calls = []
+    handles = []
+    real_open = Path.open
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        handle = real_open(path, *args, **kwargs)
+        handles.append(handle)
+        return handle
+
+    helper = getattr(module, helper_name)
+    arguments = (target, "missing record") if helper_name == "_require_json" else (target,)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        result = helper(*arguments)
+
+    assert result == {"name": "caf\u00e9"}
+    assert calls == [(target, ("r",), {"encoding": "utf-8"})]
+    assert len(handles) == 1
+    assert handles[0].closed
+    assert target.read_bytes() == content
+
+
+@pytest.mark.parametrize("helper_name", ["_read_json"])
+@pytest.mark.parametrize(
+    ("content", "error"),
+    [(b'{"name":', json.JSONDecodeError), (b'{"name":"\xff"}', UnicodeDecodeError)],
+)
+def test_json_reader_propagates_invalid_input_without_rewriting(
+    tmp_path: Path, helper_name: str, content: bytes, error: type[Exception],
+) -> None:
+    from mcp_broker import break_glass as module
+
+    target = tmp_path / "record.json"
+    target.write_bytes(content)
+    helper = getattr(module, helper_name)
+    arguments = (target, "missing record") if helper_name == "_require_json" else (target,)
+
+    with pytest.raises(error):
+        helper(*arguments)
+
+    assert target.read_bytes() == content
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["record.json"]
+
+
+
+def test_json_writer_publishes_complete_utf8_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import break_glass as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    expected = b'{\n  "a": "\\u00e9",\n  "z": 1\n}\n'
+    target.write_bytes(b"old record\n")
+    writes = []
+    replacements = []
+    real_write = Path.write_text
+    real_replace = module.os.replace
+
+    def write_text(path, data, *args, **kwargs):
+        writes.append((path, data, args, kwargs))
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        assert source == temporary
+        assert destination == target
+        assert temporary.read_bytes() == expected
+        assert target.read_bytes() == b"old record\n"
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    module._write_json_atomic(target, {"z": 1, "a": "\u00e9"})
+
+    assert writes == [(temporary, expected.decode("utf-8"), (), {"encoding": "utf-8"})]
+    assert replacements == [(temporary, target)]
+    assert target.read_bytes() == expected
+    assert not temporary.exists()
+
+
+@pytest.mark.error_simulation
+@pytest.mark.parametrize("failure_stage", ["write", "replace"])
+def test_json_writer_propagates_io_failure_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    from mcp_broker import break_glass as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    target.write_bytes(b"old record\n")
+    failure = OSError("simulated disk failure")
+    replacements = []
+    real_write = Path.write_text
+
+    def write_text(path, data, *args, **kwargs):
+        if path == temporary and failure_stage == "write":
+            raise failure
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        raise failure
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    with pytest.raises(OSError) as caught:
+        module._write_json_atomic(target, {"z": 1, "a": 2})
+
+    assert caught.value is failure
+    assert target.read_bytes() == b"old record\n"
+    assert replacements == ([(temporary, target)] if failure_stage == "replace" else [])
+    assert temporary.exists() is (failure_stage == "replace")
+    if failure_stage == "replace":
+        assert temporary.read_bytes() == b'{\n  "a": 2,\n  "z": 1\n}\n'
+
+
+
 def test_break_glass_timestamp_parser_normalizes_z_and_offsets() -> None:
     from mcp_broker.break_glass import _parse_timestamp
 
@@ -724,6 +870,19 @@ def test_record_id_matches_a_known_digest_for_a_known_seed() -> None:
     # produce a different digest, so the two must not agree.
     spaced = _json.dumps(seed, sort_keys=True)
     assert canonical != spaced
+
+
+def test_record_id_hashes_the_exact_ascii_escaped_unicode_seed() -> None:
+    import hashlib
+
+    from mcp_broker.break_glass import _record_id
+
+    canonical = b'{"operator":"caf\\u00e9","reason":"\\ud83d\\ude80"}'
+    expected = "break-glass-" + hashlib.sha256(canonical).hexdigest()[:16]
+
+    assert _record_id({"reason": "\U0001f680", "operator": "caf\u00e9"}) == expected
+    assert _record_id({"operator": "caf\u00e9", "reason": "\U0001f680"}) == expected
+    assert _record_id({"operator": "cafe", "reason": "\U0001f680"}) != expected
 
 
 def test_is_expired_treats_an_expiry_equal_to_now_as_expired() -> None:

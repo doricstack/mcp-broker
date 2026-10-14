@@ -14,12 +14,12 @@ _mutation-impl:
 	@if [[ -n "$(MUTATION_ARGS)" ]]; then \
 		printf "mutation selectors: $(words $(MUTATION_ARGS)); progress log: %s\n" "$(MUTATION_RUN_LOG)"; \
 		set +e; \
-		$(MUTATION_QOS_PREFIX) $(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN) $(MUTATION_ARGS) > "$(MUTATION_RUN_LOG)" 2>&1; \
+		MUTMUT_UNLOAD_GUARD=1 PYTHONPATH="$(MUTMUT_UNLOAD_GUARD_DIR):$(PYTHONPATH)" $(MUTATION_QOS_PREFIX) $(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN) $(MUTATION_ARGS) > "$(MUTATION_RUN_LOG)" 2>&1; \
 		status=$$?; \
 		set -e; \
 		if [[ $$status -ne 0 ]]; then tail -n 80 "$(MUTATION_RUN_LOG)"; exit $$status; fi; \
 	else \
-		$(MUTATION_QOS_PREFIX) $(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN); \
+		MUTMUT_UNLOAD_GUARD=1 PYTHONPATH="$(MUTMUT_UNLOAD_GUARD_DIR):$(PYTHONPATH)" $(MUTATION_QOS_PREFIX) $(MUTMUT) run --max-children $(MUTATION_MAX_CHILDREN); \
 	fi
 	@if [[ -z "$(MUTATION_ARGS)" ]]; then $(MUTMUT) results; fi
 	@$(PYTHON) "$(ROOT)/scripts/check_mutation_stats.py" \

@@ -1,13 +1,98 @@
 from pathlib import Path
+import os
 import re
+import subprocess
 
 import pytest
 
 from tests.support.mutant_workspace import MUTATION_WORKSPACE_ENV, in_mutant_workspace
+from tests.support.repo_root import repo_root_for
 
 
-ROOT = Path(__file__).resolve().parents[2]
+# Mutation collects this file from mutmut's partial copy, which carries scripts/
+# but not the repo-root entries the archive contract names, so a parent count
+# would describe that copy and fail inside the very run this file describes.
+ROOT = repo_root_for(Path(__file__))
 pytestmark = pytest.mark.unit
+
+# Named by hand in public-export/allowlist.txt, and excluded by glob from the
+# mutation archive until this contract was written.
+ALLOWLIST_ENTRIES_THE_ARCHIVE_MUST_CARRY = (
+    ".test-impact.json",
+    "var/.gitkeep",
+    "var/coverage/.gitkeep",
+    "var/quality/.gitkeep",
+    "var/test-logs/.gitkeep",
+)
+
+
+def _build_archive(root: Path, archive: Path) -> set[str]:
+    helper = ROOT / "scripts" / "mutation_source_archive.sh"
+    assert helper.is_file(), "the sourceable archive builder is missing"
+    subprocess.run(
+        ["bash", "-c", 'set -euo pipefail; source "$1"; '
+         'mutation_source_archive_build "$ROOT" "$ARCHIVE_PATH"', "bash", str(helper)],
+        env={**os.environ, "ROOT": str(root), "ARCHIVE_PATH": str(archive)},
+        check=True,
+    )
+    members = subprocess.run(
+        ["tar", "-tf", str(archive)], capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    return {line.removeprefix("./") for line in members}
+
+
+def test_mutation_archive_carries_the_files_the_export_allowlist_names(tmp_path: Path) -> None:
+    """The container runs the export contract, so it must receive its files.
+
+    The archive drops var/coverage, var/quality and var/test-logs by glob, which
+    also removed the .gitkeep placeholders the allowlist names by hand. Inside the
+    container the contract then reported those files missing from a repo that has
+    them. This runs the script's archive builder, so dropping the restore step
+    fails here too. The public checkout holds only var/.gitkeep, so this contract
+    is strongest in the maintainer tree.
+    """
+    script = (ROOT / "scripts" / "linux-mutation.sh").read_text(encoding="utf-8")
+    assert 'source "$(dirname "${BASH_SOURCE[0]}")/mutation_source_archive.sh"' in script
+    assert 'mutation_source_archive_build "$ROOT" "$ARCHIVE_PATH"' in script
+    entries = [entry for entry in ALLOWLIST_ENTRIES_THE_ARCHIVE_MUST_CARRY
+               if (ROOT / entry).is_file()]
+    assert entries, "no archive contract entries exist in this checkout"
+    normalized = _build_archive(ROOT, tmp_path / "source.tar")
+    missing = [entry for entry in entries if entry not in normalized]
+    assert missing == [], f"the mutation archive drops allowlisted files: {missing}"
+
+
+def test_mutation_archive_builds_where_the_nested_placeholders_are_absent(tmp_path: Path) -> None:
+    """The export denylists var/coverage, var/quality and var/test-logs by glob.
+
+    A public checkout therefore holds var/.gitkeep and none of the three nested
+    placeholders. The archive has to build there, not abort on the first missing
+    file, and carry the entries that checkout does have.
+    """
+    root = tmp_path / "public checkout"
+    for entry in ALLOWLIST_ENTRIES_THE_ARCHIVE_MUST_CARRY[:2]:
+        path = root / entry
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+
+    members = _build_archive(root, tmp_path / "source archive.tar")
+
+    assert set(ALLOWLIST_ENTRIES_THE_ARCHIVE_MUST_CARRY[:2]) <= members
+    assert not set(ALLOWLIST_ENTRIES_THE_ARCHIVE_MUST_CARRY[2:]) & members
+
+
+def test_mutation_archive_helper_has_no_source_time_actions(tmp_path: Path) -> None:
+    helper = ROOT / "scripts" / "mutation_source_archive.sh"
+    assert helper.is_file(), "the sourceable archive builder is missing"
+    result = subprocess.run(
+        ["/bin/bash", "-c", 'set -euo pipefail; source "$1"; '
+         'declare -F mutation_source_archive_build tar_option_supported >/dev/null',
+         "bash", str(helper)],
+        cwd=tmp_path, env={"PATH": str(tmp_path)}, capture_output=True, text=True,
+        check=True,
+    )
+    assert result.stdout == result.stderr == ""
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_linux_mutation_script_streams_container_output_to_host_log() -> None:

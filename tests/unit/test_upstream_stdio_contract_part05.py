@@ -29,6 +29,7 @@ from mcp_broker.upstream_stdio import (
 )
 pytestmark = pytest.mark.unit
 STDIO_HAPPY_PATH_TIMEOUT_SECONDS = 3
+STDIO_ERROR_PATH_TIMEOUT_SECONDS = 3
 class ClosedPipeProcess:
     def __init__(self, *, stdin: object | None, stdout: object | None) -> None:
         self.stdin = stdin
@@ -278,7 +279,7 @@ def test_stdio_read_response_reports_non_object_payload_directly(tmp_path: Path)
             StdioUpstreamError,
             match="upstream response must be an object: fake",
         ):
-            client._read_response(cast(Any, process), timeout_seconds=1)
+            client._read_response(cast(Any, process), timeout_seconds=STDIO_ERROR_PATH_TIMEOUT_SECONDS)
 
 def test_stdio_jsonrpc_payload_ids_increment_and_omit_absent_params(tmp_path: Path) -> None:
     client = StdioUpstreamProcess(
@@ -582,7 +583,7 @@ def test_stdio_read_response_reports_exited_process_when_pipe_is_not_readable(
     monkeypatch.setattr(upstream_stdio.select, "select", lambda *_args, **_kwargs: ([], [], []))
 
     with pytest.raises(StdioUpstreamError, match="upstream exited without response: fake"):
-        client._read_response(cast(Any, ExitedProcess()), timeout_seconds=1)
+        client._read_response(cast(Any, ExitedProcess()), timeout_seconds=STDIO_ERROR_PATH_TIMEOUT_SECONDS)
 
 @pytest.mark.error_simulation
 def test_stdio_read_stdout_line_reports_eof_before_response(

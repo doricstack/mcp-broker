@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import signal
@@ -5,6 +6,7 @@ import socket
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,30 @@ import pytest
 pytestmark = [pytest.mark.live, pytest.mark.error_simulation]
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@contextlib.contextmanager
+def live_owned_group() -> Iterator[subprocess.Popen[bytes]]:
+    """A live process in a session of its own.
+
+    The reaper signals whatever process group a record names, so a test that
+    hands it this process's group is asking a mutant to kill the test runner.
+    A stand-in keeps the signal away from everything the run depends on and
+    still lets the test assert the process was left alone.
+    """
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        yield process
+    finally:
+        if process.poll() is None:
+            os.kill(process.pid, signal.SIGKILL)
+        process.wait(timeout=10)
 
 
 def test_runtime_reaper_removes_dead_owned_pidfile(tmp_path: Path) -> None:
@@ -62,19 +88,27 @@ def test_runtime_reaper_preserves_live_owned_pidfile(tmp_path: Path) -> None:
     )
 
     paths = RuntimePaths.from_root(tmp_path / "runtime")
-    metadata_path = write_process_metadata(
-        paths,
-        name="live-upstream",
-        pid=os.getpid(),
-        process_group_id=os.getpgid(os.getpid()),
-        broker_pid=os.getpid(),
-    )
+    # The record has to describe a live process in a group of its own. Written
+    # against this process and its group, the reaper's orphan branch signals the
+    # group the record names, so the moment a mutant changes what counts as live
+    # the reaper kills the test runner instead of failing an assertion, and the
+    # mutation run dies with no result. A stand-in in its own session takes that
+    # signal, and the assertions below report it.
+    with live_owned_group() as upstream:
+        metadata_path = write_process_metadata(
+            paths,
+            name="live-upstream",
+            pid=upstream.pid,
+            process_group_id=os.getpgid(upstream.pid),
+            broker_pid=os.getpid(),
+        )
 
-    report = RuntimeReaper(paths).reap()
+        report = RuntimeReaper(paths).reap()
 
-    assert report.stale_pidfiles == ()
-    assert report.killed_orphans == ()
-    assert metadata_path.exists()
+        assert report.stale_pidfiles == ()
+        assert report.killed_orphans == ()
+        assert metadata_path.exists()
+        assert upstream.poll() is None
 
 
 def test_runtime_reaper_removes_stale_owned_socket(tmp_path: Path) -> None:

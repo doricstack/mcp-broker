@@ -8,18 +8,217 @@ import os
 from pathlib import Path
 from queue import Queue
 import socket
+from threading import current_thread
 from uuid import uuid4
 
 import pytest
 
 from mcp_broker.client import ClientShim, ClientShimError
-from mcp_broker.client_relay import ClientRelay, _completed, _decode
+from mcp_broker.client_relay import ClientRelay, _completed, _decode, _encode
+from mcp_broker.schema import DEFAULT_SOCKET_MAX_REQUEST_BYTES
 
 pytestmark = pytest.mark.unit
 
 
 def wire(message):
     return json.dumps(message).encode() + b"\n"
+
+
+class FiniteStream(BytesIO):
+    """Reject incorrect read bounds and reads past the scripted exchange."""
+
+    def __init__(self, payload, bound):
+        super().__init__(payload)
+        self.bound = bound
+        self.read_bounds = []
+        self.saw_eof = False
+
+    def readline(self, size=-1):
+        self.read_bounds.append(size)
+        assert size == self.bound
+        assert not self.saw_eof, "relay read again after broker EOF"
+        payload = super().readline(size)
+        self.saw_eof = not payload
+        return payload
+
+
+class FiniteConnection:
+    """Socket boundary with finite input and no blocking operations."""
+
+    def __init__(self, payload=b"", bound=DEFAULT_SOCKET_MAX_REQUEST_BYTES + 1):
+        self.stream = FiniteStream(payload, bound)
+        self.sent = []
+        self.addresses = []
+        self.thread_names = []
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self.closed = True
+
+    def connect(self, address):
+        self.addresses.append(address)
+        self.thread_names.append(current_thread().name)
+
+    def makefile(self, mode):
+        assert mode == "rb"
+        return self.stream
+
+    def sendall(self, payload):
+        self.sent.append(payload)
+
+
+class RecordingShim:
+    """Record plain forwarding without opening a socket or waiting for a reply."""
+
+    def __init__(self, response):
+        self.response = response
+        self.forwarded = []
+
+    def forward_payload(self, payload):
+        self.forwarded.append(payload)
+        return self.response
+
+
+class NonblockingFuture(Future):
+    """An unfinished result lookup is a contract failure, never a test hang."""
+
+    def result(self, timeout=None):
+        assert self.done(), "relay waited for an unfinished future"
+        return super().result(timeout=timeout)
+
+
+def test_completed_leaves_unfinished_work_pending_without_waiting():
+    future = NonblockingFuture()
+    assert _completed(future) is False
+    assert not future.done()
+    assert not future.cancelled()
+
+
+def test_encode_emits_compact_ascii_escaped_json_with_one_newline():
+    value = {"id": "caf\u00e9", "result": [1, True, None, "line\nnext"]}
+    encoded = _encode(value)
+    assert encoded == b'{"id":"caf\\u00e9","result":[1,true,null,"line\\nnext"]}\n'
+    assert encoded.count(b"\n") == 1
+    assert json.loads(encoded) == value
+    assert _encode({"text": "\U0001f680\ud800"}) == b'{"text":"\\ud83d\\ude80\\ud800"}\n'
+
+
+def test_new_relay_has_open_host_input():
+    relay = ClientRelay(ClientShim(Path("unused.sock")), BytesIO())
+    assert relay._eof is False
+    assert relay.capabilities == {}
+    assert relay._pending == {}
+
+
+def test_receive_reports_exact_early_close_error_and_closes_stream():
+    peer = FiniteConnection()
+    output = BytesIO()
+    relay = ClientRelay(ClientShim(Path("unused.sock")), output)
+    with pytest.raises(ClientShimError, match="^Broker closed before returning a response$"):
+        relay._receive(peer, "call")
+    assert peer.stream.read_bounds == [DEFAULT_SOCKET_MAX_REQUEST_BYTES + 1]
+    assert peer.stream.closed
+    assert output.getvalue() == b""
+
+
+@pytest.mark.parametrize("over_limit", [False, True])
+def test_receive_enforces_exact_byte_limit_and_stops_after_final_response(monkeypatch, over_limit):
+    payload = b'{"jsonrpc":"2.0","id":"call","result":{"text":"\xc3\xa9"}}\n'
+    limit = len(payload) - int(over_limit)
+    monkeypatch.setattr("mcp_broker.client_relay.DEFAULT_SOCKET_MAX_REQUEST_BYTES", limit)
+    peer = FiniteConnection(payload, limit + 1)
+    output = BytesIO()
+    relay = ClientRelay(ClientShim(Path("unused.sock")), output)
+    if over_limit:
+        with pytest.raises(ClientShimError, match="^Broker response exceeds message size limit$"):
+            relay._receive(peer, "call")
+        assert output.getvalue() == b""
+    else:
+        result = relay._receive(peer, "call")
+        assert result is None
+        assert output.getvalue() == payload
+    assert peer.stream.read_bounds == [limit + 1]
+    assert peer.stream.closed
+
+
+def test_receive_forwards_prompt_then_final_response_without_reading_again():
+    prompt = b'{"id":"approval","method":"elicitation/create"}\n'
+    final = b'{"jsonrpc":"2.0","id":"call","result":{}}\n'
+    peer = FiniteConnection(prompt + final)
+    output = BytesIO()
+    relay = ClientRelay(ClientShim(Path("unused.sock")), output)
+    relay._receive(peer, "call")
+    assert output.getvalue() == prompt + final
+    assert peer.stream.read_bounds == [DEFAULT_SOCKET_MAX_REQUEST_BYTES + 1] * 2
+    assert peer.sent == []
+    assert relay._pending == {"approval": peer}
+
+
+@pytest.mark.parametrize("reply,expected", [
+    ({"result": {"action": "decline"}},
+     b'{"jsonrpc":"2.0","id":"approval","result":{"action":"decline"}}\n'),
+    ({"error": {"code": -32601, "message": "declined"}},
+     b'{"jsonrpc":"2.0","id":"approval","error":{"code":-32601,"message":"declined"}}\n'),
+])
+def test_run_routes_each_host_reply_and_reaches_eof_without_forwarding(reply, expected):
+    shim = RecordingShim(b'{"jsonrpc":"2.0","id":"wrong","result":{}}\n')
+    output = BytesIO()
+    peer = FiniteConnection()
+    relay = ClientRelay(shim, output)
+    relay._pending["approval"] = peer
+    relay.run(BytesIO(wire({"jsonrpc": "2.0", "id": "approval", **reply})))
+    assert peer.sent == [expected]
+    assert shim.forwarded == []
+    assert output.getvalue() == b""
+    assert relay._pending == {}
+    assert relay._eof is True
+
+
+@pytest.mark.parametrize("frame", [
+    {"jsonrpc": "2.0", "id": "call", "method": "ping", "result": {}},
+    {"jsonrpc": "2.0", "id": "call", "method": "ping", "error": {}},
+    {"jsonrpc": "2.0", "id": "call"},
+    {"jsonrpc": "2.0", "result": {}},
+])
+def test_run_does_not_consume_non_reply_frames(frame):
+    response = b'{"jsonrpc":"2.0","id":"call","result":{}}\n'
+    shim = RecordingShim(response)
+    output = BytesIO()
+    relay = ClientRelay(shim, output)
+    payload = wire(frame)
+    relay.run(BytesIO(payload))
+    assert shim.forwarded == [payload]
+    assert output.getvalue() == (response if "id" in frame else b"")
+    assert relay._eof is True
+
+
+@pytest.mark.parametrize("method", ["tools/call", "tools/list"])
+def test_run_finishes_worker_exchange_with_named_thread_and_exact_wire_bytes(monkeypatch, method):
+    response = b'{"jsonrpc":"2.0","id":"call","result":{}}\n'
+    peer = FiniteConnection(response)
+    monkeypatch.setattr("mcp_broker.client_relay.socket.socket", lambda *_args: peer)
+    shim = ClientShim(Path("broker.sock"), profile="test", session_id="session")
+    output = BytesIO()
+    relay = ClientRelay(shim, output)
+    relay.capabilities = {"elicitation": {}}
+    # Supply metadata so the expected wire bytes are independent of the host cwd.
+    params = {"profile": "test", "broker_session_id": "session", "broker_client_cwd": "."}
+    relay.run(BytesIO(wire({"jsonrpc": "2.0", "id": "call", "method": method, "params": params})))
+    expected = (
+        b'{"jsonrpc":"2.0","id":"call","method":"' + method.encode("ascii")
+        + b'","params":{"profile":"test","broker_session_id":"session",'
+        b'"broker_client_cwd":".","broker_client_capabilities":{"elicitation":{}}}}\n'
+    )
+    assert peer.sent == [expected]
+    assert peer.addresses == [str(shim.socket_path)]
+    assert len(peer.thread_names) == 1
+    assert peer.thread_names[0].startswith("broker-client_")
+    assert peer.closed
+    assert output.getvalue() == response
+    assert relay._eof is True
 
 
 class HostOutput(BytesIO):
@@ -262,7 +461,7 @@ def test_decode_malformed_or_non_object_input_cannot_route_a_reply(payload):
 
 
 def test_completed_distinguishes_pending_success_and_failure():
-    future = Future()
+    future = NonblockingFuture()
     assert _completed(future) is False
     future.set_result("response written")
     assert _completed(future) is True
@@ -320,4 +519,166 @@ def test_unavailable_broker_returns_error_for_original_call(tmp_path):
     assert response["error"]["code"] == -32000
     assert response["error"]["message"].startswith("Broker transport failed: ")
     assert "result" not in response
+    assert relay._pending == {}
+
+
+def test_run_keeps_unfinished_workers_so_their_failure_reaches_the_caller(monkeypatch):
+    first = NonblockingFuture()
+    second = NonblockingFuture()
+    second.set_result(None)
+    failure = RuntimeError("host output failed after the next call started")
+    submitted = []
+
+    class ScriptedExecutor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def submit(self, function, request):
+            submitted.append((function, request["id"]))
+            return first if len(submitted) == 1 else second
+
+    monkeypatch.setattr(
+        "mcp_broker.client_relay.ThreadPoolExecutor", lambda **_kwargs: ScriptedExecutor()
+    )
+    output = BytesIO()
+    shim = ClientShim(Path("unused.sock"), profile="test", session_id="session")
+    relay = ClientRelay(shim, output)
+    relay.capabilities = {"elicitation": {}}
+
+    def stdin():
+        yield wire({"id": "first", "method": "tools/call"})
+        assert not first.done()
+        yield wire({"id": "second", "method": "tools/list"})
+        # The first worker was still pending when the second was submitted.
+        # Executor shutdown waits for workers but does not raise their errors.
+        first.set_exception(failure)
+
+    with pytest.raises(RuntimeError) as caught:
+        relay.run(stdin())
+
+    assert caught.value is failure
+    assert str(caught.value) == "host output failed after the next call started"
+    assert submitted == [(relay._exchange, "first"), (relay._exchange, "second")]
+    assert relay._eof is True
+    assert relay._pending == {}
+    assert output.getvalue() == b""
+
+
+def test_run_empty_input_returns_without_forwarding():
+    shim = RecordingShim(b"unused response")
+    output = BytesIO()
+    relay = ClientRelay(shim, output)
+
+    assert relay.run(BytesIO()) is None
+
+    assert shim.forwarded == []
+    assert output.getvalue() == b""
+    assert relay._pending == {}
+    assert relay._eof is True
+
+
+@pytest.mark.parametrize("method,response_body,expected", [
+    ("initialize", {"result": {}}, {"elicitation": {"form": {}}}),
+    ("initialize", {"error": {"code": -32602, "message": "Invalid initialize"}},
+     {"elicitation": {"url": {}}}),
+    ("ping", {"result": {}}, {"elicitation": {"url": {}}}),
+])
+def test_run_changes_capabilities_only_after_a_successful_initialize(method, response_body, expected):
+    response = wire({"jsonrpc": "2.0", "id": "request", **response_body})
+    shim = RecordingShim(response)
+    output = BytesIO()
+    relay = ClientRelay(shim, output)
+    relay.capabilities = {"elicitation": {"url": {}}}
+    payload = wire({"jsonrpc": "2.0", "id": "request", "method": method,
+                    "params": {"capabilities": {"elicitation": {"form": {}}}}})
+
+    assert relay.run(BytesIO(payload)) is None
+
+    assert relay.capabilities == expected
+    assert shim.forwarded == [payload]
+    assert output.getvalue() == response
+    assert relay._eof is True
+
+
+@pytest.mark.parametrize("fields", [
+    {}, {"params": {}}, {"params": {"capabilities": {}}},
+    {"params": None}, {"params": {"capabilities": None}},
+])
+def test_run_missing_capabilities_clear_prior_negotiation_and_finish_at_eof(fields):
+    response = wire({"jsonrpc": "2.0", "id": "init", "result": {}})
+    shim = RecordingShim(response)
+    output = BytesIO()
+    relay = ClientRelay(shim, output)
+    relay.capabilities = {"elicitation": {"form": {}}}
+    payload = wire({"jsonrpc": "2.0", "id": "init", "method": "initialize", **fields})
+
+    assert relay.run(BytesIO(payload)) is None
+
+    assert relay.capabilities == {}
+    assert shim.forwarded == [payload]
+    assert output.getvalue() == response
+    assert relay._pending == {}
+    assert relay._eof is True
+
+
+@pytest.mark.parametrize("payload,expected", [
+    (b"", {"jsonrpc": "2.0", "id": "call", "error": {
+        "code": -32000,
+        "message": "Broker transport failed: Broker closed before returning a response"}}),
+    (b'{"jsonrpc":"2.0","id":"wrong","result":{}}\n',
+     {"jsonrpc": "2.0", "id": "call", "error": {
+         "code": -32000, "message": "Broker transport failed: Broker returned an invalid response"}}),
+    (b'{"jsonrpc":"2.0","id":"call","result":{}}\n',
+     {"jsonrpc": "2.0", "id": "call", "result": {}}),
+])
+def test_exchange_finishes_or_reports_transport_failure_and_cleans_only_its_prompts(
+    monkeypatch, payload, expected,
+):
+    peer = FiniteConnection(payload)
+    other = FiniteConnection()
+    real_socket = socket.socket
+    transport = []
+
+    def open_socket(*args, **kwargs):
+        # Inspect the effective transport, including OS defaults, not call spelling.
+        with real_socket(*args, **kwargs) as connection:
+            transport.append((connection.family, connection.type, connection.proto))
+        return peer
+
+    monkeypatch.setattr("mcp_broker.client_relay.socket.socket", open_socket)
+    output = BytesIO()
+    shim = ClientShim(Path("broker.sock"))
+    relay = ClientRelay(shim, output)
+    relay._pending = {"this-call": peer, "other-call": other}
+    request = {"jsonrpc": "2.0", "id": "call", "method": "tools/call"}
+
+    assert relay._exchange(request) is None
+
+    assert transport == [(socket.AF_UNIX, socket.SOCK_STREAM, 0)]
+    assert peer.addresses == [str(shim.socket_path)]
+    assert peer.sent == [b'{"jsonrpc":"2.0","id":"call","method":"tools/call"}\n']
+    assert peer.stream.read_bounds == [DEFAULT_SOCKET_MAX_REQUEST_BYTES + 1]
+    assert peer.stream.closed
+    assert peer.closed
+    assert relay._pending == {"other-call": other}
+    assert json.loads(output.getvalue()) == expected
+    assert output.getvalue().count(b"\n") == 1
+
+
+def test_exchange_returns_an_exact_error_when_socket_creation_fails(monkeypatch):
+    def open_socket(*_args, **_kwargs):
+        raise OSError("socket unavailable")
+
+    monkeypatch.setattr("mcp_broker.client_relay.socket.socket", open_socket)
+    output = BytesIO()
+    relay = ClientRelay(ClientShim(Path("unused.sock")), output)
+
+    assert relay._exchange({"id": "call", "method": "tools/call"}) is None
+
+    assert json.loads(output.getvalue()) == {"jsonrpc": "2.0", "id": "call", "error": {
+        "code": -32000, "message": "Broker transport failed: socket unavailable"}}
+    assert output.getvalue().count(b"\n") == 1
     assert relay._pending == {}

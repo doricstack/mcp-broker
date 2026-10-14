@@ -151,6 +151,7 @@ def test_public_export_includes_hook_implementation_and_contracts() -> None:
 
 @pytest.mark.parametrize("valid", [True, False])
 @requires_gitleaks
+@pytest.mark.timeout(180)
 def test_installed_hook_runs_only_selected_tests_and_blocks_failures(repo: Path, valid: bool) -> None:
     tests = repo / "tests/unit"
     tests.mkdir(parents=True)

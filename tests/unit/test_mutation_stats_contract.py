@@ -923,6 +923,29 @@ def test_the_report_counts_excused_mutants_by_their_own_status(tmp_path: Path) -
     assert report.blocking_counts["survived"] == 0
 
 
+def test_build_report_accumulates_multiple_excused_survivors(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    digest = _hashed_source(root)
+    mutants_dir = tmp_path / "mutants"
+    write_meta(mutants_dir / "src" / "mcp_broker" / "sample.py.meta", [1, 0, 0, 0])
+    registry = _registry_for(digest, tmp_path / "carveouts.md")
+
+    report = build_report(
+        mutants_dir, carveouts_path=registry, repo_root=root, fail_statuses=["survived"],
+    )
+
+    assert report.total == 4
+    assert report.passed == 1
+    assert report.score == 25.0
+    assert report.counts == dict.fromkeys(ALL_STATUSES, 0) | {"killed": 1, "survived": 3}
+    assert report.excused_count == 3
+    assert report.excused_by_status == {"survived": 3}
+    assert report.blocking_counts == dict.fromkeys(ALL_STATUSES, 0) | {"killed": 1}
+    assert report.effective_score == 100.0
+    assert report.blocked_by_file == []
+    assert report.invalid_carveouts == []
+
+
 def test_build_report_reports_a_registry_row_it_could_not_bind(tmp_path: Path) -> None:
     """A stale row travels into the report; it is not dropped on the way."""
     root = tmp_path / "repo"

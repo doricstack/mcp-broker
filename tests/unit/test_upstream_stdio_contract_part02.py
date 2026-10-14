@@ -23,6 +23,7 @@ from mcp_broker.upstream_stdio import (
 )
 pytestmark = pytest.mark.unit
 STDIO_HAPPY_PATH_TIMEOUT_SECONDS = 3
+STDIO_FORCED_TIMEOUT_SECONDS = 1
 class ClosedPipeProcess:
     def __init__(self, *, stdin: object | None, stdout: object | None) -> None:
         self.stdin = stdin
@@ -574,7 +575,7 @@ for line in sys.stdin:
 
     try:
         with pytest.raises(StdioUpstreamTimeout, match="upstream timed out: fake"):
-            client.list_tools(timeout_seconds=1)
+            client.list_tools(timeout_seconds=STDIO_FORCED_TIMEOUT_SECONDS)
     finally:
         client.stop()
 

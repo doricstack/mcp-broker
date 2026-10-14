@@ -70,6 +70,43 @@ def test_callable_of_mutant_returns_none_for_an_unrecognised_shape():
     assert callable_of_mutant("not-a-mutant-name") is None
 
 
+def test_parse_registry_reads_utf8_independently_of_default_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = tmp_path / "registry.md"
+    registry.write_bytes(_row(
+        "src/mcp_broker/sample.py",
+        "`parse` | equivalent | caf\u00e9; SHA-256 `" + "a" * 64 + "` | signed",
+    ).encode("utf-8"))
+    original_open = Path.open
+
+    def open_with_ascii_default(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+        # Only omitted encodings use the simulated locale; named codecs stay real.
+        if path == registry and encoding in (None, "locale"):
+            encoding = "ascii"
+        return original_open(path, mode, buffering, encoding, errors, newline)
+
+    monkeypatch.setattr(Path, "open", open_with_ascii_default)
+
+    assert parse_registry(registry) == [Carveout(
+        source_path="src/mcp_broker/sample.py", sha256="a" * 64,
+        reason_class="equivalent", callables=frozenset({"parse"}),
+    )]
+
+
+def test_parse_registry_rejects_invalid_utf8_without_rewriting(tmp_path: Path) -> None:
+    registry = tmp_path / "registry.md"
+    payload = b"# Invalid encoding: \xff\n"
+    registry.write_bytes(payload)
+
+    with pytest.raises(UnicodeDecodeError) as caught:
+        parse_registry(registry)
+
+    assert caught.value.object == payload
+    assert caught.value.reason == "invalid start byte"
+    assert registry.read_bytes() == payload
+
+
 def test_parse_registry_reads_path_hash_callables_and_reason(tmp_path: Path):
     registry = tmp_path / "carveouts.md"
     registry.write_text(

@@ -14,6 +14,137 @@ from mcp_broker.cli import main as cli_main
 pytestmark = [pytest.mark.unit]
 
 
+def test_audit_writer_appends_exact_utf8_bytes_and_closes_each_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_rollout_controller as module
+
+    target = tmp_path / "audit.jsonl"
+    target.write_bytes(b'{"old":true}\n')
+    calls = []
+    handles = []
+    real_open = Path.open
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        handle = real_open(path, *args, **kwargs)
+        handles.append(handle)
+        return handle
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        module._append_jsonl(target, [{"z": 1, "a": "\u00e9"}, {"b": 2}])
+
+    assert calls == [(target, ("a",), {"encoding": "utf-8"})]
+    assert len(handles) == 1
+    assert all(handle.closed for handle in handles)
+    assert target.read_bytes() == (
+        b'{"old":true}\n'
+        b'{"a": "\\u00e9", "z": 1}\n{"b": 2}\n'
+    )
+
+
+@pytest.mark.error_simulation
+def test_audit_writer_propagates_open_failure_and_preserves_existing_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_rollout_controller as module
+
+    target = tmp_path / "audit.jsonl"
+    original = b'{"old":true}\n'
+    target.write_bytes(original)
+    failure = PermissionError("simulated audit permission denial")
+    calls = []
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        with pytest.raises(PermissionError) as caught:
+            module._append_jsonl(target, [{"new": True}])
+
+    assert caught.value is failure
+    assert calls == [(target, ("a",), {"encoding": "utf-8"})]
+    assert target.read_bytes() == original
+
+
+
+def test_json_writer_publishes_complete_utf8_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_rollout_controller as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    expected = b'{\n  "a": "\\u00e9",\n  "z": 1\n}\n'
+    writes = []
+    replacements = []
+    real_write = Path.write_text
+    real_replace = module.os.replace
+
+    def write_text(path, data, *args, **kwargs):
+        writes.append((path, data, args, kwargs))
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        assert source == temporary
+        assert destination == target
+        assert temporary.read_bytes() == expected
+        assert not target.exists()
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    module._write_json_new(target, {"z": 1, "a": "\u00e9"})
+
+    assert writes == [(temporary, expected.decode("utf-8"), (), {"encoding": "utf-8"})]
+    assert replacements == [(temporary, target)]
+    assert target.read_bytes() == expected
+    assert not temporary.exists()
+
+
+@pytest.mark.error_simulation
+@pytest.mark.parametrize("failure_stage", ["write", "replace"])
+def test_json_writer_propagates_io_failure_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    from mcp_broker import governance_rollout_controller as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    failure = OSError("simulated disk failure")
+    replacements = []
+    real_write = Path.write_text
+
+    def write_text(path, data, *args, **kwargs):
+        if path == temporary and failure_stage == "write":
+            raise failure
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        raise failure
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    with pytest.raises(OSError) as caught:
+        module._write_json_new(target, {"z": 1, "a": 2})
+
+    assert caught.value is failure
+    assert not target.exists()
+    assert replacements == ([(temporary, target)] if failure_stage == "replace" else [])
+    assert temporary.exists() is (failure_stage == "replace")
+    if failure_stage == "replace":
+        assert temporary.read_bytes() == b'{\n  "a": 2,\n  "z": 1\n}\n'
+
+
+
+
 def test_rollout_controller_writes_auditable_actions_without_runtime_mutation(
     tmp_path: Path,
 ) -> None:

@@ -135,6 +135,37 @@ def test_call_managed_tool_defaults_missing_arguments_to_empty_object(tmp_path: 
     assert result == {"content": []}
     assert calls == [("read-store", "find_record", {}, 60)]
 
+def test_project_injection_continues_past_an_unconfigured_upstream(tmp_path: Path) -> None:
+    repo = tmp_path / "project"
+    (repo / ".git").mkdir(parents=True)
+    config = BrokerConfig(
+        runtime=_runtime(tmp_path),
+        broker=BrokerSettings(),
+        upstreams={
+            "plain": UpstreamConfig(name="plain", command="plain"),
+            "index": UpstreamConfig(
+                name="index", command="index", inject_cwd_project=True,
+            ),
+        },
+    )
+    facade = BrokerCatalogFacade(
+        broker_config=config,
+        profile=None,
+        list_upstream=lambda _name, _timeout: [],
+        call_upstream=lambda _name, _tool, _args, _timeout: {"content": []},
+        call_locks={},
+        client_cwd=str(repo),
+    )
+    arguments = {"query": "symbol"}
+
+    assert facade._inject_cwd_project_arg("index.search", arguments) == {
+        "query": "symbol",
+        "project": str(repo).lstrip("/").replace("/", "-"),
+    }
+    assert arguments == {"query": "symbol"}
+    assert facade._inject_cwd_project_arg("plain.search", arguments) == arguments
+
+
 def test_call_managed_tool_injects_cwd_project_for_configured_upstream(
     tmp_path: Path,
 ) -> None:

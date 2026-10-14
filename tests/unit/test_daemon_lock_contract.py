@@ -92,6 +92,24 @@ def test_acquire_lock_takes_a_file_that_names_this_live_process(tmp_path: Path) 
         daemon._release_lock()
 
 
+def test_lock_holder_pid_reads_utf8_independently_of_default_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "broker.lock"
+    lock_path.write_bytes('{"owner": "caf\u00e9", "pid": "4321"}'.encode("utf-8"))
+    original_open = Path.open
+
+    def open_with_ascii_default(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+        # Simulate a non-UTF-8 locale at the file boundary, preserving real decoding.
+        if path == lock_path and encoding in (None, "locale"):
+            encoding = "ascii"
+        return original_open(path, mode, buffering, encoding, errors, newline)
+
+    monkeypatch.setattr(Path, "open", open_with_ascii_default)
+
+    assert _lock_holder_pid(lock_path) == 4321
+
+
 def test_lock_holder_pid_reports_the_recorded_pid(tmp_path: Path) -> None:
     lock_path = tmp_path / "broker.lock"
     lock_path.write_text(json.dumps({"owner": "mcp-broker", "pid": 4321}), encoding="utf-8")
@@ -111,3 +129,13 @@ def test_lock_holder_pid_degrades_to_unknown_on_unreadable_content(
 
 def test_lock_holder_pid_degrades_to_unknown_when_the_file_is_missing(tmp_path: Path) -> None:
     assert _lock_holder_pid(tmp_path / "absent.lock") == "unknown"
+
+
+def test_lock_holder_pid_degrades_to_unknown_on_invalid_utf8_without_rewriting(tmp_path: Path) -> None:
+    lock_path = tmp_path / "broker.lock"
+    payload = b'{"owner":"\xff","pid":4321}'
+    lock_path.write_bytes(payload)
+
+    assert _lock_holder_pid(lock_path) == "unknown"
+    assert lock_path.read_bytes() == payload
+    assert list(tmp_path.iterdir()) == [lock_path]

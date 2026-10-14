@@ -1,9 +1,11 @@
 import io
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Any, cast
 import pytest
+from tests.support.repo_root import repo_root_for
 from mcp_broker.config import UpstreamConfig
 from mcp_broker.upstream_process import (
     KILL_WAIT_SECONDS,
@@ -26,6 +28,28 @@ from mcp_broker.upstream_stdio import (
 )
 pytestmark = pytest.mark.unit
 STDIO_HAPPY_PATH_TIMEOUT_SECONDS = 3
+STDIO_ERROR_PATH_TIMEOUT_SECONDS = 3
+STDIO_CONTRACT_ROOT = repo_root_for(Path(__file__))
+
+
+def test_stdio_error_path_calls_use_a_budget_that_survives_parallel_load() -> None:
+    """A bare one-second budget is either a speed test or a bug.
+
+    Under xdist these calls expired before the worker answered, so the test failed
+    on a timeout instead of the invalid response it asserts, which aborted a
+    release gate. Two intents need two names: a test expecting a non-timeout error
+    uses STDIO_ERROR_PATH_TIMEOUT_SECONDS, and a test that provokes the timeout
+    itself uses STDIO_FORCED_TIMEOUT_SECONDS. Neither is a bare literal.
+    """
+    offenders: list[str] = []
+    for path in sorted(STDIO_CONTRACT_ROOT.glob(
+            "tests/unit/test_upstream_stdio_contract_part0*.py")):
+        for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1):
+            # Matches a real call site, not this test's own pattern literal.
+            if re.search(r"timeout_seconds=1\s*[,)]", line):
+                offenders.append(f"{path.name}:{number}")
+    assert offenders == [], f"unnamed one-second subprocess budgets: {offenders}"
 class ClosedPipeProcess:
     def __init__(self, *, stdin: object | None, stdout: object | None) -> None:
         self.stdin = stdin
@@ -160,7 +184,7 @@ for line in sys.stdin:
             StdioUpstreamError,
             match="upstream tools/list response invalid: fake",
         ):
-            client.list_tools(timeout_seconds=1)
+            client.list_tools(timeout_seconds=STDIO_ERROR_PATH_TIMEOUT_SECONDS)
         assert (
             client.health_snapshot()["last_error"]
             == "upstream tools/list response invalid: fake"
@@ -208,7 +232,7 @@ for line in sys.stdin:
             StdioUpstreamError,
             match="upstream tools/list response invalid: fake",
         ):
-            client.list_tools(timeout_seconds=1)
+            client.list_tools(timeout_seconds=STDIO_ERROR_PATH_TIMEOUT_SECONDS)
     finally:
         client.stop()
 
@@ -589,7 +613,7 @@ def test_stdio_upstream_maps_start_failure(tmp_path: Path) -> None:
     )
 
     with pytest.raises(StdioUpstreamError, match="upstream failed to start: fake"):
-        client.call_tool("fake.echo", {}, timeout_seconds=1)
+        client.call_tool("fake.echo", {}, timeout_seconds=STDIO_ERROR_PATH_TIMEOUT_SECONDS)
 
     assert "upstream failed to start: fake" in str(client.health_snapshot()["last_error"])
 

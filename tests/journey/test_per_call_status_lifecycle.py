@@ -15,12 +15,40 @@ from tests.support.per_call_status import configured_daemon, status_facade, writ
 pytestmark = pytest.mark.journey
 
 
-def wait_for_file(path: Path) -> None:
-    deadline = time.monotonic() + 5
-    while not path.exists():
+def wait_for_file(path: Path, *, timeout_seconds: float = 5.0) -> None:
+    """Wait for the worker's barrier file to exist and carry its content.
+
+    The worker reaches its barrier with one write_text call, which creates the
+    file before it writes the pid. Waiting on the directory entry alone returns
+    inside that window, the caller reads an empty file, and the pid parse raises
+    on the empty string. The barrier is the content.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if path.exists() and path.read_text(encoding="utf-8"):
+            return
         if time.monotonic() >= deadline:
             pytest.fail(f"worker did not reach its call barrier: {path.name}")
         time.sleep(0.01)
+
+
+def test_wait_for_file_waits_for_content_not_merely_creation(tmp_path: Path) -> None:
+    """The worker's one write_text call creates the file before it writes the pid.
+
+    A wait on existence alone returns inside that window, so the caller reads an
+    empty file and the pid parse fails, which is how the timeout case breaks under
+    load. The barrier is the content, not the directory entry.
+    """
+    target = tmp_path / "timeout.started"
+    target.touch()
+
+    assert target.read_text(encoding="utf-8") == ""
+    with pytest.raises(pytest.fail.Exception):
+        wait_for_file(target, timeout_seconds=0.1)
+
+    target.write_text("4242", encoding="utf-8")
+    wait_for_file(target, timeout_seconds=1.0)
+    assert target.read_text(encoding="utf-8") == "4242"
 
 
 @pytest.mark.parametrize("second_fails", [False, True])

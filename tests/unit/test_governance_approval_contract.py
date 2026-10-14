@@ -12,6 +12,152 @@ from mcp_broker.cli import main as cli_main
 
 pytestmark = [pytest.mark.unit]
 
+
+def test_timestamp_parser_rejects_a_wrapped_z_suffix() -> None:
+    from mcp_broker.governance_approval import GovernanceApprovalError, _parse_timestamp
+
+    value = "2026-07-04T06:00:00XXZXX"
+    with pytest.raises(GovernanceApprovalError) as caught:
+        _parse_timestamp(value)
+
+    assert str(caught.value) == f"invalid timestamp: {value}"
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert _parse_timestamp("2026-07-04T06:00:00Z").isoformat() == (
+        "2026-07-04T06:00:00+00:00"
+    )
+
+
+def test_audit_writer_appends_exact_utf8_bytes_and_closes_each_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_approval as module
+
+    target = tmp_path / "audit.jsonl"
+    target.write_bytes(b'{"old":true}\n')
+    calls = []
+    handles = []
+    real_open = Path.open
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        handle = real_open(path, *args, **kwargs)
+        handles.append(handle)
+        return handle
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        module._append_audit(target, {"z": 1, "a": "\u00e9"})
+        module._append_audit(target, {"b": 2})
+
+    assert calls == [(target, ("a",), {"encoding": "utf-8"})] * 2
+    assert len(handles) == 2
+    assert all(handle.closed for handle in handles)
+    assert target.read_bytes() == (
+        b'{"old":true}\n'
+        b'{"a":"\\u00e9","z":1}\n{"b":2}\n'
+    )
+
+
+@pytest.mark.error_simulation
+def test_audit_writer_propagates_open_failure_and_preserves_existing_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_approval as module
+
+    target = tmp_path / "audit.jsonl"
+    original = b'{"old":true}\n'
+    target.write_bytes(original)
+    failure = PermissionError("simulated audit permission denial")
+    calls = []
+
+    def open_file(path, *args, **kwargs):
+        calls.append((path, args, kwargs))
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", open_file)
+        with pytest.raises(PermissionError) as caught:
+            module._append_audit(target, {"new": True})
+
+    assert caught.value is failure
+    assert calls == [(target, ("a",), {"encoding": "utf-8"})]
+    assert target.read_bytes() == original
+
+
+
+def test_json_writer_publishes_complete_utf8_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_broker import governance_approval as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    expected = b'{\n  "a": "\\u00e9",\n  "z": 1\n}\n'
+    writes = []
+    replacements = []
+    real_write = Path.write_text
+    real_replace = module.os.replace
+
+    def write_text(path, data, *args, **kwargs):
+        writes.append((path, data, args, kwargs))
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        assert source == temporary
+        assert destination == target
+        assert temporary.read_bytes() == expected
+        assert not target.exists()
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    module._write_json_new(target, {"z": 1, "a": "\u00e9"})
+
+    assert writes == [(temporary, expected.decode("utf-8"), (), {"encoding": "utf-8"})]
+    assert replacements == [(temporary, target)]
+    assert target.read_bytes() == expected
+    assert not temporary.exists()
+
+
+@pytest.mark.error_simulation
+@pytest.mark.parametrize("failure_stage", ["write", "replace"])
+def test_json_writer_propagates_io_failure_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    from mcp_broker import governance_approval as module
+
+    target = tmp_path / "record.json"
+    temporary = tmp_path / "record.json.tmp"
+    failure = OSError("simulated disk failure")
+    replacements = []
+    real_write = Path.write_text
+
+    def write_text(path, data, *args, **kwargs):
+        if path == temporary and failure_stage == "write":
+            raise failure
+        return real_write(path, data, *args, **kwargs)
+
+    def replace(source, destination):
+        replacements.append((source, destination))
+        raise failure
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(module.os, "replace", replace)
+
+    with pytest.raises(OSError) as caught:
+        module._write_json_new(target, {"z": 1, "a": 2})
+
+    assert caught.value is failure
+    assert not target.exists()
+    assert replacements == ([(temporary, target)] if failure_stage == "replace" else [])
+    assert temporary.exists() is (failure_stage == "replace")
+    if failure_stage == "replace":
+        assert temporary.read_bytes() == b'{\n  "a": 2,\n  "z": 1\n}\n'
+
+
+
 CREATED_AT = "2026-07-04T06:00:00Z"
 EXPIRES_AT = "2026-07-04T06:30:00Z"
 ACTION_IDS = ["0001-broker-a-canary", "0002-broker-b-staged"]
@@ -694,6 +840,19 @@ def test_approval_id_matches_a_known_digest_for_a_known_seed() -> None:
     assert len(record_id) == len("governance-approval-") + 16
     # A default-separator encoding hashes differently, so the compact form matters.
     assert canonical != json.dumps(seed, sort_keys=True)
+
+
+def test_approval_id_hashes_the_exact_ascii_escaped_unicode_seed() -> None:
+    import hashlib
+
+    from mcp_broker.governance_approval import _approval_id
+
+    canonical = b'{"operator":"caf\\u00e9","reason":"\\ud83d\\ude80"}'
+    expected = "governance-approval-" + hashlib.sha256(canonical).hexdigest()[:16]
+
+    assert _approval_id({"reason": "\U0001f680", "operator": "caf\u00e9"}) == expected
+    assert _approval_id({"operator": "caf\u00e9", "reason": "\U0001f680"}) == expected
+    assert _approval_id({"operator": "cafe", "reason": "\U0001f680"}) != expected
 
 
 def test_parse_timestamp_accepts_a_capital_z_and_rejects_a_lowercase_one() -> None:

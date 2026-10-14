@@ -129,6 +129,74 @@ def test_stdio_upstream_initial_state_is_explicit(tmp_path: Path) -> None:
     assert isinstance(client._last_activity_monotonic, float)
     assert client._last_error is None
     assert client._initialized is False
+    assert client._client_capabilities == {}
+    assert client.session_context == {}
+    assert client._process_metadata_name == client.upstream.name
+    assert client._process is None
+    assert client._runtime_paths is None
+    assert client._event_logger is None
+    assert client._next_id == 0
+    assert client._restart_count == 0
+    assert client._stdout_buffer == b""
+
+
+def test_stdio_initial_capabilities_are_independent_per_client(tmp_path: Path) -> None:
+    upstream = UpstreamConfig(name="fake", command=sys.executable)
+    first = StdioUpstreamProcess(upstream, runtime_state_dir=tmp_path / "first")
+    second = StdioUpstreamProcess(upstream, runtime_state_dir=tmp_path / "second")
+
+    assert first._client_capabilities == second._client_capabilities == {}
+    first._client_capabilities["elicitation"] = {}
+    assert first._client_capabilities == {"elicitation": {}}
+    assert second._client_capabilities == {}
+
+
+def test_read_response_preserves_elicitation_disconnect_reason(tmp_path: Path) -> None:
+    from mcp_broker.elicitation import ElicitationRelayError, elicitation_scope
+
+    class DisconnectedHost:
+        def __init__(self) -> None:
+            self.timeout = None
+            self.sent: list[bytes] = []
+
+        def gettimeout(self):
+            return self.timeout
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def sendall(self, payload: bytes) -> None:
+            self.sent.append(payload)
+
+        def recv(self, _size: int) -> bytes:
+            return b""
+
+    client = StdioUpstreamProcess(
+        UpstreamConfig(name="fake", command=sys.executable, relay_elicitation=True),
+        runtime_state_dir=tmp_path,
+    )
+    request = {"jsonrpc": "2.0", "id": "approval", "method": "elicitation/create", "params": {}}
+    client._stdout_buffer = json.dumps(request).encode("utf-8") + b"\n"
+    stdin = io.BytesIO()
+    process = ClosedPipeProcess(stdin=stdin, stdout=io.BytesIO())
+    host = DisconnectedHost()
+    host_request = {"params": {"broker_client_capabilities": {"elicitation": {}}}}
+
+    with elicitation_scope(host, host_request, 4096):
+        with pytest.raises(StdioUpstreamTimeout) as caught:
+            client._read_response(process, timeout_seconds=3, expected_id=7)
+
+    assert str(caught.value) == "Elicitation host disconnected"
+    assert isinstance(caught.value.__cause__, ElicitationRelayError)
+    assert str(caught.value.__cause__) == str(caught.value)
+    assert stdin.getvalue() == b""
+    assert len(host.sent) == 1
+    outbound = json.loads(host.sent[0])
+    assert outbound["id"] != request["id"]
+    assert {key: value for key, value in outbound.items() if key != "id"} == {
+        key: value for key, value in request.items() if key != "id"
+    }
+    assert host.timeout is None
 
 
 def test_stdio_upstream_metadata_writer_requires_process_and_runtime_paths(

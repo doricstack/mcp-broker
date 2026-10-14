@@ -2,6 +2,10 @@
   "version": 1,
   "map": [
     {
+      "changed": "tests/support/repo_root.py",
+      "runTests": ["tests/unit/test_repo_root.py", "tests/unit/test_linux_mutation_script_contract.py", "tests/unit/test_upstream_stdio_contract_part04.py", "tests/journey/test_export_completeness_contract.py"]
+    },
+    {
       "changed": "docs/mutation-carveouts.md",
       "runTests": ["tests/unit/test_linux_mutation_script_contract.py", "tests/unit/test_mutation_scope_contract.py"]
     },
