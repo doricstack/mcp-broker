@@ -9,6 +9,11 @@ from typing import Any
 from mcp_broker.config_keys import ENV_NAME_PATTERN, META_NAME_PATTERN
 
 _current: ContextVar[Mapping[str, Any]] = ContextVar("request_metadata", default={})
+# Metadata the broker itself adds to every forwarded tools/call, such as the
+# active profile's result budget. Callers cannot set or override it.
+_broker: ContextVar[Mapping[str, Any]] = ContextVar("broker_request_metadata", default={})
+
+RESULT_BUDGET_META_KEY = "mcp-broker/result_budget_chars"
 
 
 @contextmanager
@@ -27,6 +32,35 @@ def forwarded_request_metadata(names: tuple[str, ...]) -> dict[str, Any]:
     """Copy only administrator-approved fields from the current request."""
     metadata = _current.get()
     return {name: deepcopy(metadata[name]) for name in names if name in metadata}
+
+
+@contextmanager
+def broker_request_metadata_scope(metadata: Mapping[str, Any]) -> Iterator[None]:
+    token = _broker.set(dict(metadata))
+    try:
+        yield
+    finally:
+        _broker.reset(token)
+
+
+def broker_request_metadata() -> dict[str, Any]:
+    """Return the broker-owned metadata for the current call."""
+    return deepcopy(dict(_broker.get()))
+
+
+def outbound_request_metadata(names: tuple[str, ...]) -> dict[str, Any]:
+    """Approved caller fields, then broker-owned fields, which take precedence."""
+    metadata = forwarded_request_metadata(names)
+    metadata.update(broker_request_metadata())
+    return metadata
+
+
+def result_budget_metadata(profile: Any) -> dict[str, Any]:
+    """Map a profile's result_budget_chars onto the upstream _meta field."""
+    budget = getattr(profile, "result_budget_chars", None)
+    if budget is None:
+        return {}
+    return {RESULT_BUDGET_META_KEY: budget}
 
 
 def parse_request_meta(

@@ -9,6 +9,8 @@ from typing import Any, Mapping
 
 
 BROKER_TOOL_NAME_STYLES = frozenset({"dotted", "snake"})
+# Claude Code honors anthropic/maxResultSizeChars up to this many characters.
+MAX_RESULT_SIZE_CHARS = 500_000
 _BROKER_TOOL_NAMES = {
     "broker.search_tools",
     "broker.describe_tool",
@@ -76,6 +78,8 @@ class ToolExposureProfile:
     broker_tool_name_style: str = "dotted"
     allow_mutating_upstreams: tuple[str, ...] = ()
     client_root_match: ClientRootMatch | None = None
+    result_size_chars: int | None = None
+    result_budget_chars: int | None = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -90,6 +94,15 @@ class ToolExposureProfile:
         for upstream_name in self.allow_mutating_upstreams:
             if not upstream_name:
                 raise ValueError("profile allow_mutating_upstreams cannot include empty values")
+        _validate_optional_positive_int(
+            f"profiles.{self.name}.result_size_chars",
+            self.result_size_chars,
+            maximum=MAX_RESULT_SIZE_CHARS,
+        )
+        _validate_optional_positive_int(
+            f"profiles.{self.name}.result_budget_chars",
+            self.result_budget_chars,
+        )
 
     @classmethod
     def from_mapping(cls, name: str, data: dict[str, Any]) -> "ToolExposureProfile":
@@ -106,6 +119,8 @@ class ToolExposureProfile:
             broker_tool_name_style=data.get("broker_tool_name_style", "dotted"),
             allow_mutating_upstreams=allow_mutating_upstreams,
             client_root_match=client_root_match,
+            result_size_chars=data.get("result_size_chars"),
+            result_budget_chars=data.get("result_budget_chars"),
         )
 
     def allows_mutating_upstream(self, upstream_name: str) -> bool:
@@ -155,3 +170,15 @@ def _parse_allow_mutating_upstreams(name: str, data: dict[str, Any]) -> tuple[st
             raise ValueError(f"profiles.{name}.allow_mutating_upstreams must contain upstream names")
         parsed.append(value)
     return tuple(parsed)
+
+
+def _validate_optional_positive_int(
+    path: str, value: object, *, maximum: int | None = None,
+) -> None:
+    if value is None:
+        return
+    # bool is an int subclass; a YAML true must not read as 1.
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{path} must be a positive integer")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{path} must be at most {maximum}")

@@ -187,23 +187,31 @@ _COMPACT_BROKER_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 
+# Claude Code saves a larger text result to a file unless the tool declares this.
+RESULT_SIZE_META_NAME = "anthropic/maxResultSizeChars"
+
+
 def compact_broker_tool_definitions(
     *,
     broker_tool_name_style: str | None = None,
+    result_size_chars: int | None = None,
 ) -> list[dict[str, Any]]:
     if broker_tool_name_style is None:
         broker_tool_name_style = "dotted"
     if broker_tool_name_style not in BROKER_TOOL_NAME_STYLES:
         allowed = ", ".join(sorted(BROKER_TOOL_NAME_STYLES))
         raise ValueError(f"broker_tool_name_style must be one of: {allowed}")
-    return [
-        _broker_tool(
+    tools = []
+    for canonical_name, definition in _COMPACT_BROKER_TOOL_DEFINITIONS.items():
+        tool = _broker_tool(
             _compact_broker_tool_name(canonical_name, broker_tool_name_style),
             definition["description"],
             definition["inputSchema"],
         )
-        for canonical_name, definition in _COMPACT_BROKER_TOOL_DEFINITIONS.items()
-    ]
+        if canonical_name == "broker.call_tool" and result_size_chars is not None:
+            tool["_meta"] = {RESULT_SIZE_META_NAME: result_size_chars}
+        tools.append(tool)
+    return tools
 
 
 @dataclass(frozen=True)
@@ -284,7 +292,8 @@ class ToolNamespaceRouter:
         if profile is None or not profile.compact_tools_enabled:
             return []
         return compact_broker_tool_definitions(
-            broker_tool_name_style=profile.broker_tool_name_style
+            broker_tool_name_style=profile.broker_tool_name_style,
+            result_size_chars=profile.result_size_chars,
         )
 
     def resolve_tool_name(self, advertised_name: str) -> ToolRoute:

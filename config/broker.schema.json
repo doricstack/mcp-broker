@@ -143,6 +143,14 @@
         "allow_mutating_upstreams": {
           "$ref": "#/$defs/stringList"
         },
+        "result_size_chars": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500000
+        },
+        "result_budget_chars": {
+          "$ref": "#/$defs/positiveInteger"
+        },
         "client_root_match": {
           "type": "object",
           "additionalProperties": false,
@@ -190,6 +198,16 @@
         },
         "codex_apps_policy": {
           "$ref": "#/$defs/codexAppsPolicy"
+        },
+        "tool_output_token_limits": {
+          "type": "object",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       }
     },

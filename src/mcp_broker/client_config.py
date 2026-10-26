@@ -25,6 +25,7 @@ CLIENT_KEYS = frozenset(
         "backup_paths",
         "codex_apps_policy",
         "mcp_allowed_servers",
+        "tool_output_token_limits",
     }
 )
 CODEX_APPS_POLICY_KEYS = frozenset(
@@ -50,6 +51,9 @@ class ClientRenderConfig:
     backup_paths: tuple[Path, ...] = ()
     mcp_allowed_servers: tuple[str, ...] = ()
     codex_apps_policy: CodexAppConnectorPolicy | None = None
+    # Codex cuts the middle out of a tool result past its truncation budget;
+    # each (tool, tokens) pair raises that budget for one broker tool.
+    tool_output_token_limits: tuple[tuple[str, int], ...] = ()
 
     @classmethod
     def from_mapping(
@@ -88,7 +92,29 @@ class ClientRenderConfig:
                 expand_config_text=expand_config_text,
                 validate_keys=validate_keys,
             ),
+            tool_output_token_limits=_parse_tool_output_token_limits(
+                f"clients.{name}.tool_output_token_limits",
+                data.get("tool_output_token_limits"),
+                config_format=config_format,
+            ),
         )
+
+
+def _parse_tool_output_token_limits(path: str, value: Any, *, config_format: str) -> tuple[tuple[str, int], ...]:
+    if value is None:
+        return ()
+    if config_format != "codex-toml":
+        raise ValueError(f"{path} applies only to a codex-toml client")
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must be a mapping")
+    limits: list[tuple[str, int]] = []
+    for tool_name, tokens in value.items():
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError(f"{path}: tool name must be a non-empty string")
+        if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens <= 0:
+            raise ValueError(f"{path}.{tool_name} must be a positive integer")
+        limits.append((tool_name, tokens))
+    return tuple(sorted(limits))
 
 
 def _require_client_keys(name: str, data: dict[str, Any]) -> None:
