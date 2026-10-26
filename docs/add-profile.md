@@ -54,6 +54,41 @@ Use compact mode unless the client can accept the full upstream tool list. Use
 names. For example, that renders `broker.status` as `broker_status` while the
 broker still accepts the canonical dotted name.
 
+### Result size settings
+
+Two optional settings size tool results for the client behind the profile. Both
+take a positive integer number of characters and are off when left out.
+
+```yaml
+profiles:
+  claude:
+    max_tools: 80
+    compact_tools_enabled: true
+    result_size_chars: 200000
+    result_budget_chars: 45000
+```
+
+`result_size_chars` raises the size of text result the client keeps inline from
+`broker_call_tool`. The broker adds
+`"_meta": {"anthropic/maxResultSizeChars": <value>}` to the `broker_call_tool`
+entry in `tools/list`; the other broker tools are unchanged. Claude Code saves
+a text result over 50,000 characters to a file unless the tool declares this
+field, and honors it up to 500,000, so the broker rejects larger values. Clients
+that do not read the field ignore it.
+
+`result_budget_chars` tells upstreams how large an answer the client can take.
+Every `tools/call` the broker forwards to a stdio or HTTP upstream carries
+`params._meta["mcp-broker/result_budget_chars"] = <value>`, merged with any
+metadata the upstream's `forward_request_meta` allowlist passes through. The
+profile value wins over a caller-supplied field of the same name, and
+configured `request_meta` credentials still win over both. Upstreams that do
+not read `_meta` behave exactly as before. Set it a little under the client's
+limit, for example about 45,000 for Claude Code's 50,000 default, or lower for
+a client that truncates around 10,000 tokens.
+
+Config load fails on zero, negatives, non-integers, `true`/`false`, and on a
+`result_size_chars` above 500,000.
+
 ## 3. Add the client render block
 
 Paste the generated `clients:` entry into the same YAML:
@@ -82,6 +117,18 @@ For `mcp-settings-json` clients, keep `mcp_allowed_servers` set to the broker
 entry name. Some clients connect to a configured stdio server but do not expose
 its tools to model-facing sessions until the server is present in the MCP
 allowlist.
+
+For a `codex-toml` client, `tool_output_token_limits` maps a broker tool name to
+the token budget Codex keeps for that tool's result. Codex otherwise cuts the
+middle out of any result past the model's truncation budget (10,000 tokens on
+current models). The renderer writes one
+`[mcp_servers."<entry_name>".tools.<tool>]` table per entry, holding
+`output_token_limit`:
+
+```yaml
+    tool_output_token_limits:
+      broker_call_tool: 16000
+```
 
 ## 4. Choose upstream exposure
 

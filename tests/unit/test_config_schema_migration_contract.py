@@ -97,6 +97,8 @@ profiles:
     max_tools: 80
     compact_tools_enabled: true
     broker_tool_name_style: snake
+    result_size_chars: 200000
+    result_budget_chars: 45000
     allow_mutating_upstreams:
       - writer
 clients:
@@ -200,6 +202,8 @@ upstreams:
     assert config.broker.identity.bundle_version == "unbundled"
     assert config.profiles["codex"].allows_mutating_upstream("writer")
     assert config.profiles["codex"].broker_tool_name_style == "snake"
+    assert config.profiles["codex"].result_size_chars == 200000
+    assert config.profiles["codex"].result_budget_chars == 45000
     assert config.broker.remote_auth.enabled is True
     assert config.broker.remote_auth.token_file == Path(
         "/tmp/mcp-broker-test/secrets/broker-remote-token"
@@ -256,11 +260,14 @@ def test_schema_field_inventory_matches_migration_fixture() -> None:
         "clients.*.entry_name",
         "clients.*.format",
         "clients.*.mcp_allowed_servers",
+        "clients.*.tool_output_token_limits",
         "profiles.*.allow_mutating_upstreams",
         "profiles.*.broker_tool_name_style",
         "profiles.*.client_root_match",
         "profiles.*.compact_tools_enabled",
         "profiles.*.max_tools",
+        "profiles.*.result_budget_chars",
+        "profiles.*.result_size_chars",
         "profiles",
         "runtime",
         "runtime.log_dir",

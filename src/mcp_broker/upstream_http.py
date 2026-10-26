@@ -13,6 +13,7 @@ from typing import Any
 from mcp_broker import __version__
 from mcp_broker.config import UpstreamConfig
 from mcp_broker.protocol import SUPPORTED_PROTOCOL_VERSIONS
+from mcp_broker.request_metadata import broker_request_metadata
 
 
 MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version"
@@ -70,10 +71,15 @@ class HttpUpstreamClient:
         *,
         timeout_seconds: int,
     ) -> dict[str, Any]:
+        params: dict[str, Any] = {"name": tool_name, "arguments": arguments}
+        # Only broker-owned fields; caller _meta is never forwarded over HTTP.
+        request_meta = broker_request_metadata()
+        if request_meta:
+            params["_meta"] = request_meta
         try:
             result = self._jsonrpc_request(
                 "tools/call",
-                {"name": tool_name, "arguments": arguments},
+                params,
                 timeout_seconds=timeout_seconds,
             )
         except Exception as exc:

@@ -352,6 +352,8 @@ Supported concepts:
 - `max_tools` protects clients from huge tool lists.
 - `compact_tools_enabled` exposes broker facade tools instead of raw upstream tools.
 - `broker_tool_name_style` adapts broker facade names for clients that cannot surface dotted tool names.
+- `result_size_chars` declares `anthropic/maxResultSizeChars` on `broker_call_tool` (at most 500000), so Claude Code keeps larger results inline.
+- `result_budget_chars` sends `mcp-broker/result_budget_chars` in the `_meta` of every forwarded `tools/call`, so upstreams can size answers for the client. See [docs/add-profile.md](docs/add-profile.md#result-size-settings).
 - `mcp_allowed_servers` renders client settings for MCP clients that require an explicit server allowlist.
 - `allow_mutating_upstreams` is required before a mutating upstream can be exposed.
 - `shared` mode reuses one upstream process where shared account state is acceptable.

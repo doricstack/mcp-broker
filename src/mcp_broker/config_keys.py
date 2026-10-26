@@ -41,6 +41,8 @@ PROFILE_KEYS = frozenset(
         "broker_tool_name_style",
         "allow_mutating_upstreams",
         "client_root_match",
+        "result_size_chars",
+        "result_budget_chars",
     }
 )
 UPSTREAM_KEYS = frozenset(

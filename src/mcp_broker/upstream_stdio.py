@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mcp_broker.request_metadata import forwarded_request_metadata
+from mcp_broker.request_metadata import outbound_request_metadata
 from mcp_broker.elicitation import client_capabilities, relay_request, ElicitationRelayError
 
 import json
@@ -354,7 +354,7 @@ class StdioUpstreamProcess:
         timeout_seconds: int,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"name": tool_name, "arguments": arguments}
-        request_meta = forwarded_request_metadata(self.upstream.forward_request_meta)
+        request_meta = outbound_request_metadata(self.upstream.forward_request_meta)
         # Configured credentials take precedence over caller-supplied metadata.
         request_meta.update(self.upstream.resolve_request_meta(os.environ))
         if request_meta:

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -16,6 +17,7 @@ from mcp_broker.codex_app_policy import CodexAppPolicyResult, apply_codex_app_po
 from mcp_broker.config import BrokerConfig, ClientRenderConfig
 
 
+_TOML_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 _LEGACY_CODEX_MCP_COMMENT_MARKERS = (
     "# === MCP servers (synced from ~/mcp/servers.json + project .mcp.json files) ===",
     "#   GLOBAL SERVERS (all projects)",
@@ -214,7 +216,13 @@ def _render_text(config: BrokerConfig, client: ClientRenderConfig, *, target_pat
     source_path = target_path or client.config_path
     existing_text = source_path.read_text(encoding=TEXT_ENCODING) if source_path.exists() else ""
     if client.format == "codex-toml":
-        return _render_codex_toml(client.entry_name, client.command, args, existing_text)
+        return _render_codex_toml(
+            client.entry_name,
+            client.command,
+            args,
+            existing_text,
+            tool_output_token_limits=client.tool_output_token_limits,
+        )
     if client.format == "claude-json":
         return _render_claude_json(client.entry_name, client.command, args, existing_text)
     if client.format == "mcp-settings-json":
@@ -235,13 +243,23 @@ def _portable_client_arg(arg: str) -> str:
     return f"$HOME/{relative}"
 
 
-def _render_codex_toml(entry_name: str, command: str, args: list[str], existing_text: str) -> str:
+def _render_codex_toml(
+    entry_name: str,
+    command: str,
+    args: list[str],
+    existing_text: str,
+    *,
+    tool_output_token_limits: tuple[tuple[str, int], ...] = (),
+) -> str:
     escaped_args = ", ".join(_quote_toml(arg) for arg in args)
+    server_table = f'mcp_servers."{_escape_toml_string(entry_name)}"'
     broker_entry = (
-        f'[mcp_servers."{_escape_toml_string(entry_name)}"]\n'
+        f"[{server_table}]\n"
         f'command = "{_escape_toml_string(command)}"\n'
         f"args = [{escaped_args}]\n"
     )
+    for tool_name, tokens in tool_output_token_limits:
+        broker_entry += f"\n[{server_table}.tools.{_toml_key(tool_name)}]\noutput_token_limit = {tokens}\n"
     preserved = _strip_trailing_separator_comments(_strip_codex_mcp_tables(existing_text))
     if not preserved.strip():
         return broker_entry
@@ -403,6 +421,12 @@ def _latest_backup(config: BrokerConfig, client: ClientRenderConfig) -> Path:
     if not backups:
         raise ValueError(f"no backups found for client: {client.name}")
     return backups[-1]
+
+
+def _toml_key(value: str) -> str:
+    if _TOML_BARE_KEY.fullmatch(value):
+        return value
+    return _quote_toml(value)
 
 
 def _quote_toml(value: str) -> str:

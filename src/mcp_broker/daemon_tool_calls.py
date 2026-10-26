@@ -8,7 +8,11 @@ from mcp_broker.broker import BrokerToolError
 from mcp_broker.catalog import BrokerCatalogFacade
 from mcp_broker.hybrid_router import HybridRoutingContext, HybridToolRouter
 from mcp_broker.jsonrpc import JsonRpcRequest, JsonRpcResponse
-from mcp_broker.request_metadata import request_metadata_scope
+from mcp_broker.request_metadata import (
+    broker_request_metadata_scope,
+    request_metadata_scope,
+    result_budget_metadata,
+)
 
 
 class BrokerDaemonToolCallMixin:
@@ -35,6 +39,28 @@ class BrokerDaemonToolCallMixin:
             profile = self._effective_profile(params, session_context)
         except ValueError as exc:
             return JsonRpcResponse.error(request.id, -32602, str(exc))
+        with broker_request_metadata_scope(result_budget_metadata(profile)):
+            return self._dispatch_tools_call(
+                request=request,
+                name=name,
+                arguments=arguments,
+                params=params,
+                profile=profile,
+                session_id=session_id,
+                session_context=session_context,
+            )
+
+    def _dispatch_tools_call(
+        self,
+        *,
+        request: JsonRpcRequest,
+        name: str,
+        arguments: dict[str, Any],
+        params: dict[str, Any],
+        profile: Any,
+        session_id: str | None,
+        session_context: dict[str, str],
+    ) -> JsonRpcResponse:
         call_upstream = self._call_upstream_for_session(session_id, session_context)
         list_upstream = self._list_upstream_for_session(session_id, session_context)
         canonical_name = profile.canonical_broker_tool_name(name) if profile is not None else name

@@ -76,6 +76,9 @@ metadata from an earlier call. Request context is isolated across concurrent
 calls and is cleared after success or failure. Configure only the keys the
 upstream needs. Configured `request_meta` credentials take precedence if a
 forwarded field has the same name. HTTP and SSE forwarding are not supported.
+The broker-owned `mcp-broker/result_budget_chars` field from a profile's
+`result_budget_chars` is added to every forwarded call, HTTP included, and
+overrides a caller field of the same name (see `docs/add-profile.md`).
 
 Use `request_meta:` when the upstream expects a token inside each MCP tool call,
 for example `params._meta.authToken`.

@@ -4,6 +4,18 @@ All notable public changes will be recorded here.
 
 ## Unreleased
 
+- Add two optional profile settings for result size. `result_size_chars`
+  declares `anthropic/maxResultSizeChars` on the `broker_call_tool` entry in
+  `tools/list`, so Claude Code keeps text results up to that size inline
+  instead of saving them to a file; values above 500,000 are rejected.
+  `result_budget_chars` adds `mcp-broker/result_budget_chars` to the `_meta`
+  of every `tools/call` forwarded to a stdio or HTTP upstream, so an upstream
+  can size its answer for the calling client. Both are off by default, and
+  upstreams that ignore `_meta` are unaffected.
+- Add `tool_output_token_limits` to `codex-toml` clients. Each entry renders
+  `[mcp_servers."<entry>".tools.<tool>]` with `output_token_limit`, so Codex
+  keeps a broker tool's result up to that many tokens instead of cutting its
+  middle at the model's default budget. Other client formats refuse the key.
 - Keep daemon lock ownership on a stable file inode across shutdown and restart,
   and recover stale PID records through kernel lock ownership.
 - Reconcile portable runtime and mutation-workspace fixes into the private
